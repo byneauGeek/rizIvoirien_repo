@@ -2,6 +2,17 @@ const router = require('express').Router()
 const prisma = require('../lib/prisma')
 const { authenticate, requireRole } = require('../middleware/auth')
 
+// ─── Listes de référence (régions, produits, unités) ─────────────────────────
+// Gérées par l'admin (voir b2bAdmin.js) — cette route publique alimente les
+// listes déroulantes/suggestions du frontend, jamais figées dans son code.
+router.get('/reference-data', async (req, res) => {
+  try {
+    const items = await prisma.b2BReferenceItem.findMany({ where: { active: true }, orderBy: { value: 'asc' } })
+    const byType = (t) => items.filter(i => i.type === t).map(i => i.value)
+    res.json({ regions: byType('REGION'), products: byType('PRODUCT'), units: byType('UNIT') })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ─── Profils ────────────────────────────────────────────────────────────────
 
 const PROFILE_MODEL = {

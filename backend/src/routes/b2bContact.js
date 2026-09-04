@@ -147,6 +147,10 @@ router.post('/contacts/:id/reject', authenticate, async (req, res) => {
     if (!contact) return res.status(404).json({ error: 'Demande de contact introuvable' })
 
     const updated = await prisma.contactRequest.update({ where: { id: contact.id }, data: { status: 'REJECTED' } })
+    setImmediate(() => notify(
+      contact.fromUserId, 'B2B_CONTACT_REJECTED', 'Contact refusé',
+      `${req.user.name} a décliné votre demande de contact.`, { contactId: contact.id }
+    ))
     res.json(updated)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })

@@ -191,6 +191,16 @@ CREATE TABLE "B2BReport" (
 );
 
 -- CreateTable
+CREATE TABLE "B2BReferenceItem" (
+    "id" SERIAL NOT NULL,
+    "type" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "B2BReferenceItem_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Shop" (
     "id" SERIAL NOT NULL,
     "userId" INTEGER NOT NULL,
@@ -729,6 +739,12 @@ CREATE INDEX "B2BReport_status_idx" ON "B2BReport"("status");
 
 -- CreateIndex
 CREATE INDEX "B2BReport_targetType_targetId_idx" ON "B2BReport"("targetType", "targetId");
+
+-- CreateIndex
+CREATE INDEX "B2BReferenceItem_type_active_idx" ON "B2BReferenceItem"("type", "active");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "B2BReferenceItem_type_value_key" ON "B2BReferenceItem"("type", "value");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Shop_userId_key" ON "Shop"("userId");

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Search, AlertCircle, Package, MessageCircle, Check, Flag } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
-import { CI_REGIONS, RICE_PRODUCTS } from '../../utils/regions'
+import { useB2BReferenceData } from '../../hooks/useB2BReferenceData'
 import { B2B_ROLE_META } from './roleMeta'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
@@ -18,6 +18,7 @@ function BuyerBadge({ item }) {
 
 export default function MarketplaceTab() {
   const { user } = useAuth()
+  const { regions: CI_REGIONS, products: RICE_PRODUCTS } = useB2BReferenceData()
   // Par défaut, on affiche le côté "opposé" du marché : un vendeur (offre)
   // veut d'abord voir les demandes, un acheteur veut voir les offres.
   // Visiteur non connecté (page publique) : on démarre sur les offres.

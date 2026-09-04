@@ -80,6 +80,24 @@ describe('B2B — mise en relation', () => {
     expect(res.status).toBe(404)
   })
 
+  test('refuser un contact notifie le demandeur (cadrage §5 P1 "réponses")', async () => {
+    const seller = await registerB2B('PRODUCER', { region: 'Bouaké' })
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME' })
+    const offer = await publishOffer(seller.body.token)
+    const contact = await request(app).post('/api/b2b/contacts')
+      .set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: offer.id })
+
+    const res = await request(app).post(`/api/b2b/contacts/${contact.body.id}/reject`)
+      .set('Authorization', `Bearer ${seller.body.token}`)
+    expect(res.status).toBe(200)
+    expect(res.body.status).toBe('REJECTED')
+
+    await new Promise((r) => setImmediate(r))
+    const buyerUser = await prisma.user.findUnique({ where: { email: buyer.body.user.email } })
+    const notif = await prisma.notification.findFirst({ where: { userId: buyerUser.id, type: 'B2B_CONTACT_REJECTED' } })
+    expect(notif).toBeTruthy()
+  })
+
   test('un contact déjà en cours sur la même offre n\'est pas dupliqué', async () => {
     const seller = await registerB2B('PRODUCER', { region: 'Bouaké' })
     const buyer = await registerB2B('TRADER', { companyName: 'ACME' })

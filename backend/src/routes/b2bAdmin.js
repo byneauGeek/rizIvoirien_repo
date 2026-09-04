@@ -203,4 +203,47 @@ router.get('/stats', ...guard, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ─── Listes de référence (§16 : "gestion des catégories, régions, produits et unités") ──
+
+const VALID_REF_TYPES = ['REGION', 'PRODUCT', 'UNIT']
+
+router.get('/reference-data', ...guard, async (req, res) => {
+  try {
+    const items = await prisma.b2BReferenceItem.findMany({ orderBy: [{ type: 'asc' }, { value: 'asc' }] })
+    res.json({ items })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.post('/reference-data', ...guard, async (req, res) => {
+  const { type, value } = req.body
+  if (!VALID_REF_TYPES.includes(type)) return res.status(400).json({ error: 'Type invalide' })
+  if (!value || !value.trim()) return res.status(400).json({ error: 'Valeur requise' })
+  try {
+    const item = await prisma.b2BReferenceItem.create({ data: { type, value: value.trim() } })
+    setImmediate(() => logAction(req.user.id, 'B2B_REFDATA_CREATE', 'B2BReferenceItem', item.id, { type, value: item.value }))
+    res.status(201).json(item)
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'Cette valeur existe déjà pour ce type' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.put('/reference-data/:id', ...guard, async (req, res) => {
+  const { active } = req.body
+  if (typeof active !== 'boolean') return res.status(400).json({ error: 'active (booléen) requis' })
+  try {
+    const item = await prisma.b2BReferenceItem.update({ where: { id: Number(req.params.id) }, data: { active } })
+    setImmediate(() => logAction(req.user.id, 'B2B_REFDATA_UPDATE', 'B2BReferenceItem', item.id, { active }))
+    res.json(item)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.delete('/reference-data/:id', ...guard, async (req, res) => {
+  try {
+    await prisma.b2BReferenceItem.delete({ where: { id: Number(req.params.id) } })
+    setImmediate(() => logAction(req.user.id, 'B2B_REFDATA_DELETE', 'B2BReferenceItem', Number(req.params.id), {}))
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 module.exports = router

@@ -16,6 +16,7 @@ async function main() {
   // Nettoyer la base — l'ordre respecte déjà les dépendances de clé étrangère
   // (tables enfants avant tables parentes), donc aucun PRAGMA/désactivation de
   // contrainte n'est nécessaire ; ça reste ainsi compatible SQLite ET PostgreSQL.
+  await prisma.b2BReferenceItem.deleteMany()
   await prisma.orderStatusHistory.deleteMany()
   await prisma.orderItem.deleteMany()
   await prisma.driverOffer.deleteMany()
@@ -388,6 +389,24 @@ async function main() {
         },
       },
     },
+  })
+
+  // ─── Listes de référence B2B (cahier de cadrage §16) ───────────────────────
+  // Valeurs de départ éditables ensuite par l'admin — reprennent ce qui était
+  // codé en dur côté frontend avant que ce module n'existe.
+  const B2B_REGIONS = [
+    'Abidjan', 'Bouaké', 'Yamoussoukro', 'Korhogo', 'San-Pédro', 'Daloa',
+    'Man', 'Gagnoa', 'Abengourou', 'Bondoukou', 'Odienné', 'Ferkessédougou',
+    'Séguéla', 'Bouaflé', 'Divo', 'Agboville', 'Adzopé',
+  ]
+  const B2B_PRODUCTS = ['Riz paddy', 'Riz blanchi']
+  const B2B_UNITS = ['kg', 'tonne', 'sac']
+  await prisma.b2BReferenceItem.createMany({
+    data: [
+      ...B2B_REGIONS.map(value => ({ type: 'REGION', value })),
+      ...B2B_PRODUCTS.map(value => ({ type: 'PRODUCT', value })),
+      ...B2B_UNITS.map(value => ({ type: 'UNIT', value })),
+    ],
   })
 
   console.log('\n✅ Seed terminé !\n')

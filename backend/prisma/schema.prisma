@@ -273,6 +273,22 @@ model B2BReport {
   @@index([targetType, targetId])
 }
 
+// Listes de référence gérables par l'admin (cahier de cadrage §16 : "gestion
+// des catégories, régions, produits et unités"). Volontairement une simple
+// table valeur/type plutôt que 3 modèles séparés — aucune autre table ne
+// pointe vers elle par clé étrangère (region/product/unit restent des champs
+// texte libres sur RiceOffer/PurchaseRequest), elle ne fait qu'alimenter les
+// suggestions affichées côté frontend.
+model B2BReferenceItem {
+  id     Int     @id @default(autoincrement())
+  type   String // REGION | PRODUCT | UNIT
+  value  String
+  active Boolean @default(true)
+
+  @@unique([type, value])
+  @@index([type, active])
+}
+
 model Shop {
   id                 Int       @id @default(autoincrement())
   userId             Int       @unique

@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { Plus, X, AlertCircle, Package } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
-import { CI_REGIONS, RICE_PRODUCTS, RICE_UNITS } from '../../utils/regions'
+import { useB2BReferenceData } from '../../hooks/useB2BReferenceData'
 import { B2B_ROLE_META, OFFER_STATUS_LABEL, REQUEST_STATUS_LABEL } from './roleMeta'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
 
 export default function ListingsTab() {
   const { user } = useAuth()
+  const { regions: CI_REGIONS, products: RICE_PRODUCTS, units: RICE_UNITS } = useB2BReferenceData()
   const meta = B2B_ROLE_META[user.role]
   const isOffer = meta.kind === 'offer'
   const endpoint = isOffer ? '/b2b/offers' : '/b2b/requests'
@@ -18,7 +19,7 @@ export default function ListingsTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ product: RICE_PRODUCTS[0], quantity: '', unit: 'tonne', region: '' })
+  const [form, setForm] = useState({ product: 'Riz paddy', quantity: '', unit: 'tonne', region: '' })
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [busyId, setBusyId] = useState(null)
@@ -48,7 +49,7 @@ export default function ListingsTab() {
     try {
       await api.post(endpoint, { ...form, quantity: Number(form.quantity) })
       setShowForm(false)
-      setForm({ product: RICE_PRODUCTS[0], quantity: '', unit: 'tonne', region: '' })
+      setForm({ product: 'Riz paddy', quantity: '', unit: 'tonne', region: '' })
       load()
     } catch (err) {
       setFormError(err.message)

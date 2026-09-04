@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
-import { CI_REGIONS } from '../../utils/regions'
+import { useB2BReferenceData } from '../../hooks/useB2BReferenceData'
 import { VERIFICATION_LABEL } from './roleMeta'
 
 const FIELDS = {
@@ -41,6 +41,7 @@ const FIELDS = {
 
 export default function ProfileTab() {
   const { user } = useAuth()
+  const { regions: CI_REGIONS } = useB2BReferenceData()
   const fields = FIELDS[user.role] || []
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)

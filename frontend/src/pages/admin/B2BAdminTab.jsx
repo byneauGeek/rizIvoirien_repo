@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, ShieldCheck, Flag, BarChart2, Package, Check, X, Ban } from 'lucide-react'
+import { AlertCircle, ShieldCheck, Flag, BarChart2, Package, Check, X, Ban, ListTree, Plus, Trash2 } from 'lucide-react'
 import { api } from '../../api/client'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
@@ -9,6 +9,7 @@ const SUB_TABS = [
   { id: 'listings',      label: 'Annonces',       icon: Package },
   { id: 'reports',       label: 'Signalements',   icon: Flag },
   { id: 'stats',         label: 'Statistiques',   icon: BarChart2 },
+  { id: 'reference',     label: 'Listes de référence', icon: ListTree },
 ]
 
 function ErrorBanner({ error, onRetry }) {
@@ -294,6 +295,122 @@ function StatsPanel() {
   )
 }
 
+const REF_TYPE_LABEL = { REGION: 'Régions', PRODUCT: 'Produits', UNIT: 'Unités' }
+
+function ReferenceDataPanel() {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+  const [newValue, setNewValue] = useState({ REGION: '', PRODUCT: '', UNIT: '' })
+  const [addError, setAddError] = useState(null)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const data = await api.get('/admin/b2b/reference-data')
+      setItems(data.items || [])
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const addItem = async (type) => {
+    const value = newValue[type].trim()
+    if (!value) return
+    setAddError(null)
+    try {
+      await api.post('/admin/b2b/reference-data', { type, value })
+      setNewValue(v => ({ ...v, [type]: '' }))
+      load()
+    } catch (err) {
+      setAddError(err.message)
+    }
+  }
+
+  const toggleActive = async (item) => {
+    setBusyId(item.id)
+    try {
+      await api.put(`/admin/b2b/reference-data/${item.id}`, { active: !item.active })
+      load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const remove = async (item) => {
+    setBusyId(item.id)
+    try {
+      await api.delete(`/admin/b2b/reference-data/${item.id}`)
+      load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <ErrorBanner error={error} onRetry={load} />
+      {addError && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+          <AlertCircle size={14} className="text-red-500 shrink-0" />
+          <p className="font-dm text-sm text-red-600 flex-1">{addError}</p>
+          <button onClick={() => setAddError(null)} className="text-red-400 hover:text-red-600 font-bold text-xs">✕</button>
+        </div>
+      )}
+      {loading ? (
+        <div className="p-8 text-center font-dm text-charcoal/40">Chargement…</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {Object.entries(REF_TYPE_LABEL).map(([type, label]) => (
+            <div key={type} className="bg-white border border-charcoal/10 rounded-2xl p-4">
+              <h3 className="font-syne font-bold text-charcoal text-sm mb-3">{label}</h3>
+              <div className="space-y-1.5 mb-3 max-h-64 overflow-y-auto">
+                {items.filter(i => i.type === type).map(item => (
+                  <div key={item.id} className="flex items-center justify-between gap-2 bg-cream rounded-xl px-3 py-1.5">
+                    <span className={`font-dm text-sm ${item.active ? 'text-charcoal' : 'text-charcoal/30 line-through'}`}>{item.value}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => toggleActive(item)} disabled={busyId === item.id}
+                        className="font-syne text-[10px] font-bold text-charcoal/40 hover:text-charcoal disabled:opacity-50">
+                        {item.active ? 'Désactiver' : 'Activer'}
+                      </button>
+                      <button onClick={() => remove(item)} disabled={busyId === item.id}
+                        className="text-charcoal/30 hover:text-red-500 disabled:opacity-50">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {items.filter(i => i.type === type).length === 0 && (
+                  <p className="font-dm text-xs text-charcoal/30 italic">Aucune valeur</p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input value={newValue[type]} onChange={e => setNewValue(v => ({ ...v, [type]: e.target.value }))}
+                  placeholder="Nouvelle valeur"
+                  className="flex-1 bg-cream border-2 border-charcoal/10 rounded-xl px-3 py-1.5 font-dm text-sm min-w-0" />
+                <button onClick={() => addItem(type)}
+                  className="shrink-0 bg-forest text-cream rounded-xl px-2.5 flex items-center justify-center">
+                  <Plus size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function B2BAdminTab() {
   const [sub, setSub] = useState('verifications')
 
@@ -314,6 +431,7 @@ export default function B2BAdminTab() {
       {sub === 'listings' && <ListingsPanel />}
       {sub === 'reports' && <ReportsPanel />}
       {sub === 'stats' && <StatsPanel />}
+      {sub === 'reference' && <ReferenceDataPanel />}
     </div>
   )
 }

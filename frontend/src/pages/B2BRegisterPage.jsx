@@ -5,7 +5,7 @@ import { Sprout, Users, Building2, Factory, Ship, ArrowRight, ArrowLeft, AlertCi
 import Navbar from '../components/layout/Navbar'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
-import { CI_REGIONS } from '../utils/regions'
+import { useB2BReferenceData } from '../hooks/useB2BReferenceData'
 
 const PROFILE_TYPES = [
   {
@@ -48,6 +48,7 @@ function Input({ className = '', ...props }) {
 export default function B2BRegisterPage() {
   const navigate = useNavigate()
   const { setSession } = useAuth()
+  const { regions: CI_REGIONS } = useB2BReferenceData()
   const [profileType, setProfileType] = useState(null)
   const [account, setAccount] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' })
   const [profile, setProfile] = useState({})

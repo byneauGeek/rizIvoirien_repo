@@ -10,10 +10,12 @@ La production doit utiliser PostgreSQL. Une migration PostgreSQL initiale a déj
 npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script
 ```
 
-et se trouve dans `backend/prisma/migrations-postgresql/20260904000000_init/migration.sql`
-(25 tables, 31 contraintes de clé étrangère, 34 index — reflète fidèlement le
-schema.prisma actuel). **Ne réutilisez jamais les migrations SQLite existantes
-(`backend/prisma/migrations/`) sur PostgreSQL** — leur SQL n'est pas compatible.
+et se trouve dans `backend/prisma/migrations-postgresql/<timestamp>_init/migration.sql`
+(33 tables — reflète fidèlement le schema.prisma actuel, module B2B inclus).
+**Ne réutilisez jamais les migrations SQLite existantes (`backend/prisma/migrations/`)
+sur PostgreSQL** — leur SQL n'est pas compatible. Si le schema.prisma évolue encore
+avant le premier déploiement prod, régénérez ce fichier avec la même commande
+plutôt que de l'éditer à la main.
 
 ### Procédure de bascule (à faire une seule fois, avant le premier déploiement prod)
 

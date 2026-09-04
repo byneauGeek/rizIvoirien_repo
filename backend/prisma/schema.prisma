@@ -19,14 +19,14 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  emailVerified     Boolean   @default(false)
-  emailVerifyToken  String?
-  resetToken        String?
-  resetTokenExpiry  DateTime?
+  emailVerified    Boolean   @default(false)
+  emailVerifyToken String?
+  resetToken       String?
+  resetTokenExpiry DateTime?
 
   shop            Shop?
   driver          Driver?
-  orders          Order[]        @relation("BuyerOrders")
+  orders          Order[]          @relation("BuyerOrders")
   addresses       Address[]
   reviews         Review[]
   shopReviews     ShopReview[]
@@ -34,61 +34,226 @@ model User {
   notifications   Notification[]
   disputes        Dispute[]
   commercialNotes CommercialNote[] @relation("CommercialNoteAuthor")
+
+  // ── Module B2B (filière riz) ──────────────────────────────────────────────
+  producer    Producer?
+  cooperative Cooperative?
+  trader      Trader?
+  processor   Processor?
+  exporter    Exporter?
+}
+
+// ─── B2B : profils ──────────────────────────────────────────────────────────
+
+model Producer {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique
+  user         User     @relation(fields: [userId], references: [id])
+  region       String
+  department   String?
+  commune      String?
+  locality     String?
+  farmType     String?
+  surfaceHa    Float?
+  capacityKg   Float?
+  photo        String?
+  description  String?
+  verification String   @default("UNVERIFIED") // UNVERIFIED|PENDING|VERIFIED|SUSPENDED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cooperativeMemberships CooperativeMember[]
+  offers                 RiceOffer[]
+
+  @@index([region])
+  @@index([verification])
+}
+
+model Cooperative {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique
+  user         User     @relation(fields: [userId], references: [id])
+  name         String
+  responsable  String
+  region       String
+  zone         String?
+  description  String?
+  verification String   @default("UNVERIFIED")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  members CooperativeMember[]
+  offers  RiceOffer[]
+
+  @@index([region])
+  @@index([verification])
+}
+
+model CooperativeMember {
+  id            Int         @id @default(autoincrement())
+  cooperativeId Int
+  cooperative   Cooperative @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  producerId    Int
+  producer      Producer    @relation(fields: [producerId], references: [id], onDelete: Cascade)
+  joinedAt      DateTime    @default(now())
+
+  @@unique([cooperativeId, producerId])
+}
+
+model Trader {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique
+  user         User     @relation(fields: [userId], references: [id])
+  companyName  String
+  activity     String?
+  zones        String?
+  verification String   @default("UNVERIFIED")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  requests PurchaseRequest[]
+
+  @@index([verification])
+}
+
+model Processor {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique
+  user         User     @relation(fields: [userId], references: [id])
+  companyName  String
+  zones        String?
+  verification String   @default("UNVERIFIED")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  requests PurchaseRequest[]
+
+  @@index([verification])
+}
+
+model Exporter {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique
+  user         User     @relation(fields: [userId], references: [id])
+  companyName  String
+  capacityKg   Float?
+  zones        String?
+  verification String   @default("UNVERIFIED")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  requests PurchaseRequest[]
+
+  @@index([verification])
+}
+
+// ─── B2B : offres & demandes ────────────────────────────────────────────────
+
+model RiceOffer {
+  id            Int          @id @default(autoincrement())
+  producerId    Int?
+  producer      Producer?    @relation(fields: [producerId], references: [id], onDelete: Cascade)
+  cooperativeId Int?
+  cooperative   Cooperative? @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  product       String // "Riz paddy" | "Riz blanchi"
+  variety       String?
+  quantity      Float
+  unit          String // kg | tonne | sac
+  region        String
+  availableFrom DateTime?
+  quality       String?
+  price         Float?
+  photos        String       @default("[]")
+  status        String       @default("DRAFT") // DRAFT|AVAILABLE|RESERVED|SOLD|EXPIRED|DISABLED
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([status])
+  @@index([region])
+  @@index([product])
+  @@index([producerId])
+  @@index([cooperativeId])
+}
+
+model PurchaseRequest {
+  id           Int        @id @default(autoincrement())
+  traderId     Int?
+  trader       Trader?    @relation(fields: [traderId], references: [id], onDelete: Cascade)
+  processorId  Int?
+  processor    Processor? @relation(fields: [processorId], references: [id], onDelete: Cascade)
+  exporterId   Int?
+  exporter     Exporter?  @relation(fields: [exporterId], references: [id], onDelete: Cascade)
+  product      String
+  quantity     Float
+  unit         String
+  region       String
+  period       String?
+  requirements String?
+  status       String     @default("ACTIVE") // DRAFT|ACTIVE|FULFILLED|EXPIRED|CANCELLED
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([status])
+  @@index([region])
+  @@index([product])
+  @@index([traderId])
+  @@index([processorId])
+  @@index([exporterId])
 }
 
 model Shop {
-  id              Int      @id @default(autoincrement())
-  userId          Int      @unique
-  user            User     @relation(fields: [userId], references: [id])
+  id                 Int       @id @default(autoincrement())
+  userId             Int       @unique
+  user               User      @relation(fields: [userId], references: [id])
   // Identité
-  name            String
-  slug            String   @unique
-  businessName    String?
-  rccm            String?
-  description     String?
-  speciality      String?
-  since           String?
+  name               String
+  slug               String    @unique
+  businessName       String?
+  rccm               String?
+  description        String?
+  speciality         String?
+  since              String?
   // Contact
-  phone           String?
-  email           String?
+  phone              String?
+  email              String?
   // Localisation
-  location        String?
-  latitude        Float?
-  longitude       Float?
-  deliveryZones   String?
+  location           String?
+  latitude           Float?
+  longitude          Float?
+  deliveryZones      String?
   // Médias
-  coverImage      String?
-  avatar          String?
+  coverImage         String?
+  avatar             String?
   // Opérationnel
-  minOrder        Float    @default(0)
-  preparationTime Int      @default(30)
-  openingHours    String?
-  paused          Boolean  @default(false)
-  pauseNote       String?
+  minOrder           Float     @default(0)
+  preparationTime    Int       @default(30)
+  openingHours       String?
+  paused             Boolean   @default(false)
+  pauseNote          String?
   // Notifications
-  notifyEmail     Boolean  @default(true)
-  notifyLowStock  Boolean  @default(true)
+  notifyEmail        Boolean   @default(true)
+  notifyLowStock     Boolean   @default(true)
   // Contact social
-  whatsapp        String?
-  facebook        String?
-  instagram       String?
+  whatsapp           String?
+  facebook           String?
+  instagram          String?
   // Vente
-  paymentMethods  String   @default("[]")
-  tags            String?
+  paymentMethods     String    @default("[]")
+  tags               String?
   // Annonce temporaire
-  announcement        String?
-  announcementActive  Boolean  @default(false)
+  announcement       String?
+  announcementActive Boolean   @default(false)
   // Statut & plan
-  status          String   @default("PENDING")
-  active          Boolean  @default(false)
-  plan            String   @default("BASIC")
-  certified       Boolean  @default(false)
+  status             String    @default("PENDING")
+  active             Boolean   @default(false)
+  plan               String    @default("BASIC")
+  certified          Boolean   @default(false)
   // Métriques
-  rating          Float    @default(5.0)
-  reviewCount     Int      @default(0)
-  createdAt       DateTime @default(now())
-  contractSigned  Boolean  @default(false)
-  contract        Contract?
+  rating             Float     @default(5.0)
+  reviewCount        Int       @default(0)
+  createdAt          DateTime  @default(now())
+  contractSigned     Boolean   @default(false)
+  contract           Contract?
 
   products            Product[]
   orders              Order[]
@@ -99,35 +264,35 @@ model Shop {
 }
 
 model Product {
-  id          Int      @id @default(autoincrement())
-  shopId      Int
-  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  name        String
-  slug        String   @unique
-  description String?
-  category    String
-  price       Float
-  unit        String   @default("5kg")
-  pricePerKg  Float    @default(0)
-  stock       Int      @default(0)
-  images      String   @default("[]")
-  badge       String?
-  origin      String?
-  harvest     String?
+  id              Int      @id @default(autoincrement())
+  shopId          Int
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name            String
+  slug            String   @unique
+  description     String?
+  category        String
+  price           Float
+  unit            String   @default("5kg")
+  pricePerKg      Float    @default(0)
+  stock           Int      @default(0)
+  images          String   @default("[]")
+  badge           String?
+  origin          String?
+  harvest         String?
   // RETAIL = détail uniquement | WHOLESALE = gros uniquement | BOTH = gros & détail
   saleType        String   @default("BOTH")
   wholesalePrice  Float?
   minWholesaleQty Int?
-  rating      Float    @default(5.0)
-  reviewCount Int      @default(0)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  rating          Float    @default(5.0)
+  reviewCount     Int      @default(0)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  orderItems  OrderItem[]
-  reviews     Review[]
-  wishlist    Wishlist[]
-  history     ProductHistory[]
+  orderItems OrderItem[]
+  reviews    Review[]
+  wishlist   Wishlist[]
+  history    ProductHistory[]
 
   @@index([shopId])
   @@index([active])
@@ -135,48 +300,48 @@ model Product {
 }
 
 model ProductHistory {
-  id         Int      @id @default(autoincrement())
-  productId  Int
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  actorId    Int
-  actorName  String
-  changes    String   // JSON : { field: { from, to, label } }[]
-  createdAt  DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  actorId   Int
+  actorName String
+  changes   String // JSON : { field: { from, to, label } }[]
+  createdAt DateTime @default(now())
 }
 
 model Order {
-  id            Int      @id @default(autoincrement())
-  buyerId       Int
-  buyer         User     @relation("BuyerOrders", fields: [buyerId], references: [id])
-  shopId        Int
-  shop          Shop     @relation(fields: [shopId], references: [id])
-  driverId      Int?
-  driver        Driver?  @relation(fields: [driverId], references: [id])
-  status        String   @default("PENDING")
-  total         Float
-  deliveryFee   Float    @default(0)
-  discount      Float    @default(0)
-  promoCode     String?
-  address       String
-  note          String?
-  groupId          String?
-  idempotencyKey   String?
-  paymentMethod String   @default("CASH_ON_DELIVERY")
-  driverRated   Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  buyerId        Int
+  buyer          User     @relation("BuyerOrders", fields: [buyerId], references: [id])
+  shopId         Int
+  shop           Shop     @relation(fields: [shopId], references: [id])
+  driverId       Int?
+  driver         Driver?  @relation(fields: [driverId], references: [id])
+  status         String   @default("PENDING")
+  total          Float
+  deliveryFee    Float    @default(0)
+  discount       Float    @default(0)
+  promoCode      String?
+  address        String
+  note           String?
+  groupId        String?
+  idempotencyKey String?
+  paymentMethod  String   @default("CASH_ON_DELIVERY")
+  driverRated    Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   items         OrderItem[]
   statusHistory OrderStatusHistory[]
   driverOffer   DriverOffer?
   dispute       Dispute?
 
+  @@unique([buyerId, idempotencyKey])
   @@index([buyerId])
   @@index([shopId])
   @@index([driverId])
   @@index([status])
   @@index([groupId])
-  @@unique([buyerId, idempotencyKey])
 }
 
 model OrderItem {
@@ -255,15 +420,15 @@ model DriverOffer {
 }
 
 model DriverMetric {
-  id          Int      @id @default(autoincrement())
-  driverId    Int
-  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  month       Int
-  year        Int
-  deliveries  Int      @default(0)
-  earnings    Float    @default(0)
-  rating      Float    @default(0)
-  createdAt   DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  driverId   Int
+  driver     Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  month      Int
+  year       Int
+  deliveries Int      @default(0)
+  earnings   Float    @default(0)
+  rating     Float    @default(0)
+  createdAt  DateTime @default(now())
 
   @@unique([driverId, month, year])
 }
@@ -286,55 +451,55 @@ model CarouselSlide {
 }
 
 model PlatformSettings {
-  id                 Int      @id @default(1)
+  id                      Int      @id @default(1)
   // ── Finance ──────────────────────────────────────
-  commissionRate     Float    @default(0.05)
-  driverCommission   Float    @default(0.15)
+  commissionRate          Float    @default(0.05)
+  driverCommission        Float    @default(0.15)
   // ── Livraison ─────────────────────────────────────
-  deliveryBasePrice      Float    @default(500)
-  deliveryPricePerKg     Float    @default(25)
-  deliveryPricePerKm     Float    @default(100)
-  deliveryMaxPrice       Float    @default(8000)
-  deliveryFreeAbove      Float    @default(0)
-  deliveryLeadDays       Int      @default(1)
-  additionalPickupFee    Float    @default(500)
+  deliveryBasePrice       Float    @default(500)
+  deliveryPricePerKg      Float    @default(25)
+  deliveryPricePerKm      Float    @default(100)
+  deliveryMaxPrice        Float    @default(8000)
+  deliveryFreeAbove       Float    @default(0)
+  deliveryLeadDays        Int      @default(1)
+  additionalPickupFee     Float    @default(500)
   // ── Plans ─────────────────────────────────────────
-  basicPlanPrice           Float    @default(0)
-  certifiedPlanPrice       Float    @default(15000)
-  certifiedMonthlyPrice    Float    @default(1500)
-  driverSubPrice           Float    @default(5000)
-  driverAnnualPrice        Float    @default(48000)
-  basicMaxProducts         Int      @default(0)
-  premiumDriverCommission  Float    @default(0.20)
+  basicPlanPrice          Float    @default(0)
+  certifiedPlanPrice      Float    @default(15000)
+  certifiedMonthlyPrice   Float    @default(1500)
+  driverSubPrice          Float    @default(5000)
+  driverAnnualPrice       Float    @default(48000)
+  basicMaxProducts        Int      @default(0)
+  premiumDriverCommission Float    @default(0.20)
   // Restrictions fonctionnelles plan BASIC boutique
-  basicCanAnalytics        Boolean  @default(true)
-  shopBasicFeatures        String?
-  shopCertifiedFeatures    String?
-  driverBasicFeatures      String?
-  driverPremiumFeatures    String?
+  basicCanAnalytics       Boolean  @default(true)
+  shopBasicFeatures       String?
+  shopCertifiedFeatures   String?
+  driverBasicFeatures     String?
+  driverPremiumFeatures   String?
   // ── Moteur d'assignation ──────────────────────────
-  offerExpiryMin       Int    @default(15)
-  minDriverRating      Float  @default(3.5)
-  maxOfferAttempts     Int    @default(3)
-  penaltyWarn1Rate     Float  @default(0.70)
-  penaltyWarn2Rate     Float  @default(0.50)
-  penaltySuspendRate   Float  @default(0.30)
+  offerExpiryMin          Int      @default(15)
+  minDriverRating         Float    @default(3.5)
+  maxOfferAttempts        Int      @default(3)
+  penaltyWarn1Rate        Float    @default(0.70)
+  penaltyWarn2Rate        Float    @default(0.50)
+  penaltySuspendRate      Float    @default(0.30)
   // ── Général ───────────────────────────────────────
-  autoValidateOrders Boolean  @default(true)
-  maintenanceMode    Boolean  @default(false)
-  supportEmail       String   @default("support@rizivoirien.ci")
-  supportPhone       String   @default("+225 07 00 00 00")
+  autoValidateOrders      Boolean  @default(true)
+  maintenanceMode         Boolean  @default(false)
+  supportEmail            String   @default("support@rizivoirien.ci")
+  supportPhone            String   @default("+225 07 00 00 00")
   // ── SEO ───────────────────────────────────────────
-  seoTitle           String   @default("RizIvoirien — Marketplace de riz en Côte d'Ivoire")
-  seoDescription     String   @default("Achetez du riz de qualité directement auprès de coopératives ivoiriennes. Livraison rapide à Abidjan et dans toute la Côte d'Ivoire.")
-  seoKeywords        String   @default("riz ivoirien, achat riz, marketplace riz, Côte d'Ivoire, livraison riz Abidjan")
-  seoOgImage         String   @default("")
-  seoCanonicalDomain String   @default("https://rizivoirien.ci")
-  seoGoogleId        String   @default("")
-  seoFbPixelId       String   @default("")
-  seoRobotsIndex     Boolean  @default(true)
-  seoSitemapEnabled  Boolean  @default(true)
-  updatedAt          DateTime @updatedAt
+  seoTitle                String   @default("RizIvoirien — Marketplace de riz en Côte d'Ivoire")
+  seoDescription          String   @default("Achetez du riz de qualité directement auprès de coopératives ivoiriennes. Livraison rapide à Abidjan et dans toute la Côte d'Ivoire.")
+  seoKeywords             String   @default("riz ivoirien, achat riz, marketplace riz, Côte d'Ivoire, livraison riz Abidjan")
+  seoOgImage              String   @default("")
+  seoCanonicalDomain      String   @default("https://rizivoirien.ci")
+  seoGoogleId             String   @default("")
+  seoFbPixelId            String   @default("")
+  seoRobotsIndex          Boolean  @default(true)
+  seoSitemapEnabled       Boolean  @default(true)
+  updatedAt               DateTime @updatedAt
 }
 
 model Subscription {
@@ -350,12 +515,12 @@ model Subscription {
 
 model Contract {
   id          Int       @id @default(autoincrement())
-  type        String    // SHOP | DRIVER
+  type        String // SHOP | DRIVER
   shopId      Int?      @unique
   driverId    Int?      @unique
   shop        Shop?     @relation(fields: [shopId], references: [id])
   driver      Driver?   @relation(fields: [driverId], references: [id])
-  content     String    // Full HTML contract text
+  content     String // Full HTML contract text
   status      String    @default("PENDING_SIGNATURE") // PENDING_SIGNATURE | SIGNED
   generatedAt DateTime  @default(now())
   signedAt    DateTime?
@@ -421,21 +586,21 @@ model Notification {
 
 // ── Litiges & remboursements ──────────────────────────────────────────────────
 model Dispute {
-  id               Int       @id @default(autoincrement())
-  orderId          Int       @unique
-  order            Order     @relation(fields: [orderId], references: [id])
-  buyerId          Int
-  buyer            User      @relation(fields: [buyerId], references: [id])
-  reason           String
-  description      String
+  id              Int       @id @default(autoincrement())
+  orderId         Int       @unique
+  order           Order     @relation(fields: [orderId], references: [id])
+  buyerId         Int
+  buyer           User      @relation(fields: [buyerId], references: [id])
+  reason          String
+  description     String
   // OPEN | UNDER_REVIEW | RESOLVED_REFUND | RESOLVED_REJECTED | CLOSED
-  status           String    @default("OPEN")
-  refundAmount     Float     @default(0)
-  refundProcessed  Boolean   @default(false)
-  resolution       String?
-  resolvedAt       DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  status          String    @default("OPEN")
+  refundAmount    Float     @default(0)
+  refundProcessed Boolean   @default(false)
+  resolution      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 model ShopReview {
@@ -463,21 +628,21 @@ model AdminLog {
 }
 
 model PlanUpgradeRequest {
-  id        Int      @id @default(autoincrement())
-  type      String   // SHOP | DRIVER
-  shopId    Int?
-  shop      Shop?    @relation(fields: [shopId], references: [id])
-  driverId  Int?
-  driver    Driver?  @relation(fields: [driverId], references: [id])
-  fromPlan  String
-  toPlan    String
+  id            Int      @id @default(autoincrement())
+  type          String // SHOP | DRIVER
+  shopId        Int?
+  shop          Shop?    @relation(fields: [shopId], references: [id])
+  driverId      Int?
+  driver        Driver?  @relation(fields: [driverId], references: [id])
+  fromPlan      String
+  toPlan        String
   status        String   @default("PENDING") // PENDING | APPROVED | REJECTED
-  billingPeriod String   @default("monthly")  // monthly | annual
+  billingPeriod String   @default("monthly") // monthly | annual
   note          String?
   adminNote     String?
   amount        Float?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([status])
   @@index([type])

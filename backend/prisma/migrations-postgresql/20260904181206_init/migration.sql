@@ -18,6 +18,133 @@ CREATE TABLE "User" (
 );
 
 -- CreateTable
+CREATE TABLE "Producer" (
+    "id" SERIAL NOT NULL,
+    "userId" INTEGER NOT NULL,
+    "region" TEXT NOT NULL,
+    "department" TEXT,
+    "commune" TEXT,
+    "locality" TEXT,
+    "farmType" TEXT,
+    "surfaceHa" DOUBLE PRECISION,
+    "capacityKg" DOUBLE PRECISION,
+    "photo" TEXT,
+    "description" TEXT,
+    "verification" TEXT NOT NULL DEFAULT 'UNVERIFIED',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Producer_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Cooperative" (
+    "id" SERIAL NOT NULL,
+    "userId" INTEGER NOT NULL,
+    "name" TEXT NOT NULL,
+    "responsable" TEXT NOT NULL,
+    "region" TEXT NOT NULL,
+    "zone" TEXT,
+    "description" TEXT,
+    "verification" TEXT NOT NULL DEFAULT 'UNVERIFIED',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Cooperative_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CooperativeMember" (
+    "id" SERIAL NOT NULL,
+    "cooperativeId" INTEGER NOT NULL,
+    "producerId" INTEGER NOT NULL,
+    "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "CooperativeMember_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Trader" (
+    "id" SERIAL NOT NULL,
+    "userId" INTEGER NOT NULL,
+    "companyName" TEXT NOT NULL,
+    "activity" TEXT,
+    "zones" TEXT,
+    "verification" TEXT NOT NULL DEFAULT 'UNVERIFIED',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Trader_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Processor" (
+    "id" SERIAL NOT NULL,
+    "userId" INTEGER NOT NULL,
+    "companyName" TEXT NOT NULL,
+    "zones" TEXT,
+    "verification" TEXT NOT NULL DEFAULT 'UNVERIFIED',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Processor_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Exporter" (
+    "id" SERIAL NOT NULL,
+    "userId" INTEGER NOT NULL,
+    "companyName" TEXT NOT NULL,
+    "capacityKg" DOUBLE PRECISION,
+    "zones" TEXT,
+    "verification" TEXT NOT NULL DEFAULT 'UNVERIFIED',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Exporter_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "RiceOffer" (
+    "id" SERIAL NOT NULL,
+    "producerId" INTEGER,
+    "cooperativeId" INTEGER,
+    "product" TEXT NOT NULL,
+    "variety" TEXT,
+    "quantity" DOUBLE PRECISION NOT NULL,
+    "unit" TEXT NOT NULL,
+    "region" TEXT NOT NULL,
+    "availableFrom" TIMESTAMP(3),
+    "quality" TEXT,
+    "price" DOUBLE PRECISION,
+    "photos" TEXT NOT NULL DEFAULT '[]',
+    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "RiceOffer_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PurchaseRequest" (
+    "id" SERIAL NOT NULL,
+    "traderId" INTEGER,
+    "processorId" INTEGER,
+    "exporterId" INTEGER,
+    "product" TEXT NOT NULL,
+    "quantity" DOUBLE PRECISION NOT NULL,
+    "unit" TEXT NOT NULL,
+    "region" TEXT NOT NULL,
+    "period" TEXT,
+    "requirements" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PurchaseRequest_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Shop" (
     "id" SERIAL NOT NULL,
     "userId" INTEGER NOT NULL,
@@ -459,6 +586,78 @@ CREATE TABLE "CommercialNote" (
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Producer_userId_key" ON "Producer"("userId");
+
+-- CreateIndex
+CREATE INDEX "Producer_region_idx" ON "Producer"("region");
+
+-- CreateIndex
+CREATE INDEX "Producer_verification_idx" ON "Producer"("verification");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Cooperative_userId_key" ON "Cooperative"("userId");
+
+-- CreateIndex
+CREATE INDEX "Cooperative_region_idx" ON "Cooperative"("region");
+
+-- CreateIndex
+CREATE INDEX "Cooperative_verification_idx" ON "Cooperative"("verification");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CooperativeMember_cooperativeId_producerId_key" ON "CooperativeMember"("cooperativeId", "producerId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Trader_userId_key" ON "Trader"("userId");
+
+-- CreateIndex
+CREATE INDEX "Trader_verification_idx" ON "Trader"("verification");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Processor_userId_key" ON "Processor"("userId");
+
+-- CreateIndex
+CREATE INDEX "Processor_verification_idx" ON "Processor"("verification");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Exporter_userId_key" ON "Exporter"("userId");
+
+-- CreateIndex
+CREATE INDEX "Exporter_verification_idx" ON "Exporter"("verification");
+
+-- CreateIndex
+CREATE INDEX "RiceOffer_status_idx" ON "RiceOffer"("status");
+
+-- CreateIndex
+CREATE INDEX "RiceOffer_region_idx" ON "RiceOffer"("region");
+
+-- CreateIndex
+CREATE INDEX "RiceOffer_product_idx" ON "RiceOffer"("product");
+
+-- CreateIndex
+CREATE INDEX "RiceOffer_producerId_idx" ON "RiceOffer"("producerId");
+
+-- CreateIndex
+CREATE INDEX "RiceOffer_cooperativeId_idx" ON "RiceOffer"("cooperativeId");
+
+-- CreateIndex
+CREATE INDEX "PurchaseRequest_status_idx" ON "PurchaseRequest"("status");
+
+-- CreateIndex
+CREATE INDEX "PurchaseRequest_region_idx" ON "PurchaseRequest"("region");
+
+-- CreateIndex
+CREATE INDEX "PurchaseRequest_product_idx" ON "PurchaseRequest"("product");
+
+-- CreateIndex
+CREATE INDEX "PurchaseRequest_traderId_idx" ON "PurchaseRequest"("traderId");
+
+-- CreateIndex
+CREATE INDEX "PurchaseRequest_processorId_idx" ON "PurchaseRequest"("processorId");
+
+-- CreateIndex
+CREATE INDEX "PurchaseRequest_exporterId_idx" ON "PurchaseRequest"("exporterId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Shop_userId_key" ON "Shop"("userId");
 
 -- CreateIndex
@@ -556,6 +755,42 @@ CREATE INDEX "CommercialNote_shopId_idx" ON "CommercialNote"("shopId");
 
 -- CreateIndex
 CREATE INDEX "CommercialNote_driverId_idx" ON "CommercialNote"("driverId");
+
+-- AddForeignKey
+ALTER TABLE "Producer" ADD CONSTRAINT "Producer_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Cooperative" ADD CONSTRAINT "Cooperative_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CooperativeMember" ADD CONSTRAINT "CooperativeMember_cooperativeId_fkey" FOREIGN KEY ("cooperativeId") REFERENCES "Cooperative"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CooperativeMember" ADD CONSTRAINT "CooperativeMember_producerId_fkey" FOREIGN KEY ("producerId") REFERENCES "Producer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Trader" ADD CONSTRAINT "Trader_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Processor" ADD CONSTRAINT "Processor_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Exporter" ADD CONSTRAINT "Exporter_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RiceOffer" ADD CONSTRAINT "RiceOffer_producerId_fkey" FOREIGN KEY ("producerId") REFERENCES "Producer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RiceOffer" ADD CONSTRAINT "RiceOffer_cooperativeId_fkey" FOREIGN KEY ("cooperativeId") REFERENCES "Cooperative"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PurchaseRequest" ADD CONSTRAINT "PurchaseRequest_traderId_fkey" FOREIGN KEY ("traderId") REFERENCES "Trader"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PurchaseRequest" ADD CONSTRAINT "PurchaseRequest_processorId_fkey" FOREIGN KEY ("processorId") REFERENCES "Processor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PurchaseRequest" ADD CONSTRAINT "PurchaseRequest_exporterId_fkey" FOREIGN KEY ("exporterId") REFERENCES "Exporter"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Shop" ADD CONSTRAINT "Shop_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

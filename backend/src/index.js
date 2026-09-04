@@ -83,6 +83,7 @@ app.use('/api/stats', require('./routes/stats'))
 app.use('/api/promo', require('./routes/promo'))
 app.use('/api/disputes', require('./routes/disputes'))
 app.use('/api/shop-reviews', require('./routes/shopReviews'))
+app.use('/api/b2b', require('./routes/b2b'))
 
 // ── Public settings (SEO + maintenance) — no auth needed ──────────────────────
 app.get('/api/settings/public', async (req, res) => {

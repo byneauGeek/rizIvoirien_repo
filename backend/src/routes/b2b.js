@@ -1,0 +1,387 @@
+const router = require('express').Router()
+const prisma = require('../lib/prisma')
+const { authenticate, requireRole } = require('../middleware/auth')
+
+// ─── Profils ────────────────────────────────────────────────────────────────
+
+const PROFILE_MODEL = {
+  PRODUCER: 'producer',
+  COOPERATIVE: 'cooperative',
+  TRADER: 'trader',
+  PROCESSOR: 'processor',
+  EXPORTER: 'exporter',
+}
+
+const EDITABLE_FIELDS = {
+  PRODUCER: ['region', 'department', 'commune', 'locality', 'farmType', 'surfaceHa', 'capacityKg', 'photo', 'description'],
+  COOPERATIVE: ['name', 'responsable', 'region', 'zone', 'description'],
+  TRADER: ['companyName', 'activity', 'zones'],
+  PROCESSOR: ['companyName', 'zones'],
+  EXPORTER: ['companyName', 'capacityKg', 'zones'],
+}
+
+const NUMERIC_FIELDS = new Set(['surfaceHa', 'capacityKg'])
+
+const B2B_ROLES = Object.keys(PROFILE_MODEL)
+
+const requireB2BRole = requireRole(...B2B_ROLES)
+
+// Retourne { model, actorId } pour l'utilisateur courant, ou null si aucun profil.
+async function myActor(req) {
+  const modelName = PROFILE_MODEL[req.user.role]
+  if (!modelName) return null
+  const row = await prisma.user.findUnique({ where: { id: req.user.id }, include: { [modelName]: true } })
+  const profile = row?.[modelName]
+  if (!profile) return null
+  return { modelName, profile }
+}
+
+router.get('/my-profile', authenticate, requireB2BRole, async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    res.json(actor.profile)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.put('/my-profile', authenticate, requireB2BRole, async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+
+    const allowed = EDITABLE_FIELDS[req.user.role]
+    const data = {}
+    for (const field of allowed) {
+      if (!(field in req.body)) continue
+      data[field] = NUMERIC_FIELDS.has(field) && req.body[field] !== '' && req.body[field] != null
+        ? Number(req.body[field])
+        : req.body[field]
+    }
+
+    const updated = await prisma[actor.modelName].update({ where: { id: actor.profile.id }, data })
+    res.json(updated)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── Offres (Producteur / Coopérative) ───────────────────────────────────────
+
+const OFFER_SELLER_ROLES = ['PRODUCER', 'COOPERATIVE']
+
+router.get('/offers', async (req, res) => {
+  const { product, region, minQuantity, sellerType, search, limit = '20', offset = '0' } = req.query
+  try {
+    const where = { status: 'AVAILABLE' }
+    if (product) where.product = product
+    if (region) where.region = { contains: region }
+    if (minQuantity) where.quantity = { gte: Number(minQuantity) }
+    if (sellerType === 'PRODUCER') where.producerId = { not: null }
+    if (sellerType === 'COOPERATIVE') where.cooperativeId = { not: null }
+    if (search) where.OR = [{ product: { contains: search } }, { variety: { contains: search } }]
+
+    const [offers, total] = await Promise.all([
+      prisma.riceOffer.findMany({
+        where,
+        include: {
+          producer: { select: { id: true, region: true, verification: true, user: { select: { name: true } } } },
+          cooperative: { select: { id: true, name: true, region: true, verification: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: Math.min(Number(limit) || 20, 100),
+        skip: Number(offset) || 0,
+      }),
+      prisma.riceOffer.count({ where }),
+    ])
+    res.json({ offers, total })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.get('/offers/mine', authenticate, requireRole(...OFFER_SELLER_ROLES), async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const where = actor.modelName === 'producer' ? { producerId: actor.profile.id } : { cooperativeId: actor.profile.id }
+    const offers = await prisma.riceOffer.findMany({ where, orderBy: { createdAt: 'desc' } })
+    res.json({ offers })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.get('/offers/:id', async (req, res) => {
+  try {
+    const offer = await prisma.riceOffer.findUnique({
+      where: { id: Number(req.params.id) },
+      include: {
+        producer: { select: { id: true, region: true, verification: true, user: { select: { name: true, phone: true } } } },
+        cooperative: { select: { id: true, name: true, region: true, verification: true, responsable: true } },
+      },
+    })
+    if (!offer) return res.status(404).json({ error: 'Offre introuvable' })
+    res.json(offer)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.post('/offers', authenticate, requireRole(...OFFER_SELLER_ROLES), async (req, res) => {
+  const { product, variety, quantity, unit, region, availableFrom, quality, price, photos, status } = req.body
+  if (!product || !quantity || !unit || !region) return res.status(400).json({ error: 'Champs requis manquants' })
+  const qty = Number(quantity)
+  if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' })
+  if (price !== undefined && price !== null && price !== '' && (!Number.isFinite(Number(price)) || Number(price) < 0)) {
+    return res.status(400).json({ error: 'Prix invalide' })
+  }
+
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable — complétez votre profil avant de publier' })
+
+    const offer = await prisma.riceOffer.create({
+      data: {
+        producerId: actor.modelName === 'producer' ? actor.profile.id : null,
+        cooperativeId: actor.modelName === 'cooperative' ? actor.profile.id : null,
+        product, variety: variety || null, quantity: qty, unit, region,
+        availableFrom: availableFrom ? new Date(availableFrom) : null,
+        quality: quality || null,
+        price: price !== undefined && price !== null && price !== '' ? Number(price) : null,
+        photos: JSON.stringify(photos || []),
+        status: ['DRAFT', 'AVAILABLE'].includes(status) ? status : 'AVAILABLE',
+      },
+    })
+    res.status(201).json(offer)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.put('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const ownerWhere = actor.modelName === 'producer' ? { producerId: actor.profile.id } : { cooperativeId: actor.profile.id }
+
+    const existing = await prisma.riceOffer.findFirst({ where: { id: Number(req.params.id), ...ownerWhere } })
+    if (!existing) return res.status(404).json({ error: 'Offre introuvable' })
+
+    const EDITABLE = ['product', 'variety', 'quantity', 'unit', 'region', 'availableFrom', 'quality', 'price', 'photos', 'status']
+    const VALID_STATUS = ['DRAFT', 'AVAILABLE', 'RESERVED', 'SOLD', 'EXPIRED', 'DISABLED']
+    const data = {}
+    for (const field of EDITABLE) {
+      if (!(field in req.body)) continue
+      if (field === 'status') {
+        if (!VALID_STATUS.includes(req.body.status)) return res.status(400).json({ error: 'Statut invalide' })
+        data.status = req.body.status
+      } else if (field === 'quantity') {
+        const qty = Number(req.body.quantity)
+        if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' })
+        data.quantity = qty
+      } else if (field === 'price') {
+        const p = req.body.price
+        if (p === null || p === '') data.price = null
+        else {
+          const n = Number(p)
+          if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: 'Prix invalide' })
+          data.price = n
+        }
+      } else if (field === 'availableFrom') {
+        data.availableFrom = req.body.availableFrom ? new Date(req.body.availableFrom) : null
+      } else if (field === 'photos') {
+        data.photos = JSON.stringify(req.body.photos || [])
+      } else {
+        data[field] = req.body[field]
+      }
+    }
+
+    const updated = await prisma.riceOffer.update({ where: { id: existing.id }, data })
+    res.json(updated)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.delete('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const ownerWhere = actor.modelName === 'producer' ? { producerId: actor.profile.id } : { cooperativeId: actor.profile.id }
+
+    const existing = await prisma.riceOffer.findFirst({ where: { id: Number(req.params.id), ...ownerWhere } })
+    if (!existing) return res.status(404).json({ error: 'Offre introuvable' })
+
+    if (existing.status === 'DRAFT') {
+      await prisma.riceOffer.delete({ where: { id: existing.id } })
+    } else {
+      await prisma.riceOffer.update({ where: { id: existing.id }, data: { status: 'DISABLED' } })
+    }
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── Demandes (Acheteur / Transformateur / Exportateur) ─────────────────────
+
+const REQUEST_BUYER_ROLES = ['TRADER', 'PROCESSOR', 'EXPORTER']
+const REQUEST_ACTOR_FK = { trader: 'traderId', processor: 'processorId', exporter: 'exporterId' }
+
+router.get('/requests', async (req, res) => {
+  const { product, region, search, limit = '20', offset = '0' } = req.query
+  try {
+    const where = { status: 'ACTIVE' }
+    if (product) where.product = product
+    if (region) where.region = { contains: region }
+    if (search) where.OR = [{ product: { contains: search } }, { requirements: { contains: search } }]
+
+    const [requests, total] = await Promise.all([
+      prisma.purchaseRequest.findMany({
+        where,
+        include: {
+          trader: { select: { id: true, companyName: true, verification: true } },
+          processor: { select: { id: true, companyName: true, verification: true } },
+          exporter: { select: { id: true, companyName: true, verification: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: Math.min(Number(limit) || 20, 100),
+        skip: Number(offset) || 0,
+      }),
+      prisma.purchaseRequest.count({ where }),
+    ])
+    res.json({ requests, total })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.get('/requests/mine', authenticate, requireRole(...REQUEST_BUYER_ROLES), async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const fk = REQUEST_ACTOR_FK[actor.modelName]
+    const requests = await prisma.purchaseRequest.findMany({ where: { [fk]: actor.profile.id }, orderBy: { createdAt: 'desc' } })
+    res.json({ requests })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.get('/requests/:id', async (req, res) => {
+  try {
+    const request = await prisma.purchaseRequest.findUnique({
+      where: { id: Number(req.params.id) },
+      include: {
+        trader: { select: { id: true, companyName: true, verification: true, user: { select: { name: true, phone: true } } } },
+        processor: { select: { id: true, companyName: true, verification: true, user: { select: { name: true, phone: true } } } },
+        exporter: { select: { id: true, companyName: true, verification: true, user: { select: { name: true, phone: true } } } },
+      },
+    })
+    if (!request) return res.status(404).json({ error: 'Demande introuvable' })
+    res.json(request)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.post('/requests', authenticate, requireRole(...REQUEST_BUYER_ROLES), async (req, res) => {
+  const { product, quantity, unit, region, period, requirements, status } = req.body
+  if (!product || !quantity || !unit || !region) return res.status(400).json({ error: 'Champs requis manquants' })
+  const qty = Number(quantity)
+  if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' })
+
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable — complétez votre profil avant de publier' })
+    const fk = REQUEST_ACTOR_FK[actor.modelName]
+
+    const request = await prisma.purchaseRequest.create({
+      data: {
+        [fk]: actor.profile.id,
+        product, quantity: qty, unit, region,
+        period: period || null,
+        requirements: requirements || null,
+        status: ['DRAFT', 'ACTIVE'].includes(status) ? status : 'ACTIVE',
+      },
+    })
+    res.status(201).json(request)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.put('/requests/:id', authenticate, requireRole(...REQUEST_BUYER_ROLES), async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const fk = REQUEST_ACTOR_FK[actor.modelName]
+
+    const existing = await prisma.purchaseRequest.findFirst({ where: { id: Number(req.params.id), [fk]: actor.profile.id } })
+    if (!existing) return res.status(404).json({ error: 'Demande introuvable' })
+
+    const EDITABLE = ['product', 'quantity', 'unit', 'region', 'period', 'requirements', 'status']
+    const VALID_STATUS = ['DRAFT', 'ACTIVE', 'FULFILLED', 'EXPIRED', 'CANCELLED']
+    const data = {}
+    for (const field of EDITABLE) {
+      if (!(field in req.body)) continue
+      if (field === 'status') {
+        if (!VALID_STATUS.includes(req.body.status)) return res.status(400).json({ error: 'Statut invalide' })
+        data.status = req.body.status
+      } else if (field === 'quantity') {
+        const qty = Number(req.body.quantity)
+        if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' })
+        data.quantity = qty
+      } else {
+        data[field] = req.body[field]
+      }
+    }
+
+    const updated = await prisma.purchaseRequest.update({ where: { id: existing.id }, data })
+    res.json(updated)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.delete('/requests/:id', authenticate, requireRole(...REQUEST_BUYER_ROLES), async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const fk = REQUEST_ACTOR_FK[actor.modelName]
+
+    const existing = await prisma.purchaseRequest.findFirst({ where: { id: Number(req.params.id), [fk]: actor.profile.id } })
+    if (!existing) return res.status(404).json({ error: 'Demande introuvable' })
+
+    if (existing.status === 'DRAFT') {
+      await prisma.purchaseRequest.delete({ where: { id: existing.id } })
+    } else {
+      await prisma.purchaseRequest.update({ where: { id: existing.id }, data: { status: 'CANCELLED' } })
+    }
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── Coopérative : membres (producteurs affiliés) ────────────────────────────
+
+router.get('/cooperative/members', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const members = await prisma.cooperativeMember.findMany({
+      where: { cooperativeId: actor.profile.id },
+      include: { producer: { select: { id: true, region: true, verification: true, user: { select: { name: true, phone: true } } } } },
+      orderBy: { joinedAt: 'desc' },
+    })
+    res.json({ members })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+router.post('/cooperative/members', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
+  const { producerEmail } = req.body
+  if (!producerEmail) return res.status(400).json({ error: 'Email du producteur requis' })
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+
+    const producerUser = await prisma.user.findUnique({ where: { email: producerEmail }, include: { producer: true } })
+    if (!producerUser?.producer) return res.status(404).json({ error: 'Aucun producteur trouvé avec cet email' })
+
+    const member = await prisma.cooperativeMember.create({
+      data: { cooperativeId: actor.profile.id, producerId: producerUser.producer.id },
+    })
+    res.status(201).json(member)
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'Ce producteur est déjà membre de la coopérative' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.delete('/cooperative/members/:producerId', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    await prisma.cooperativeMember.deleteMany({
+      where: { cooperativeId: actor.profile.id, producerId: Number(req.params.producerId) },
+    })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+module.exports = router

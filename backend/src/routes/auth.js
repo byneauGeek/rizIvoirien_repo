@@ -189,6 +189,82 @@ router.post('/register-commercial', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ─── B2B (filière riz) ──────────────────────────────────────────────────────
+// Un seul endpoint pour les 5 profils B2B : la forme (User + profil lié 1:1) est
+// identique, seuls les champs métier et le modèle Prisma ciblé changent.
+
+const B2B_PROFILES = {
+  PRODUCER: {
+    role: 'PRODUCER',
+    required: ['region'],
+    fields: ['region', 'department', 'commune', 'locality', 'farmType', 'surfaceHa', 'capacityKg', 'photo', 'description'],
+    numeric: ['surfaceHa', 'capacityKg'],
+    relation: 'producer',
+  },
+  COOPERATIVE: {
+    role: 'COOPERATIVE',
+    required: ['name', 'responsable', 'region'],
+    fields: ['name', 'responsable', 'region', 'zone', 'description'],
+    numeric: [],
+    relation: 'cooperative',
+  },
+  TRADER: {
+    role: 'TRADER',
+    required: ['companyName'],
+    fields: ['companyName', 'activity', 'zones'],
+    numeric: [],
+    relation: 'trader',
+  },
+  PROCESSOR: {
+    role: 'PROCESSOR',
+    required: ['companyName'],
+    fields: ['companyName', 'zones'],
+    numeric: [],
+    relation: 'processor',
+  },
+  EXPORTER: {
+    role: 'EXPORTER',
+    required: ['companyName'],
+    fields: ['companyName', 'capacityKg', 'zones'],
+    numeric: ['capacityKg'],
+    relation: 'exporter',
+  },
+}
+
+router.post('/register-b2b', async (req, res) => {
+  const { profileType, email, password, name, phone, profile } = req.body
+  const spec = B2B_PROFILES[profileType]
+  if (!spec) return res.status(400).json({ error: 'Type de profil B2B invalide' })
+  if (!email || !password || !name) return res.status(400).json({ error: 'Champs requis manquants' })
+
+  const missing = spec.required.filter((f) => !profile?.[f])
+  if (missing.length) return res.status(400).json({ error: `Champs requis manquants : ${missing.join(', ')}` })
+
+  try {
+    const exists = await prisma.user.findUnique({ where: { email } })
+    if (exists) return res.status(409).json({ error: 'Email déjà utilisé' })
+
+    const profileData = {}
+    for (const field of spec.fields) {
+      if (profile?.[field] === undefined || profile[field] === '') continue
+      profileData[field] = spec.numeric.includes(field) ? Number(profile[field]) : profile[field]
+    }
+
+    const hash = await bcrypt.hash(password, 10)
+    const verifyToken = genToken()
+    const user = await prisma.user.create({
+      data: {
+        email, password: hash, name, phone, role: spec.role,
+        emailVerifyToken: verifyToken,
+        [spec.relation]: { create: profileData },
+      },
+      include: { [spec.relation]: true },
+    })
+    setImmediate(() => sendMail(email, 'verifyEmail', { name, token: verifyToken }))
+    res.status(201).json({ token: sign(user), user: safeUser(user), emailNotVerified: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ─── Login ────────────────────────────────────────────────────────────────────
 
 router.post('/login', async (req, res) => {
@@ -339,7 +415,15 @@ router.get('/me', authenticate, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      include: { shop: { include: { subscription: true } }, driver: true },
+      include: {
+        shop: { include: { subscription: true } },
+        driver: true,
+        producer: true,
+        cooperative: true,
+        trader: true,
+        processor: true,
+        exporter: true,
+      },
     })
     res.json(safeUser(user))
   } catch (e) { res.status(500).json({ error: e.message }) }

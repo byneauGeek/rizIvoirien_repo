@@ -135,6 +135,43 @@ describe('B2B — offres', () => {
     const check = await request(app).get(`/api/b2b/offers/${offer.body.id}`)
     expect(check.body.status).toBe('DISABLED')
   })
+
+  test('recherche : filtre par quantité minimale', async () => {
+    const reg = await registerB2B('PRODUCER', { region: 'Séguéla' })
+    await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${reg.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 5, unit: 'tonne', region: 'Séguéla' })
+    const big = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${reg.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 80, unit: 'tonne', region: 'Séguéla' })
+
+    const res = await request(app).get('/api/b2b/offers?region=Séguéla&minQuantity=50')
+    expect(res.body.offers.every(o => o.quantity >= 50)).toBe(true)
+    expect(res.body.offers.some(o => o.id === big.body.id)).toBe(true)
+  })
+
+  test('recherche : filtre par type de vendeur (sellerType)', async () => {
+    const producer = await registerB2B('PRODUCER', { region: 'Odienné' })
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Odienné', responsable: 'X', region: 'Odienné' })
+    await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${producer.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 10, unit: 'tonne', region: 'Odienné' })
+    await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 10, unit: 'tonne', region: 'Odienné' })
+
+    const res = await request(app).get('/api/b2b/offers?region=Odienné&sellerType=COOPERATIVE')
+    expect(res.body.offers.length).toBeGreaterThan(0)
+    expect(res.body.offers.every(o => o.cooperativeId != null)).toBe(true)
+  })
+
+  test('recherche : filtre par disponibilité (availableBy)', async () => {
+    const reg = await registerB2B('PRODUCER', { region: 'Bondoukou' })
+    const soon = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${reg.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 10, unit: 'tonne', region: 'Bondoukou', availableFrom: '2026-09-01' })
+    const later = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${reg.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 10, unit: 'tonne', region: 'Bondoukou', availableFrom: '2027-06-01' })
+
+    const res = await request(app).get('/api/b2b/offers?region=Bondoukou&availableBy=2026-12-31')
+    expect(res.body.offers.some(o => o.id === soon.body.id)).toBe(true)
+    expect(res.body.offers.some(o => o.id === later.body.id)).toBe(false)
+  })
 })
 
 describe('B2B — demandes d\'achat', () => {
@@ -158,6 +195,23 @@ describe('B2B — demandes d\'achat', () => {
       .set('Authorization', `Bearer ${reg.body.token}`)
       .send({ product: 'Riz paddy', quantity: 10, unit: 'tonne', region: 'Bouaké' })
     expect(res.status).toBe(403)
+  })
+
+  test('recherche : filtre par quantité minimale et par type d\'acheteur (actorType)', async () => {
+    const processor = await registerB2B('PROCESSOR', { companyName: 'Rizerie Test' })
+    const exporter = await registerB2B('EXPORTER', { companyName: 'Export Test' })
+    const small = await request(app).post('/api/b2b/requests').set('Authorization', `Bearer ${processor.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 5, unit: 'tonne', region: 'Divo' })
+    const big = await request(app).post('/api/b2b/requests').set('Authorization', `Bearer ${exporter.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 300, unit: 'tonne', region: 'Divo' })
+
+    const byQuantity = await request(app).get('/api/b2b/requests?region=Divo&minQuantity=100')
+    expect(byQuantity.body.requests.some(r => r.id === big.body.id)).toBe(true)
+    expect(byQuantity.body.requests.some(r => r.id === small.body.id)).toBe(false)
+
+    const byActor = await request(app).get('/api/b2b/requests?region=Divo&actorType=EXPORTER')
+    expect(byActor.body.requests.every(r => r.exporterId != null)).toBe(true)
+    expect(byActor.body.requests.some(r => r.id === small.body.id)).toBe(false)
   })
 })
 

@@ -85,7 +85,7 @@ router.post('/my-profile/request-verification', authenticate, requireB2BRole, as
 const OFFER_SELLER_ROLES = ['PRODUCER', 'COOPERATIVE']
 
 router.get('/offers', async (req, res) => {
-  const { product, region, minQuantity, sellerType, search, limit = '20', offset = '0' } = req.query
+  const { product, region, minQuantity, sellerType, availableBy, search, limit = '20', offset = '0' } = req.query
   try {
     const and = [{ status: 'AVAILABLE' }]
     if (product) and.push({ product })
@@ -93,6 +93,12 @@ router.get('/offers', async (req, res) => {
     if (minQuantity) and.push({ quantity: { gte: Number(minQuantity) } })
     if (sellerType === 'PRODUCER') and.push({ producerId: { not: null } })
     if (sellerType === 'COOPERATIVE') and.push({ cooperativeId: { not: null } })
+    // "Disponible avant le [date]" (§5/§6 disponibilité) : une offre sans date
+    // déclarée est considérée disponible immédiatement, donc toujours incluse.
+    if (availableBy) {
+      const byDate = new Date(availableBy)
+      if (!isNaN(byDate)) and.push({ OR: [{ availableFrom: null }, { availableFrom: { lte: byDate } }] })
+    }
     if (search) and.push({ OR: [{ product: { contains: search } }, { variety: { contains: search } }] })
     // Un acteur suspendu (§10) disparaît de la recherche publique — la suspension
     // administrative doit avoir un effet réel, pas juste cosmétique sur le badge.
@@ -240,12 +246,18 @@ const REQUEST_BUYER_ROLES = ['TRADER', 'PROCESSOR', 'EXPORTER']
 const REQUEST_ACTOR_FK = { trader: 'traderId', processor: 'processorId', exporter: 'exporterId' }
 
 router.get('/requests', async (req, res) => {
-  const { product, region, search, limit = '20', offset = '0' } = req.query
+  const { product, region, minQuantity, actorType, search, limit = '20', offset = '0' } = req.query
   try {
     const and = [{ status: 'ACTIVE' }]
     if (product) and.push({ product })
     if (region) and.push({ region: { contains: region } })
-    if (search) and.push({ OR: [{ product: { contains: search } }, { requirements: { contains: search } }] })
+    if (minQuantity) and.push({ quantity: { gte: Number(minQuantity) } })
+    if (actorType === 'TRADER') and.push({ traderId: { not: null } })
+    if (actorType === 'PROCESSOR') and.push({ processorId: { not: null } })
+    if (actorType === 'EXPORTER') and.push({ exporterId: { not: null } })
+    // "Disponibilité" pour une demande est une période libre (§6), pas une date
+    // structurée — on la couvre via la recherche texte plutôt qu'un filtre exact.
+    if (search) and.push({ OR: [{ product: { contains: search } }, { requirements: { contains: search } }, { period: { contains: search } }] })
     and.push({ OR: [{ traderId: null }, { trader: { verification: { not: 'SUSPENDED' } } }] })
     and.push({ OR: [{ processorId: null }, { processor: { verification: { not: 'SUSPENDED' } } }] })
     and.push({ OR: [{ exporterId: null }, { exporter: { verification: { not: 'SUSPENDED' } } }] })

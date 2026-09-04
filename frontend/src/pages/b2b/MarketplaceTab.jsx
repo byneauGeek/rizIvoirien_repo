@@ -23,7 +23,7 @@ export default function MarketplaceTab() {
   // Visiteur non connecté (page publique) : on démarre sur les offres.
   const myKind = user && B2B_ROLE_META[user.role]?.kind
   const [view, setView] = useState(myKind === 'offer' ? 'requests' : 'offers')
-  const [filters, setFilters] = useState({ product: '', region: '', search: '' })
+  const [filters, setFilters] = useState({ product: '', region: '', search: '', minQuantity: '', availableBy: '', actorType: '' })
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -43,6 +43,13 @@ export default function MarketplaceTab() {
       if (filters.product) params.set('product', filters.product)
       if (filters.region) params.set('region', filters.region)
       if (filters.search) params.set('search', filters.search)
+      if (filters.minQuantity) params.set('minQuantity', filters.minQuantity)
+      if (view === 'offers') {
+        if (filters.availableBy) params.set('availableBy', filters.availableBy)
+        if (filters.actorType) params.set('sellerType', filters.actorType)
+      } else if (filters.actorType) {
+        params.set('actorType', filters.actorType)
+      }
       const data = await api.get(`${endpoint}?${params}`)
       setItems(data[key] || [])
       setTotal(data.total || 0)
@@ -57,6 +64,17 @@ export default function MarketplaceTab() {
   useEffect(() => { load() }, [view]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = (e) => { e.preventDefault(); load() }
+
+  const switchView = (v) => {
+    // actorType et disponibilité n'ont pas le même sens (ni les mêmes options)
+    // d'une offre à une demande — on repart propre pour éviter un filtre fantôme.
+    setFilters(f => ({ ...f, actorType: '', availableBy: '' }))
+    setView(v)
+  }
+
+  const ACTOR_OPTIONS = view === 'offers'
+    ? [{ value: 'PRODUCER', label: 'Producteur' }, { value: 'COOPERATIVE', label: 'Coopérative' }]
+    : [{ value: 'TRADER', label: 'Acheteur' }, { value: 'PROCESSOR', label: 'Transformateur' }, { value: 'EXPORTER', label: 'Exportateur' }]
 
   const handleContact = async (item) => {
     setContactError(null)
@@ -84,11 +102,11 @@ export default function MarketplaceTab() {
       <h1 className="font-playfair text-2xl font-bold text-charcoal">Rechercher sur la filière</h1>
 
       <div className="flex gap-2">
-        <button onClick={() => setView('offers')}
+        <button onClick={() => switchView('offers')}
           className={`font-syne text-sm font-bold px-4 py-2 rounded-2xl transition-colors ${view === 'offers' ? 'bg-forest text-cream' : 'bg-white text-charcoal/50 border border-charcoal/10'}`}>
           Offres de riz
         </button>
-        <button onClick={() => setView('requests')}
+        <button onClick={() => switchView('requests')}
           className={`font-syne text-sm font-bold px-4 py-2 rounded-2xl transition-colors ${view === 'requests' ? 'bg-forest text-cream' : 'bg-white text-charcoal/50 border border-charcoal/10'}`}>
           Demandes d'achat
         </button>
@@ -104,10 +122,26 @@ export default function MarketplaceTab() {
           onChange={e => setFilters(f => ({ ...f, region: e.target.value }))}
           className="bg-cream border-2 border-charcoal/10 rounded-xl px-3 py-2 font-dm text-sm flex-1 min-w-[140px]" />
         <datalist id="regions">{CI_REGIONS.map(r => <option key={r} value={r} />)}</datalist>
+        <select value={filters.actorType} onChange={e => setFilters(f => ({ ...f, actorType: e.target.value }))}
+          className="bg-cream border-2 border-charcoal/10 rounded-xl px-3 py-2 font-dm text-sm">
+          <option value="">{view === 'offers' ? 'Tout type de vendeur' : "Tout type d'acheteur"}</option>
+          {ACTOR_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <input type="number" min="0" placeholder="Quantité min." value={filters.minQuantity}
+          onChange={e => setFilters(f => ({ ...f, minQuantity: e.target.value }))}
+          className="bg-cream border-2 border-charcoal/10 rounded-xl px-3 py-2 font-dm text-sm w-32" />
+        {view === 'offers' && (
+          <div>
+            <label className="font-syne text-[10px] font-bold uppercase text-charcoal/40 block mb-1">Disponible avant le</label>
+            <input type="date" value={filters.availableBy}
+              onChange={e => setFilters(f => ({ ...f, availableBy: e.target.value }))}
+              className="bg-cream border-2 border-charcoal/10 rounded-xl px-3 py-2 font-dm text-sm" />
+          </div>
+        )}
         <input placeholder="Recherche libre" value={filters.search}
           onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
           className="bg-cream border-2 border-charcoal/10 rounded-xl px-3 py-2 font-dm text-sm flex-1 min-w-[140px]" />
-        <button type="submit" className="flex items-center gap-1.5 bg-charcoal text-cream font-syne text-sm font-bold px-4 py-2 rounded-xl">
+        <button type="submit" className="flex items-center gap-1.5 bg-charcoal text-cream font-syne text-sm font-bold px-4 py-2 rounded-xl self-end">
           <Search size={14} /> Filtrer
         </button>
       </form>

@@ -1,0 +1,35 @@
+# Dépendances
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Environnement — NE JAMAIS COMMITTER
+.env
+backend/.env
+frontend/.env
+frontend/.env.local
+*.env.local
+
+# Base de données SQLite locale
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+backend/prisma/*.db
+
+# Uploads locaux (migration vers Cloudinary en prod)
+backend/uploads/
+
+# Build
+frontend/dist/
+backend/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

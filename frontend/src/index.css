@@ -1,0 +1,155 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: #FDF6E3;
+    color: #1A1A1A;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: #E8A217;
+    color: #1B4332;
+  }
+}
+
+@layer utilities {
+  .blob {
+    border-radius: 62% 38% 46% 54% / 60% 44% 56% 40%;
+  }
+
+  .blob-2 {
+    border-radius: 40% 60% 60% 40% / 40% 50% 50% 60%;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .writing-vertical {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@layer components {
+  .section-title {
+    @apply font-playfair text-4xl md:text-5xl font-bold text-charcoal leading-tight;
+  }
+
+  .section-label {
+    @apply font-syne text-xs font-bold tracking-widest uppercase text-forest-muted;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1;
+  }
+
+  .btn-primary {
+    @apply bg-forest text-cream font-syne font-semibold px-6 py-3 rounded-full
+           hover:bg-forest-light transition-all duration-200
+           hover:shadow-[0_6px_20px_rgba(27,67,50,0.3)] active:scale-95;
+  }
+
+  .btn-accent {
+    @apply bg-safran text-charcoal font-syne font-semibold px-6 py-3 rounded-full
+           hover:bg-safran-light transition-all duration-200
+           hover:shadow-glow active:scale-95;
+  }
+
+  .btn-outline {
+    @apply border-2 border-forest text-forest font-syne font-semibold px-6 py-3 rounded-full
+           hover:bg-forest hover:text-cream transition-all duration-200 active:scale-95;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #FDF6E3;
+}
+::-webkit-scrollbar-thumb {
+  background: #2D6A4F;
+  border-radius: 3px;
+}
+
+/* Organic divider */
+.wave-divider {
+  clip-path: ellipse(75% 55% at 50% 100%);
+}
+
+/* Tilt card effect */
+.tilt-card {
+  transform-style: preserve-3d;
+  transition: transform 0.3s ease;
+}
+.tilt-card:hover {
+  transform: perspective(800px) rotateX(-3deg) rotateY(3deg) scale(1.02);
+}
+
+/* ── Impression fiche de paie ── */
+@media print {
+  /* visibility:hidden sur tout + visible sur la zone à imprimer
+     (contrairement à display:none, les enfants peuvent surcharger visibility) */
+  * {
+    visibility: hidden !important;
+  }
+
+  #payslip-content,
+  #payslip-content * {
+    visibility: visible !important;
+  }
+
+  #payslip-content {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    border: none !important;
+    background: white !important;
+    padding: 24px !important;
+    z-index: 9999 !important;
+  }
+
+  /* Masquer les contrôles UI dans la fiche */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Couleurs exactes (fond coloré, etc.) */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  @page {
+    margin: 1.5cm;
+    size: A4;
+  }
+}

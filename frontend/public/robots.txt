@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /vendor
+Disallow: /driver
+Disallow: /checkout
+Disallow: /account
+Disallow: /orders
+Sitemap: https://rizivoirien.ci/sitemap.xml

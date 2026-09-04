@@ -1,0 +1,515 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // PRODUCTION : changer "sqlite" → "postgresql" + mettre DATABASE_URL dans les secrets du serveur
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  phone     String?
+  role      String   @default("BUYER")
+  banned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  emailVerified     Boolean   @default(false)
+  emailVerifyToken  String?
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+
+  shop            Shop?
+  driver          Driver?
+  orders          Order[]        @relation("BuyerOrders")
+  addresses       Address[]
+  reviews         Review[]
+  shopReviews     ShopReview[]
+  wishlist        Wishlist[]
+  notifications   Notification[]
+  disputes        Dispute[]
+  commercialNotes CommercialNote[] @relation("CommercialNoteAuthor")
+}
+
+model Shop {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique
+  user            User     @relation(fields: [userId], references: [id])
+  // Identité
+  name            String
+  slug            String   @unique
+  businessName    String?
+  rccm            String?
+  description     String?
+  speciality      String?
+  since           String?
+  // Contact
+  phone           String?
+  email           String?
+  // Localisation
+  location        String?
+  latitude        Float?
+  longitude       Float?
+  deliveryZones   String?
+  // Médias
+  coverImage      String?
+  avatar          String?
+  // Opérationnel
+  minOrder        Float    @default(0)
+  preparationTime Int      @default(30)
+  openingHours    String?
+  paused          Boolean  @default(false)
+  pauseNote       String?
+  // Notifications
+  notifyEmail     Boolean  @default(true)
+  notifyLowStock  Boolean  @default(true)
+  // Contact social
+  whatsapp        String?
+  facebook        String?
+  instagram       String?
+  // Vente
+  paymentMethods  String   @default("[]")
+  tags            String?
+  // Annonce temporaire
+  announcement        String?
+  announcementActive  Boolean  @default(false)
+  // Statut & plan
+  status          String   @default("PENDING")
+  active          Boolean  @default(false)
+  plan            String   @default("BASIC")
+  certified       Boolean  @default(false)
+  // Métriques
+  rating          Float    @default(5.0)
+  reviewCount     Int      @default(0)
+  createdAt       DateTime @default(now())
+  contractSigned  Boolean  @default(false)
+  contract        Contract?
+
+  products            Product[]
+  orders              Order[]
+  subscription        Subscription?
+  shopReviews         ShopReview[]
+  planUpgradeRequests PlanUpgradeRequest[]
+  commercialNotes     CommercialNote[]
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  shopId      Int
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String   @unique
+  description String?
+  category    String
+  price       Float
+  unit        String   @default("5kg")
+  pricePerKg  Float    @default(0)
+  stock       Int      @default(0)
+  images      String   @default("[]")
+  badge       String?
+  origin      String?
+  harvest     String?
+  // RETAIL = détail uniquement | WHOLESALE = gros uniquement | BOTH = gros & détail
+  saleType        String   @default("BOTH")
+  wholesalePrice  Float?
+  minWholesaleQty Int?
+  rating      Float    @default(5.0)
+  reviewCount Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orderItems  OrderItem[]
+  reviews     Review[]
+  wishlist    Wishlist[]
+  history     ProductHistory[]
+
+  @@index([shopId])
+  @@index([active])
+  @@index([saleType])
+}
+
+model ProductHistory {
+  id         Int      @id @default(autoincrement())
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  actorId    Int
+  actorName  String
+  changes    String   // JSON : { field: { from, to, label } }[]
+  createdAt  DateTime @default(now())
+}
+
+model Order {
+  id            Int      @id @default(autoincrement())
+  buyerId       Int
+  buyer         User     @relation("BuyerOrders", fields: [buyerId], references: [id])
+  shopId        Int
+  shop          Shop     @relation(fields: [shopId], references: [id])
+  driverId      Int?
+  driver        Driver?  @relation(fields: [driverId], references: [id])
+  status        String   @default("PENDING")
+  total         Float
+  deliveryFee   Float    @default(0)
+  discount      Float    @default(0)
+  promoCode     String?
+  address       String
+  note          String?
+  groupId          String?
+  idempotencyKey   String?
+  paymentMethod String   @default("CASH_ON_DELIVERY")
+  driverRated   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+  driverOffer   DriverOffer?
+  dispute       Dispute?
+
+  @@index([buyerId])
+  @@index([shopId])
+  @@index([driverId])
+  @@index([status])
+  @@index([groupId])
+  @@unique([buyerId, idempotencyKey])
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Float
+  name      String
+}
+
+model OrderStatusHistory {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    String
+  note      String?
+  actorId   Int?
+  createdAt DateTime @default(now())
+}
+
+model Driver {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @unique
+  user            User      @relation(fields: [userId], references: [id])
+  inviteCode      String    @unique
+  // Statut
+  status          String    @default("PENDING")
+  online          Boolean   @default(false)
+  available       Boolean   @default(true)
+  // Identité
+  avatar          String?
+  idNumber        String?
+  idPhoto         String?
+  // Permis
+  licenseNumber   String?
+  licenseExpiry   String?
+  licensePhoto    String?
+  // Véhicule
+  vehicleType     String?
+  vehiclePlate    String?
+  vehiclePhoto    String?
+  // Métriques
+  rating          Float     @default(5.0)
+  totalDeliveries Int       @default(0)
+  acceptanceRate  Float     @default(1.0)
+  warningCount    Int       @default(0)
+  autoSuspended   Boolean   @default(false)
+  monthlyEarnings Float     @default(0)
+  earningsMonth   Int       @default(0)
+  earningsYear    Int       @default(0)
+  createdAt       DateTime  @default(now())
+  contractSigned  Boolean   @default(false)
+  plan            String    @default("BASIC")
+  contract        Contract?
+
+  orders              Order[]
+  offers              DriverOffer[]
+  metrics             DriverMetric[]
+  planUpgradeRequests PlanUpgradeRequest[]
+  commercialNotes     CommercialNote[]
+}
+
+model DriverOffer {
+  id        Int      @id @default(autoincrement())
+  orderId   Int      @unique
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  driverId  Int
+  driver    Driver   @relation(fields: [driverId], references: [id])
+  status    String   @default("PENDING")
+  attempt   Int      @default(1)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model DriverMetric {
+  id          Int      @id @default(autoincrement())
+  driverId    Int
+  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  month       Int
+  year        Int
+  deliveries  Int      @default(0)
+  earnings    Float    @default(0)
+  rating      Float    @default(0)
+  createdAt   DateTime @default(now())
+
+  @@unique([driverId, month, year])
+}
+
+model CarouselSlide {
+  id        Int      @id @default(autoincrement())
+  type      String   @default("promotion")
+  title     String
+  subtitle  String?
+  badge     String?
+  cta       String?
+  ctaLink   String?
+  bg        String   @default("#1B4332")
+  accent    String   @default("#E8A217")
+  image     String?
+  active    Boolean  @default(false)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PlatformSettings {
+  id                 Int      @id @default(1)
+  // ── Finance ──────────────────────────────────────
+  commissionRate     Float    @default(0.05)
+  driverCommission   Float    @default(0.15)
+  // ── Livraison ─────────────────────────────────────
+  deliveryBasePrice      Float    @default(500)
+  deliveryPricePerKg     Float    @default(25)
+  deliveryPricePerKm     Float    @default(100)
+  deliveryMaxPrice       Float    @default(8000)
+  deliveryFreeAbove      Float    @default(0)
+  deliveryLeadDays       Int      @default(1)
+  additionalPickupFee    Float    @default(500)
+  // ── Plans ─────────────────────────────────────────
+  basicPlanPrice           Float    @default(0)
+  certifiedPlanPrice       Float    @default(15000)
+  certifiedMonthlyPrice    Float    @default(1500)
+  driverSubPrice           Float    @default(5000)
+  driverAnnualPrice        Float    @default(48000)
+  basicMaxProducts         Int      @default(0)
+  premiumDriverCommission  Float    @default(0.20)
+  // Restrictions fonctionnelles plan BASIC boutique
+  basicCanAnalytics        Boolean  @default(true)
+  shopBasicFeatures        String?
+  shopCertifiedFeatures    String?
+  driverBasicFeatures      String?
+  driverPremiumFeatures    String?
+  // ── Moteur d'assignation ──────────────────────────
+  offerExpiryMin       Int    @default(15)
+  minDriverRating      Float  @default(3.5)
+  maxOfferAttempts     Int    @default(3)
+  penaltyWarn1Rate     Float  @default(0.70)
+  penaltyWarn2Rate     Float  @default(0.50)
+  penaltySuspendRate   Float  @default(0.30)
+  // ── Général ───────────────────────────────────────
+  autoValidateOrders Boolean  @default(true)
+  maintenanceMode    Boolean  @default(false)
+  supportEmail       String   @default("support@rizivoirien.ci")
+  supportPhone       String   @default("+225 07 00 00 00")
+  // ── SEO ───────────────────────────────────────────
+  seoTitle           String   @default("RizIvoirien — Marketplace de riz en Côte d'Ivoire")
+  seoDescription     String   @default("Achetez du riz de qualité directement auprès de coopératives ivoiriennes. Livraison rapide à Abidjan et dans toute la Côte d'Ivoire.")
+  seoKeywords        String   @default("riz ivoirien, achat riz, marketplace riz, Côte d'Ivoire, livraison riz Abidjan")
+  seoOgImage         String   @default("")
+  seoCanonicalDomain String   @default("https://rizivoirien.ci")
+  seoGoogleId        String   @default("")
+  seoFbPixelId       String   @default("")
+  seoRobotsIndex     Boolean  @default(true)
+  seoSitemapEnabled  Boolean  @default(true)
+  updatedAt          DateTime @updatedAt
+}
+
+model Subscription {
+  id        Int       @id @default(autoincrement())
+  shopId    Int       @unique
+  shop      Shop      @relation(fields: [shopId], references: [id])
+  plan      String
+  status    String    @default("ACTIVE")
+  startDate DateTime  @default(now())
+  endDate   DateTime?
+  amount    Float
+}
+
+model Contract {
+  id          Int       @id @default(autoincrement())
+  type        String    // SHOP | DRIVER
+  shopId      Int?      @unique
+  driverId    Int?      @unique
+  shop        Shop?     @relation(fields: [shopId], references: [id])
+  driver      Driver?   @relation(fields: [driverId], references: [id])
+  content     String    // Full HTML contract text
+  status      String    @default("PENDING_SIGNATURE") // PENDING_SIGNATURE | SIGNED
+  generatedAt DateTime  @default(now())
+  signedAt    DateTime?
+}
+
+model InviteCode {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  used      Boolean  @default(false)
+  usedById  Int?
+  createdAt DateTime @default(now())
+}
+
+model Address {
+  id        Int     @id @default(autoincrement())
+  userId    Int
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String
+  address   String
+  city      String  @default("Abidjan")
+  isDefault Boolean @default(false)
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId   Int?
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@unique([productId, userId])
+}
+
+model Wishlist {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  message   String
+  data      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([read])
+}
+
+// ── Litiges & remboursements ──────────────────────────────────────────────────
+model Dispute {
+  id               Int       @id @default(autoincrement())
+  orderId          Int       @unique
+  order            Order     @relation(fields: [orderId], references: [id])
+  buyerId          Int
+  buyer            User      @relation(fields: [buyerId], references: [id])
+  reason           String
+  description      String
+  // OPEN | UNDER_REVIEW | RESOLVED_REFUND | RESOLVED_REJECTED | CLOSED
+  status           String    @default("OPEN")
+  refundAmount     Float     @default(0)
+  refundProcessed  Boolean   @default(false)
+  resolution       String?
+  resolvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model ShopReview {
+  id        Int      @id @default(autoincrement())
+  shopId    Int
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId   Int?
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@unique([shopId, userId])
+}
+
+model AdminLog {
+  id         Int      @id @default(autoincrement())
+  adminId    Int
+  action     String
+  targetType String?
+  targetId   Int?
+  details    String?
+  createdAt  DateTime @default(now())
+}
+
+model PlanUpgradeRequest {
+  id        Int      @id @default(autoincrement())
+  type      String   // SHOP | DRIVER
+  shopId    Int?
+  shop      Shop?    @relation(fields: [shopId], references: [id])
+  driverId  Int?
+  driver    Driver?  @relation(fields: [driverId], references: [id])
+  fromPlan  String
+  toPlan    String
+  status        String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  billingPeriod String   @default("monthly")  // monthly | annual
+  note          String?
+  adminNote     String?
+  amount        Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([type])
+  @@index([shopId])
+  @@index([driverId])
+}
+
+model PromoCode {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique
+  description String?
+  type        String    @default("PERCENT")
+  value       Float
+  minOrder    Float     @default(0)
+  maxUses     Int       @default(100)
+  usedCount   Int       @default(0)
+  active      Boolean   @default(true)
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model CommercialNote {
+  id        Int      @id @default(autoincrement())
+  shopId    Int?
+  shop      Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  driverId  Int?
+  driver    Driver?  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  authorId  Int
+  author    User     @relation("CommercialNoteAuthor", fields: [authorId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([shopId])
+  @@index([driverId])
+}

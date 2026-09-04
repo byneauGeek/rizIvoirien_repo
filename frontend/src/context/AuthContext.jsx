@@ -44,6 +44,16 @@ export function AuthProvider({ children }) {
     return data.user
   }
 
+  // Ouvre une session directement à partir d'un {token, user} déjà obtenu
+  // (ex : juste après une inscription qui renvoie un token, sans re-appeler /login).
+  const setSession = (data) => {
+    localStorage.setItem('rz_token', data.token)
+    localStorage.setItem('rz_user', JSON.stringify(data.user))
+    if (data.emailNotVerified) localStorage.setItem('rz_email_unverified', '1')
+    else localStorage.removeItem('rz_email_unverified')
+    setUser(data.user)
+  }
+
   const logout = () => {
     localStorage.removeItem('rz_token')
     localStorage.removeItem('rz_user')
@@ -57,7 +67,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, ready, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, ready, login, logout, updateUser, setSession }}>
       {children}
     </AuthContext.Provider>
   )

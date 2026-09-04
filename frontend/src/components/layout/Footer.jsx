@@ -20,6 +20,13 @@ const NAV = [
     ],
   },
   {
+    title: 'Filière riz (B2B)',
+    links: [
+      { label: 'Rejoindre la filière',        to: '/register/b2b' },
+      { label: 'Offres & demandes',           to: '/b2b/marketplace' },
+    ],
+  },
+  {
     title: 'Support',
     links: [
       { label: "Centre d'aide",               to: '/aide' },
@@ -49,7 +56,7 @@ export default function Footer() {
       <div className="h-16 bg-cream" style={{ clipPath: 'ellipse(55% 100% at 50% 0%)' }} />
 
       <div className="max-w-7xl mx-auto px-6 pt-4 pb-16">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-12">
           {/* Brand */}
           <div className="md:col-span-1">
             <div className="flex items-center gap-2 mb-4">

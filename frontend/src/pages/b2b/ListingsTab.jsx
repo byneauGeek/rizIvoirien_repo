@@ -1,0 +1,191 @@
+import { useEffect, useState } from 'react'
+import { Plus, X, AlertCircle, Package } from 'lucide-react'
+import { api } from '../../api/client'
+import { useAuth } from '../../context/AuthContext'
+import { CI_REGIONS, RICE_PRODUCTS, RICE_UNITS } from '../../utils/regions'
+import { B2B_ROLE_META, OFFER_STATUS_LABEL, REQUEST_STATUS_LABEL } from './roleMeta'
+
+const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
+
+export default function ListingsTab() {
+  const { user } = useAuth()
+  const meta = B2B_ROLE_META[user.role]
+  const isOffer = meta.kind === 'offer'
+  const endpoint = isOffer ? '/b2b/offers' : '/b2b/requests'
+  const statusLabels = isOffer ? OFFER_STATUS_LABEL : REQUEST_STATUS_LABEL
+
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ product: RICE_PRODUCTS[0], quantity: '', unit: 'tonne', region: '' })
+  const [formError, setFormError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [busyId, setBusyId] = useState(null)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const key = isOffer ? 'offers' : 'requests'
+      const data = await api.get(`${endpoint}/mine`)
+      setItems(data[key] || [])
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const handleCreate = async (e) => {
+    e.preventDefault()
+    setFormError('')
+    if (!form.quantity || Number(form.quantity) <= 0) return setFormError('Quantité invalide.')
+    if (!form.region) return setFormError('La région est requise.')
+    setSubmitting(true)
+    try {
+      await api.post(endpoint, { ...form, quantity: Number(form.quantity) })
+      setShowForm(false)
+      setForm({ product: RICE_PRODUCTS[0], quantity: '', unit: 'tonne', region: '' })
+      load()
+    } catch (err) {
+      setFormError(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const disable = async (id) => {
+    setBusyId(id)
+    try {
+      await api.delete(`${endpoint}/${id}`)
+      load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="font-playfair text-2xl font-bold text-charcoal">
+          Mes {isOffer ? 'offres' : 'demandes'}
+        </h1>
+        <button onClick={() => setShowForm(s => !s)}
+          className="flex items-center gap-2 bg-forest text-cream font-syne text-sm font-bold px-4 py-2.5 rounded-2xl hover:bg-forest-dark transition-colors">
+          {showForm ? <X size={16} /> : <Plus size={16} />}
+          {showForm ? 'Annuler' : `Publier une ${meta.listingLabel}`}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleCreate} className="bg-white border-2 border-charcoal/10 rounded-3xl p-6 space-y-4">
+          {formError && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+              <AlertCircle size={14} className="text-red-500 shrink-0" />
+              <p className="font-dm text-sm text-red-600">{formError}</p>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="font-syne text-xs font-bold uppercase text-charcoal/50 block mb-1.5">Produit</label>
+              <select value={form.product} onChange={e => setForm(f => ({ ...f, product: e.target.value }))}
+                className="w-full bg-cream border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm">
+                {RICE_PRODUCTS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="font-syne text-xs font-bold uppercase text-charcoal/50 block mb-1.5">Unité</label>
+              <select value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
+                className="w-full bg-cream border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm">
+                {RICE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="font-syne text-xs font-bold uppercase text-charcoal/50 block mb-1.5">Quantité</label>
+              <input type="number" min="0" step="0.1" required value={form.quantity}
+                onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))}
+                className="w-full bg-cream border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm" />
+            </div>
+            <div>
+              <label className="font-syne text-xs font-bold uppercase text-charcoal/50 block mb-1.5">Région</label>
+              <input required list="regions" value={form.region}
+                onChange={e => setForm(f => ({ ...f, region: e.target.value }))}
+                className="w-full bg-cream border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm" />
+              <datalist id="regions">{CI_REGIONS.map(r => <option key={r} value={r} />)}</datalist>
+            </div>
+          </div>
+          {isOffer ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="font-syne text-xs font-bold uppercase text-charcoal/50 block mb-1.5">Variété (optionnel)</label>
+                <input value={form.variety || ''} onChange={e => setForm(f => ({ ...f, variety: e.target.value }))}
+                  className="w-full bg-cream border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm" />
+              </div>
+              <div>
+                <label className="font-syne text-xs font-bold uppercase text-charcoal/50 block mb-1.5">Prix / unité (optionnel)</label>
+                <input type="number" min="0" value={form.price || ''} onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
+                  className="w-full bg-cream border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm" />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="font-syne text-xs font-bold uppercase text-charcoal/50 block mb-1.5">Exigences (optionnel)</label>
+              <textarea rows={2} value={form.requirements || ''} onChange={e => setForm(f => ({ ...f, requirements: e.target.value }))}
+                className="w-full bg-cream border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm resize-none" />
+            </div>
+          )}
+          <button type="submit" disabled={submitting}
+            className="bg-forest text-cream font-syne font-bold px-6 py-3 rounded-2xl hover:bg-forest-dark transition-colors disabled:opacity-50">
+            {submitting ? 'Publication…' : 'Publier'}
+          </button>
+        </form>
+      )}
+
+      {error && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+          <AlertCircle size={14} className="text-red-500 shrink-0" />
+          <p className="font-dm text-sm text-red-600 flex-1">{error}</p>
+          <button onClick={load} className="text-red-600 font-bold text-xs underline">Réessayer</button>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="p-8 text-center font-dm text-charcoal/40">Chargement…</div>
+      ) : items.length === 0 ? (
+        <div className="text-center py-16 bg-white border-2 border-dashed border-charcoal/10 rounded-3xl">
+          <Package className="mx-auto text-charcoal/20 mb-3" size={32} />
+          <p className="font-dm text-charcoal/40">Aucune {meta.listingLabel} publiée pour l'instant.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map(item => (
+            <div key={item.id} className="bg-white border border-charcoal/10 rounded-2xl p-4 flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <p className="font-syne font-bold text-charcoal">{item.product} — {fmt(item.quantity)} {item.unit}</p>
+                <p className="font-dm text-sm text-charcoal/40">{item.region}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="font-syne text-xs font-bold px-3 py-1.5 rounded-full bg-charcoal/5 text-charcoal/60">
+                  {statusLabels[item.status] || item.status}
+                </span>
+                {!['DISABLED', 'CANCELLED', 'SOLD', 'FULFILLED'].includes(item.status) && (
+                  <button onClick={() => disable(item.id)} disabled={busyId === item.id}
+                    className="font-syne text-xs font-bold text-red-500 hover:text-red-700 disabled:opacity-50">
+                    {busyId === item.id ? '…' : 'Désactiver'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

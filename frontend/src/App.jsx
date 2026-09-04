@@ -26,6 +26,9 @@ const DriverRegisterPage      = lazy(() => import('./pages/DriverRegisterPage'))
 const SellerRegisterPage      = lazy(() => import('./pages/SellerRegisterPage'))
 const CommercialRegisterPage  = lazy(() => import('./pages/CommercialRegisterPage'))
 const CommercialDashboard     = lazy(() => import('./pages/commercial/CommercialDashboard'))
+const B2BRegisterPage    = lazy(() => import('./pages/B2BRegisterPage'))
+const B2BMarketplacePage = lazy(() => import('./pages/B2BMarketplacePage'))
+const B2BDashboard       = lazy(() => import('./pages/b2b/B2BDashboard'))
 const ContactPage       = lazy(() => import('./pages/info/ContactPage'))
 const LivraisonsPage    = lazy(() => import('./pages/info/LivraisonsPage'))
 const CguPage           = lazy(() => import('./pages/info/CguPage'))
@@ -93,6 +96,24 @@ function AppRoutes() {
         <Route path="/commercial/register" element={<CommercialRegisterPage />} />
         <Route path="/commercial" element={
           <PrivateRoute role={['ADMIN', 'COMMERCIAL']}><CommercialDashboard /></PrivateRoute>
+        } />
+
+        <Route path="/register/b2b"    element={<B2BRegisterPage />} />
+        <Route path="/b2b/marketplace" element={<B2BMarketplacePage />} />
+        <Route path="/producer" element={
+          <PrivateRoute role="PRODUCER"><B2BDashboard /></PrivateRoute>
+        } />
+        <Route path="/cooperative" element={
+          <PrivateRoute role="COOPERATIVE"><B2BDashboard /></PrivateRoute>
+        } />
+        <Route path="/trader" element={
+          <PrivateRoute role="TRADER"><B2BDashboard /></PrivateRoute>
+        } />
+        <Route path="/processor" element={
+          <PrivateRoute role="PROCESSOR"><B2BDashboard /></PrivateRoute>
+        } />
+        <Route path="/exporter" element={
+          <PrivateRoute role="EXPORTER"><B2BDashboard /></PrivateRoute>
         } />
 
         <Route path="/contact"         element={<ContactPage />} />

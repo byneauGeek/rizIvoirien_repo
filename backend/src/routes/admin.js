@@ -953,7 +953,17 @@ router.delete('/users/:id', ...guard, async (req, res) => {
     const target = await prisma.user.findUnique({ where: { id: Number(req.params.id) } })
     if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' })
     if (target.role === 'ADMIN') return res.status(403).json({ error: 'Impossible de supprimer un compte admin' })
-    await prisma.user.delete({ where: { id: Number(req.params.id) } })
+    try {
+      await prisma.user.delete({ where: { id: Number(req.params.id) } })
+    } catch (e) {
+      // P2003 : l'utilisateur a des données liées (boutique, commandes, litiges...) protégées
+      // par une contrainte de clé étrangère RESTRICT — on ne supprime jamais silencieusement
+      // l'historique commercial/financier d'un compte. Utiliser la suspension à la place.
+      if (e.code === 'P2003') return res.status(409).json({
+        error: 'Ce compte a des données liées (boutique, commandes, litiges...) et ne peut pas être supprimé définitivement. Suspendez-le à la place.',
+      })
+      throw e
+    }
     setImmediate(() => logAction(req.user.id, 'USER_DELETE', 'USER', Number(req.params.id), { name: target.name, role: target.role }))
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }

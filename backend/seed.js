@@ -13,8 +13,9 @@ async function main() {
 
   console.log('🌱 Seeding RizIvoirien...')
 
-  // Nettoyer la base
-  await prisma.$executeRawUnsafe('PRAGMA foreign_keys = OFF')
+  // Nettoyer la base — l'ordre respecte déjà les dépendances de clé étrangère
+  // (tables enfants avant tables parentes), donc aucun PRAGMA/désactivation de
+  // contrainte n'est nécessaire ; ça reste ainsi compatible SQLite ET PostgreSQL.
   await prisma.orderStatusHistory.deleteMany()
   await prisma.orderItem.deleteMany()
   await prisma.driverOffer.deleteMany()
@@ -29,7 +30,6 @@ async function main() {
   await prisma.carouselSlide.deleteMany()
   await prisma.platformSettings.deleteMany()
   await prisma.user.deleteMany()
-  await prisma.$executeRawUnsafe('PRAGMA foreign_keys = ON')
 
   const hash = (pw) => bcrypt.hash(pw, 10)
 

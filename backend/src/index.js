@@ -197,23 +197,35 @@ app.use((req, res) => res.status(404).json({ error: 'Route introuvable' }))
 // Error handler global (Prisma + générique)
 app.use(require('./middleware/errorHandler'))
 
-const PORT = process.env.PORT || 3001
-const prisma = require('./lib/prisma')
-const server = app.listen(PORT, () => {
-  logger.info(`🌾 RizIvoirien API → http://localhost:${PORT}`)
-  const { startEngine } = require('./services/assignmentEngine')
-  try { startEngine() } catch (e) { logger.error({ err: e }, '❌ Moteur assignation') }
-})
-
-process.on('SIGTERM', async () => {
-  logger.info('🛑 SIGTERM — arrêt propre...')
-  server.close(async () => {
-    await prisma.$disconnect()
-    logger.info('✅ Connexion DB fermée')
-    process.exit(0)
+// `app` est exporté sans écouter de port — nécessaire pour les tests (supertest
+// pilote l'app directement, sans bind réseau). Le serveur ne démarre réellement
+// que lorsque ce fichier est exécuté directement (`node src/index.js`), pas
+// lorsqu'il est `require()`. Comportement identique pour `npm start`/`npm run dev`.
+function start() {
+  const PORT = process.env.PORT || 3001
+  const prisma = require('./lib/prisma')
+  const server = app.listen(PORT, () => {
+    logger.info(`🌾 RizIvoirien API → http://localhost:${PORT}`)
+    const { startEngine } = require('./services/assignmentEngine')
+    try { startEngine() } catch (e) { logger.error({ err: e }, '❌ Moteur assignation') }
   })
-})
 
-process.on('unhandledRejection', (reason) => {
-  logger.error({ reason }, '❌ Promise non gérée')
-})
+  process.on('SIGTERM', async () => {
+    logger.info('🛑 SIGTERM — arrêt propre...')
+    server.close(async () => {
+      await prisma.$disconnect()
+      logger.info('✅ Connexion DB fermée')
+      process.exit(0)
+    })
+  })
+
+  process.on('unhandledRejection', (reason) => {
+    logger.error({ reason }, '❌ Promise non gérée')
+  })
+
+  return server
+}
+
+if (require.main === module) start()
+
+module.exports = app

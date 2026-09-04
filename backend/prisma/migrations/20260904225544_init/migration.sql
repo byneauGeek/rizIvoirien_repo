@@ -625,6 +625,200 @@ CREATE TABLE "AccountingPermission" (
     CONSTRAINT "AccountingPermission_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+-- CreateTable
+CREATE TABLE "TreasuryAccount" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "name" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "balance" REAL NOT NULL DEFAULT 0,
+    "currency" TEXT NOT NULL DEFAULT 'XOF',
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "FinancialTransaction" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "reference" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "direction" TEXT NOT NULL,
+    "amount" REAL NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'XOF',
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "sourceType" TEXT,
+    "sourceId" INTEGER,
+    "accountId" INTEGER,
+    "actorUserId" INTEGER,
+    "beneficiaryUserId" INTEGER,
+    "beneficiaryName" TEXT,
+    "transferGroupId" TEXT,
+    "description" TEXT,
+    "createdBy" INTEGER NOT NULL,
+    "validatedBy" INTEGER,
+    "validatedAt" DATETIME,
+    "date" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "FinancialTransaction_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "TreasuryAccount" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "Debt" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "beneficiaryUserId" INTEGER,
+    "beneficiaryName" TEXT,
+    "sourceType" TEXT NOT NULL,
+    "sourceId" INTEGER,
+    "initialAmount" REAL NOT NULL,
+    "paidAmount" REAL NOT NULL DEFAULT 0,
+    "currency" TEXT NOT NULL DEFAULT 'XOF',
+    "status" TEXT NOT NULL DEFAULT 'OPEN',
+    "dueDate" DATETIME,
+    "description" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "Receivable" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "debtorUserId" INTEGER,
+    "debtorName" TEXT,
+    "sourceType" TEXT NOT NULL,
+    "sourceId" INTEGER,
+    "amount" REAL NOT NULL,
+    "receivedAmount" REAL NOT NULL DEFAULT 0,
+    "currency" TEXT NOT NULL DEFAULT 'XOF',
+    "status" TEXT NOT NULL DEFAULT 'OPEN',
+    "dueDate" DATETIME,
+    "description" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "CommissionRule" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "type" TEXT NOT NULL,
+    "rate" REAL,
+    "fixedAmount" REAL,
+    "category" TEXT,
+    "actorType" TEXT,
+    "startDate" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "endDate" DATETIME,
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "createdBy" INTEGER NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
+CREATE TABLE "Remuneration" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "reference" TEXT NOT NULL,
+    "beneficiaryUserId" INTEGER NOT NULL,
+    "beneficiaryType" TEXT NOT NULL,
+    "periodStart" DATETIME NOT NULL,
+    "periodEnd" DATETIME NOT NULL,
+    "sourceType" TEXT NOT NULL,
+    "grossAmount" REAL NOT NULL,
+    "bonusAmount" REAL NOT NULL DEFAULT 0,
+    "penaltyAmount" REAL NOT NULL DEFAULT 0,
+    "advanceAmount" REAL NOT NULL DEFAULT 0,
+    "netAmount" REAL NOT NULL,
+    "appliedCommissionRate" REAL,
+    "calculationDetail" TEXT NOT NULL DEFAULT '[]',
+    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "documentType" TEXT,
+    "createdBy" INTEGER NOT NULL,
+    "calculatedAt" DATETIME,
+    "validatedBy" INTEGER,
+    "validatedAt" DATETIME,
+    "rejectedReason" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "PaymentOrder" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "reference" TEXT NOT NULL,
+    "beneficiaryUserId" INTEGER,
+    "beneficiaryName" TEXT,
+    "amount" REAL NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'XOF',
+    "reason" TEXT NOT NULL,
+    "sourceType" TEXT NOT NULL,
+    "sourceId" INTEGER,
+    "remunerationId" INTEGER,
+    "accountId" INTEGER,
+    "paymentMethod" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'PENDING_CONTROL',
+    "holdReason" TEXT,
+    "rejectedReason" TEXT,
+    "createdBy" INTEGER NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "PaymentOrder_remunerationId_fkey" FOREIGN KEY ("remunerationId") REFERENCES "Remuneration" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "Payment" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "reference" TEXT NOT NULL,
+    "paymentOrderId" INTEGER NOT NULL,
+    "amount" REAL NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'XOF',
+    "beneficiaryUserId" INTEGER,
+    "beneficiaryName" TEXT,
+    "accountId" INTEGER,
+    "method" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "executedBy" INTEGER,
+    "executedAt" DATETIME,
+    "failureReason" TEXT,
+    "documentUrl" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Payment_paymentOrderId_fkey" FOREIGN KEY ("paymentOrderId") REFERENCES "PaymentOrder" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "Expense" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "reference" TEXT NOT NULL,
+    "category" TEXT NOT NULL,
+    "amount" REAL NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'XOF',
+    "date" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "supplier" TEXT,
+    "accountId" INTEGER,
+    "description" TEXT,
+    "documentUrl" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "createdBy" INTEGER NOT NULL,
+    "validatedBy" INTEGER,
+    "validatedAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "AccountingDocument" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "targetType" TEXT NOT NULL,
+    "targetId" INTEGER NOT NULL,
+    "docType" TEXT NOT NULL,
+    "url" TEXT NOT NULL,
+    "uploadedBy" INTEGER NOT NULL,
+    "uploadedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
+CREATE TABLE "AccountingSequence" (
+    "key" TEXT NOT NULL PRIMARY KEY,
+    "counter" INTEGER NOT NULL DEFAULT 0
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -837,4 +1031,97 @@ CREATE INDEX "AccountingPermission_userId_idx" ON "AccountingPermission"("userId
 
 -- CreateIndex
 CREATE UNIQUE INDEX "AccountingPermission_userId_permission_key" ON "AccountingPermission"("userId", "permission");
+
+-- CreateIndex
+CREATE INDEX "TreasuryAccount_active_idx" ON "TreasuryAccount"("active");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "FinancialTransaction_reference_key" ON "FinancialTransaction"("reference");
+
+-- CreateIndex
+CREATE INDEX "FinancialTransaction_type_idx" ON "FinancialTransaction"("type");
+
+-- CreateIndex
+CREATE INDEX "FinancialTransaction_status_idx" ON "FinancialTransaction"("status");
+
+-- CreateIndex
+CREATE INDEX "FinancialTransaction_sourceType_sourceId_idx" ON "FinancialTransaction"("sourceType", "sourceId");
+
+-- CreateIndex
+CREATE INDEX "FinancialTransaction_accountId_idx" ON "FinancialTransaction"("accountId");
+
+-- CreateIndex
+CREATE INDEX "FinancialTransaction_beneficiaryUserId_idx" ON "FinancialTransaction"("beneficiaryUserId");
+
+-- CreateIndex
+CREATE INDEX "FinancialTransaction_date_idx" ON "FinancialTransaction"("date");
+
+-- CreateIndex
+CREATE INDEX "Debt_beneficiaryUserId_idx" ON "Debt"("beneficiaryUserId");
+
+-- CreateIndex
+CREATE INDEX "Debt_status_idx" ON "Debt"("status");
+
+-- CreateIndex
+CREATE INDEX "Debt_sourceType_sourceId_idx" ON "Debt"("sourceType", "sourceId");
+
+-- CreateIndex
+CREATE INDEX "Receivable_debtorUserId_idx" ON "Receivable"("debtorUserId");
+
+-- CreateIndex
+CREATE INDEX "Receivable_status_idx" ON "Receivable"("status");
+
+-- CreateIndex
+CREATE INDEX "Receivable_sourceType_sourceId_idx" ON "Receivable"("sourceType", "sourceId");
+
+-- CreateIndex
+CREATE INDEX "CommissionRule_type_idx" ON "CommissionRule"("type");
+
+-- CreateIndex
+CREATE INDEX "CommissionRule_status_idx" ON "CommissionRule"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Remuneration_reference_key" ON "Remuneration"("reference");
+
+-- CreateIndex
+CREATE INDEX "Remuneration_beneficiaryUserId_idx" ON "Remuneration"("beneficiaryUserId");
+
+-- CreateIndex
+CREATE INDEX "Remuneration_status_idx" ON "Remuneration"("status");
+
+-- CreateIndex
+CREATE INDEX "Remuneration_periodStart_periodEnd_idx" ON "Remuneration"("periodStart", "periodEnd");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PaymentOrder_reference_key" ON "PaymentOrder"("reference");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PaymentOrder_remunerationId_key" ON "PaymentOrder"("remunerationId");
+
+-- CreateIndex
+CREATE INDEX "PaymentOrder_status_idx" ON "PaymentOrder"("status");
+
+-- CreateIndex
+CREATE INDEX "PaymentOrder_beneficiaryUserId_idx" ON "PaymentOrder"("beneficiaryUserId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Payment_reference_key" ON "Payment"("reference");
+
+-- CreateIndex
+CREATE INDEX "Payment_status_idx" ON "Payment"("status");
+
+-- CreateIndex
+CREATE INDEX "Payment_paymentOrderId_idx" ON "Payment"("paymentOrderId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Expense_reference_key" ON "Expense"("reference");
+
+-- CreateIndex
+CREATE INDEX "Expense_status_idx" ON "Expense"("status");
+
+-- CreateIndex
+CREATE INDEX "Expense_category_idx" ON "Expense"("category");
+
+-- CreateIndex
+CREATE INDEX "AccountingDocument_targetType_targetId_idx" ON "AccountingDocument"("targetType", "targetId");
 

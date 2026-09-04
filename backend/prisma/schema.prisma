@@ -787,3 +787,262 @@ model AccountingPermission {
   @@unique([userId, permission])
   @@index([userId])
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPTABILITÉ — LOT 2 : modèles financiers
+// Principe central (cahier de cadrage §8) : toute opération financière doit
+// pouvoir être reliée à son origine métier. On utilise sourceType/sourceId
+// (texte + id, même convention que B2BReport.targetType/targetId) plutôt que
+// des clés étrangères dédiées par origine possible (Order, Delivery,
+// Remuneration, Debt...) — sinon chaque nouvelle origine imposerait une
+// migration. Pour la même raison, les champs "qui a fait/validé/exécuté
+// quoi" (createdBy, validatedBy, executedBy, uploadedBy...) restent de
+// simples Int indexés SANS relation Prisma formelle vers User : c'est déjà
+// exactement la convention existante (AdminLog.adminId,
+// OrderStatusHistory.actorId) pour des champs de traçabilité plutôt que des
+// relations de domaine — la seule exception établie (CommercialNote.authorId)
+// concerne un auteur central à l'objet, pas un simple horodatage d'action.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model TreasuryAccount {
+  id        Int      @id @default(autoincrement())
+  name      String
+  type      String // CAISSE | BANQUE | MOBILE_MONEY | AUTRE
+  balance   Float    @default(0) // solde en cache — ne jamais modifier hors transaction DB (LOT 5)
+  currency  String   @default("XOF")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions FinancialTransaction[]
+
+  @@index([active])
+}
+
+model FinancialTransaction {
+  id                Int              @id @default(autoincrement())
+  reference         String           @unique // TXN-2026-000001 (services/accountingSequence.js)
+  type              String // DEBT_CREATED|RECEIVABLE_CREATED|PAYMENT_EXECUTED|ENCAISSEMENT|DECAISSEMENT|COMMISSION_APPLIED|EXPENSE_RECORDED|TRANSFER|ADJUSTMENT
+  direction         String // IN | OUT — sens du mouvement pour la trésorerie de la plateforme
+  amount            Float
+  currency          String           @default("XOF")
+  status            String           @default("PENDING") // PENDING | CONFIRMED | CANCELLED
+  sourceType        String? // ORDER|DELIVERY|REMUNERATION|PAYMENT_ORDER|PAYMENT|DEBT|RECEIVABLE|EXPENSE|COMMISSION|SUBSCRIPTION|MANUAL
+  sourceId          Int?
+  accountId         Int?
+  account           TreasuryAccount? @relation(fields: [accountId], references: [id])
+  actorUserId       Int? // utilisateur à l'origine du mouvement (ex : client qui règle)
+  beneficiaryUserId Int? // utilisateur qui reçoit (ex : livreur payé)
+  beneficiaryName   String? // repli texte libre si le bénéficiaire n'a pas de compte plateforme
+  transferGroupId   String? // relie les deux écritures d'un même virement interne
+  description       String?
+  createdBy         Int
+  validatedBy       Int?
+  validatedAt       DateTime?
+  date              DateTime         @default(now())
+  createdAt         DateTime         @default(now())
+
+  @@index([type])
+  @@index([status])
+  @@index([sourceType, sourceId])
+  @@index([accountId])
+  @@index([beneficiaryUserId])
+  @@index([date])
+}
+
+model Debt {
+  id                Int       @id @default(autoincrement())
+  beneficiaryUserId Int?
+  beneficiaryName   String?
+  sourceType        String // ORDER|DELIVERY|REMUNERATION|SUBSCRIPTION_REFUND|MANUAL
+  sourceId          Int?
+  initialAmount     Float
+  paidAmount        Float     @default(0)
+  currency          String    @default("XOF")
+  status            String    @default("OPEN") // OPEN | PARTIALLY_PAID | PAID | OVERDUE | CANCELLED
+  dueDate           DateTime?
+  description       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([beneficiaryUserId])
+  @@index([status])
+  @@index([sourceType, sourceId])
+}
+
+model Receivable {
+  id             Int       @id @default(autoincrement())
+  debtorUserId   Int?
+  debtorName     String?
+  sourceType     String // SUBSCRIPTION|PLAN_UPGRADE|B2B_TRANSACTION|MANUAL
+  sourceId       Int?
+  amount         Float
+  receivedAmount Float     @default(0)
+  currency       String    @default("XOF")
+  status         String    @default("OPEN") // OPEN | PARTIALLY_PAID | PAID | OVERDUE | CANCELLED
+  dueDate        DateTime?
+  description    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([debtorUserId])
+  @@index([status])
+  @@index([sourceType, sourceId])
+}
+
+// Règle configurable (taux courant). Ne JAMAIS relire cette table pour
+// recalculer une Remuneration/transaction passée — le taux réellement
+// appliqué est toujours snapshotté sur l'objet qui l'a consommé
+// (Remuneration.appliedCommissionRate) pour ne jamais changer rétroactivement
+// un montant déjà calculé (§24).
+model CommissionRule {
+  id          Int       @id @default(autoincrement())
+  type        String // PLATFORM_SALE | DELIVERY | SUBSCRIPTION | B2B | OTHER
+  rate        Float?
+  fixedAmount Float?
+  category    String?
+  actorType   String? // SELLER | DRIVER | COOPERATIVE | ALL
+  startDate   DateTime  @default(now())
+  endDate     DateTime?
+  status      String    @default("ACTIVE") // ACTIVE | INACTIVE
+  createdBy   Int
+  createdAt   DateTime  @default(now())
+
+  @@index([type])
+  @@index([status])
+}
+
+// Ce que la personne doit recevoir — distinct de PaymentOrder (l'instruction
+// de payer) et de Payment (le mouvement réel), §11.
+model Remuneration {
+  id                    Int       @id @default(autoincrement())
+  reference             String    @unique // REM-2026-000001
+  beneficiaryUserId     Int
+  beneficiaryType       String // DRIVER | SELLER | COOPERATIVE | EMPLOYEE
+  periodStart           DateTime
+  periodEnd             DateTime
+  sourceType            String // DELIVERIES | SALES | MANUAL
+  grossAmount           Float
+  bonusAmount           Float     @default(0)
+  penaltyAmount         Float     @default(0)
+  advanceAmount         Float     @default(0)
+  netAmount             Float
+  appliedCommissionRate Float?
+  calculationDetail     String    @default("[]") // JSON : détail ligne par ligne du calcul (§13)
+  status                String    @default("DRAFT")
+  // DRAFT|CALCULATED|PENDING_VALIDATION|VALIDATED|PAYMENT_PENDING|PAYMENT_PROCESSING|PAID|REJECTED|CANCELLED|PAYMENT_FAILED
+  documentType          String? // PAYSLIP | REMUNERATION_STATEMENT | SETTLEMENT_STATEMENT (§16)
+  createdBy             Int
+  calculatedAt          DateTime?
+  validatedBy           Int?
+  validatedAt           DateTime?
+  rejectedReason        String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  paymentOrder PaymentOrder?
+
+  @@index([beneficiaryUserId])
+  @@index([status])
+  @@index([periodStart, periodEnd])
+}
+
+// L'instruction autorisant le paiement — pas encore le mouvement d'argent.
+model PaymentOrder {
+  id                Int           @id @default(autoincrement())
+  reference         String        @unique // ORD-2026-000001
+  beneficiaryUserId Int?
+  beneficiaryName   String?
+  amount            Float
+  currency          String        @default("XOF")
+  reason            String
+  sourceType        String // REMUNERATION | DEBT | EXPENSE | MANUAL
+  sourceId          Int?
+  remunerationId    Int?          @unique
+  remuneration      Remuneration? @relation(fields: [remunerationId], references: [id])
+  accountId         Int? // compte de trésorerie à débiter
+  paymentMethod     String? // CASH | BANK_TRANSFER | MOBILE_MONEY | OTHER
+  status            String        @default("PENDING_CONTROL")
+  // PENDING_CONTROL|ON_HOLD|PENDING_PAYMENT|PROCESSING|PAID|REJECTED|FAILED|CANCELLED
+  holdReason        String?
+  rejectedReason    String?
+  createdBy         Int
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  payments Payment[]
+
+  @@index([status])
+  @@index([beneficiaryUserId])
+}
+
+// Le mouvement d'argent réellement effectué (§20). Plusieurs Payment
+// possibles par PaymentOrder (un échec n'annule pas l'ordre, une nouvelle
+// tentative crée un nouveau Payment).
+model Payment {
+  id                Int          @id @default(autoincrement())
+  reference         String       @unique // PAY-2026-000001
+  paymentOrderId    Int
+  paymentOrder      PaymentOrder @relation(fields: [paymentOrderId], references: [id])
+  amount            Float
+  currency          String       @default("XOF")
+  beneficiaryUserId Int?
+  beneficiaryName   String?
+  accountId         Int?
+  method            String // CASH | BANK_TRANSFER | MOBILE_MONEY | OTHER
+  status            String       @default("PENDING") // PENDING | PROCESSING | PAID | FAILED | CANCELLED | REFUNDED
+  executedBy        Int?
+  executedAt        DateTime?
+  failureReason     String?
+  documentUrl       String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([status])
+  @@index([paymentOrderId])
+}
+
+model Expense {
+  id          Int       @id @default(autoincrement())
+  reference   String    @unique // EXP-2026-000001
+  category    String
+  amount      Float
+  currency    String    @default("XOF")
+  date        DateTime  @default(now())
+  supplier    String?
+  accountId   Int?
+  description String?
+  documentUrl String?
+  status      String    @default("DRAFT") // DRAFT | PENDING_VALIDATION | VALIDATED | PAID | REJECTED
+  createdBy   Int
+  validatedBy Int?
+  validatedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
+  @@index([category])
+}
+
+// Justificatif attaché à une opération comptable (§26) — réutilise le
+// stockage existant (Cloudinary/disque, middleware/upload.js) : ce modèle ne
+// garde que la référence, jamais le fichier lui-même.
+model AccountingDocument {
+  id         Int      @id @default(autoincrement())
+  targetType String // DEBT | RECEIVABLE | PAYMENT_ORDER | PAYMENT | EXPENSE | REMUNERATION
+  targetId   Int
+  docType    String // INVOICE | RECEIPT | CONTRACT | PROOF_OF_PAYMENT | PAYSLIP | SETTLEMENT_STATEMENT | OTHER
+  url        String
+  uploadedBy Int
+  uploadedAt DateTime @default(now())
+
+  @@index([targetType, targetId])
+}
+
+// Compteur pour les références uniques générées serveur (§32) — jamais côté
+// frontend. Une ligne par préfixe+année (ex : "PAY-2026"), incrémentée via
+// upsert atomique (services/accountingSequence.js).
+model AccountingSequence {
+  key     String @id
+  counter Int    @default(0)
+}

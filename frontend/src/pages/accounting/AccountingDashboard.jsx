@@ -1,15 +1,25 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutDashboard, LogOut, ChevronRight, Menu, X, AlertCircle, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Receipt, CreditCard, Coins, Wallet, Users, LogOut, ChevronRight, Menu, X, AlertCircle, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { api } from '../../api/client'
-import { PERMISSION_GROUPS } from '../admin/accountingPermissions'
+import OverviewTab from './OverviewTab'
+import TransactionsTab from './TransactionsTab'
+import PaymentOrdersTab from './PaymentOrdersTab'
+import DebtsReceivablesTab from './DebtsReceivablesTab'
+import TreasuryTab from './TreasuryTab'
+import RemunerationsTab from './RemunerationsTab'
 
-// LOT 1 : uniquement la preuve que le rôle + les permissions fonctionnent de
-// bout en bout (accès à l'espace, permissions réellement affichées). Le vrai
-// contenu (transactions, paiements, trésorerie, paie...) arrive aux lots
-// suivants — cette page est le squelette qui les accueillera.
+const TAB_DEFS = [
+  { id: 'overview',        label: 'Vue d\'ensemble',   icon: LayoutDashboard, permission: 'accounting.view' },
+  { id: 'transactions',    label: 'Transactions',      icon: Receipt,         permission: 'accounting.transactions.view' },
+  { id: 'payment-orders',  label: 'Paiements',         icon: CreditCard,      permission: 'accounting.payments.view' },
+  { id: 'debts',           label: 'Dettes & Créances', icon: Coins,       permission: 'accounting.transactions.view' },
+  { id: 'treasury',        label: 'Trésorerie',        icon: Wallet,          permission: 'accounting.treasury.view' },
+  { id: 'remunerations',   label: 'Rémunérations',     icon: Users,           permission: 'accounting.payroll.view' },
+]
+
 export default function AccountingDashboard() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -17,6 +27,7 @@ export default function AccountingDashboard() {
   const [access, setAccess] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState('overview')
 
   const handleLogout = () => { logout(); navigate('/auth') }
 
@@ -27,10 +38,23 @@ export default function AccountingDashboard() {
       .finally(() => setLoading(false))
   }, [])
 
-  const TABS = [{ id: 'overview', label: 'Vue d\'ensemble', icon: LayoutDashboard }]
+  if (loading) return <div className="min-h-screen flex items-center justify-center font-dm text-charcoal/40">Chargement…</div>
 
-  const allLabels = PERMISSION_GROUPS.flatMap(g => g.permissions)
-  const labelFor = (key) => allLabels.find(p => p.key === key)?.label || key
+  if (error || !access) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3 max-w-md">
+          <AlertCircle size={14} className="text-red-500 shrink-0" />
+          <p className="font-dm text-sm text-red-600">{error || 'Accès impossible.'}</p>
+        </div>
+      </div>
+    )
+  }
+
+  const visibleTabs = TAB_DEFS.filter(t => access.permissions.includes(t.permission))
+  const activeTab = visibleTabs.find(t => t.id === tab) ? tab : (visibleTabs[0]?.id || null)
+  const selectTab = (id) => { setTab(id); setMenuOpen(false) }
+  const navigateIfAllowed = (id) => { if (visibleTabs.some(t => t.id === id)) selectTab(id) }
 
   return (
     <div className="min-h-screen bg-[#F0F2F5] flex">
@@ -76,14 +100,21 @@ export default function AccountingDashboard() {
         </div>
 
         <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => setMenuOpen(false)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all bg-[#E8A217]/15 text-[#E8A217]">
-              <Icon size={15} className="shrink-0" />
-              <span className="font-syne text-sm font-semibold flex-1">{label}</span>
-              <ChevronRight size={12} className="text-[#E8A217]" />
-            </button>
-          ))}
+          {visibleTabs.length === 0 ? (
+            <p className="font-dm text-xs text-white/30 px-3 py-2">Aucune permission accordée. Contactez un administrateur.</p>
+          ) : visibleTabs.map(({ id, label, icon: Icon }) => {
+            const isActive = activeTab === id
+            return (
+              <button key={id} onClick={() => selectTab(id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
+                  isActive ? 'bg-[#E8A217]/15 text-[#E8A217]' : 'text-white/40 hover:bg-white/5 hover:text-white/70'
+                }`}>
+                <Icon size={15} className="shrink-0" />
+                <span className="font-syne text-sm font-semibold flex-1">{label}</span>
+                {isActive && <ChevronRight size={12} className="text-[#E8A217]" />}
+              </button>
+            )
+          })}
         </nav>
 
         <div className="px-3 py-3 border-t border-white/6">
@@ -97,42 +128,24 @@ export default function AccountingDashboard() {
 
       <main className="md:ml-60 flex-1 min-h-screen">
         <AnimatePresence mode="wait">
-          <motion.div key="overview"
+          <motion.div key={activeTab || 'empty'}
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }} className="p-6 pt-20 md:pt-6 max-w-2xl">
-            <h1 className="font-playfair text-2xl font-bold text-charcoal mb-1">Espace Comptabilité</h1>
-            <p className="font-dm text-sm text-charcoal/50 mb-6">
-              Bienvenue, {user?.name}. Le tableau de bord, les transactions, la trésorerie et la paie
-              arrivent dans les prochains lots — ceci confirme que votre accès est correctement configuré.
-            </p>
-
-            {loading ? (
-              <div className="p-8 text-center font-dm text-charcoal/40">Chargement…</div>
-            ) : error ? (
-              <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
-                <AlertCircle size={14} className="text-red-500 shrink-0" />
-                <p className="font-dm text-sm text-red-600">{error}</p>
-              </div>
-            ) : (
-              <div className="bg-white border border-charcoal/10 rounded-2xl p-5">
-                <p className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40 mb-3">
-                  Permissions accordées ({access.permissions.length})
+            transition={{ duration: 0.18 }} className="p-6 pt-20 md:pt-6">
+            {!activeTab && (
+              <div className="max-w-md">
+                <h1 className="font-playfair text-2xl font-bold text-charcoal mb-2">Espace Comptabilité</h1>
+                <p className="font-dm text-sm text-charcoal/50">
+                  Bienvenue, {user?.name}. Aucune permission comptable ne vous a encore été attribuée —
+                  contactez un administrateur pour y accéder.
                 </p>
-                {access.permissions.length === 0 ? (
-                  <p className="font-dm text-sm text-charcoal/40">
-                    Aucune permission ne vous a encore été attribuée. Contactez un administrateur.
-                  </p>
-                ) : (
-                  <ul className="space-y-1.5">
-                    {access.permissions.map(p => (
-                      <li key={p} className="font-dm text-sm text-charcoal flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-forest shrink-0" /> {labelFor(p)}
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </div>
             )}
+            {activeTab === 'overview'       && <OverviewTab onNavigate={navigateIfAllowed} />}
+            {activeTab === 'transactions'   && <TransactionsTab />}
+            {activeTab === 'payment-orders' && <PaymentOrdersTab />}
+            {activeTab === 'debts'          && <DebtsReceivablesTab permissions={access.permissions} />}
+            {activeTab === 'treasury'       && <TreasuryTab permissions={access.permissions} />}
+            {activeTab === 'remunerations'  && <RemunerationsTab permissions={access.permissions} />}
           </motion.div>
         </AnimatePresence>
       </main>

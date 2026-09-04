@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, TrendingUp, FileText, RefreshCw, Tag, LogOut, ShoppingBag } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, FileText, RefreshCw, Tag, LogOut, ShoppingBag, Menu, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../api/client'
@@ -33,10 +33,12 @@ const KPI_CARDS = [
 export default function CommercialDashboard() {
   const [tab, setTab] = useState('commandes')
   const [kpis, setKpis] = useState({ pendingValidation: 0, pendingApplications: 0, pendingContracts: 0, pendingUpgrades: 0, expiringSubs: 0 })
+  const [menuOpen, setMenuOpen] = useState(false)
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
   const handleLogout = () => { logout(); navigate('/auth') }
+  const selectTab = (id) => { setTab(id); setMenuOpen(false) }
 
   const loadKpis = async () => {
     try {
@@ -55,20 +57,38 @@ export default function CommercialDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F0F2F5] flex">
+      {/* Bouton menu mobile */}
+      <button onClick={() => setMenuOpen(true)}
+        className="md:hidden fixed top-4 left-4 z-30 w-10 h-10 bg-[#0F1923] rounded-xl flex items-center justify-center shadow-lg">
+        <Menu size={18} className="text-white" />
+      </button>
+
+      {/* Overlay mobile */}
+      {menuOpen && (
+        <div onClick={() => setMenuOpen(false)} className="md:hidden fixed inset-0 bg-black/40 z-40" />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-[#0F1923] fixed inset-y-0 left-0 flex flex-col z-40 shadow-2xl">
+      <aside className={`w-64 bg-[#0F1923] fixed inset-y-0 left-0 flex flex-col z-50 shadow-2xl transition-transform duration-300 ${
+        menuOpen ? 'translate-x-0' : '-translate-x-full'
+      } md:translate-x-0`}>
         {/* Logo */}
-        <div className="px-6 py-5 border-b border-white/6">
-          <Link to="/" className="flex items-center gap-2.5">
-            <span className="text-2xl">🌾</span>
-            <span className="font-playfair text-lg font-bold text-white">
-              Riz<span className="text-safran">Ivoirien</span>
-            </span>
-          </Link>
-          <div className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-500/15 px-2.5 py-1 rounded-full">
-            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-            <span className="font-syne text-[10px] font-bold tracking-widest uppercase text-indigo-300">Commercial</span>
+        <div className="px-6 py-5 border-b border-white/6 flex items-start justify-between">
+          <div>
+            <Link to="/" className="flex items-center gap-2.5">
+              <span className="text-2xl">🌾</span>
+              <span className="font-playfair text-lg font-bold text-white">
+                Riz<span className="text-safran">Ivoirien</span>
+              </span>
+            </Link>
+            <div className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-500/15 px-2.5 py-1 rounded-full">
+              <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+              <span className="font-syne text-[10px] font-bold tracking-widest uppercase text-indigo-300">Commercial</span>
+            </div>
           </div>
+          <button onClick={() => setMenuOpen(false)} className="md:hidden text-white/40 hover:text-white">
+            <X size={18} />
+          </button>
         </div>
 
         {/* User */}
@@ -90,7 +110,7 @@ export default function CommercialDashboard() {
             const count = badge ? (kpis[badge] ?? 0) : 0
             const active = tab === id
             return (
-              <button key={id} onClick={() => setTab(id)}
+              <button key={id} onClick={() => selectTab(id)}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-left transition-all relative ${
                   active ? 'bg-indigo-900/50 text-indigo-300' : 'text-white/45 hover:bg-white/5 hover:text-white/80'
                 }`}>
@@ -122,9 +142,9 @@ export default function CommercialDashboard() {
       </aside>
 
       {/* Main */}
-      <main className="ml-64 flex-1 min-h-screen">
+      <main className="md:ml-64 flex-1 min-h-screen">
         {/* KPI bar */}
-        <div className="px-8 pt-8 pb-0 grid grid-cols-5 gap-4">
+        <div className="px-4 md:px-8 pt-20 md:pt-8 pb-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           {KPI_CARDS.map(({ key, label, color, icon }) => (
             <div key={key} className="bg-white rounded-2xl px-5 py-4 shadow-sm flex items-center gap-4">
               <div className={`w-11 h-11 rounded-xl ${color} flex items-center justify-center text-xl shrink-0`}>
@@ -144,7 +164,7 @@ export default function CommercialDashboard() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="p-8">
+            className="p-4 md:p-8">
             {tab === 'commandes'       && <CommandesTab onRefreshKpis={refreshKpis} />}
             {tab === 'pipeline'        && <PipelineTab onRefreshKpis={refreshKpis} />}
             {tab === 'demandes'        && <DemandesTab onRefreshKpis={refreshKpis} />}

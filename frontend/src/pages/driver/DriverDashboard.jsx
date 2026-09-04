@@ -4,7 +4,7 @@ import DOMPurify from 'dompurify'
 import {
   Zap, Truck, TrendingUp, BarChart2, User,
   LogOut, Power, ChevronRight, AlertTriangle, FileText, CheckSquare, Square,
-  CheckCircle, Clock, Download, Crown, Loader2, RefreshCw, X,
+  CheckCircle, Clock, Download, Crown, Loader2, RefreshCw, X, Menu,
 } from 'lucide-react'
 
 const downloadContract = async (contract, holderName) => {
@@ -595,10 +595,12 @@ export default function DriverDashboard() {
   const [toggleError, setToggleError] = useState(null)
   const [contract, setContract] = useState(null)
   const [contractSigned, setContractSigned] = useState(true)
+  const [menuOpen, setMenuOpen] = useState(false)
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
   const handleLogout = () => { logout(); navigate('/auth') }
+  const selectTab = (id) => { setTab(id); setMenuOpen(false) }
 
   useEffect(() => {
     const loadDriver = async () => {
@@ -666,20 +668,38 @@ export default function DriverDashboard() {
         <ContractModal contract={contract} onSigned={handleContractSigned} />
       )}
 
+      {/* Bouton menu mobile */}
+      <button onClick={() => setMenuOpen(true)}
+        className="md:hidden fixed top-4 left-4 z-30 w-10 h-10 bg-charcoal rounded-xl flex items-center justify-center shadow-lg">
+        <Menu size={18} className="text-white" />
+      </button>
+
+      {/* Overlay mobile */}
+      {menuOpen && (
+        <div onClick={() => setMenuOpen(false)} className="md:hidden fixed inset-0 bg-black/40 z-40" />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-60 bg-charcoal fixed inset-y-0 left-0 flex flex-col z-40 shadow-2xl">
+      <aside className={`w-60 bg-charcoal fixed inset-y-0 left-0 flex flex-col z-50 shadow-2xl transition-transform duration-300 ${
+        menuOpen ? 'translate-x-0' : '-translate-x-full'
+      } md:translate-x-0`}>
         {/* Logo */}
-        <div className="px-5 py-5 border-b border-white/6">
-          <Link to="/" className="flex items-center gap-2.5">
-            <span className="text-xl">🌾</span>
-            <span className="font-playfair text-base font-bold text-white">
-              Riz<span className="text-safran">Ivoirien</span>
-            </span>
-          </Link>
-          <div className="mt-2 inline-flex items-center gap-1.5 bg-white/6 px-2.5 py-1 rounded-full">
-            <Truck size={9} className="text-forest" />
-            <span className="font-syne text-[9px] font-bold tracking-widest uppercase text-forest">Espace Livreur</span>
+        <div className="px-5 py-5 border-b border-white/6 flex items-start justify-between">
+          <div>
+            <Link to="/" className="flex items-center gap-2.5">
+              <span className="text-xl">🌾</span>
+              <span className="font-playfair text-base font-bold text-white">
+                Riz<span className="text-safran">Ivoirien</span>
+              </span>
+            </Link>
+            <div className="mt-2 inline-flex items-center gap-1.5 bg-white/6 px-2.5 py-1 rounded-full">
+              <Truck size={9} className="text-forest" />
+              <span className="font-syne text-[9px] font-bold tracking-widest uppercase text-forest">Espace Livreur</span>
+            </div>
           </div>
+          <button onClick={() => setMenuOpen(false)} className="md:hidden text-white/40 hover:text-white">
+            <X size={18} />
+          </button>
         </div>
 
         {/* Driver info */}
@@ -748,7 +768,7 @@ export default function DriverDashboard() {
             const showDeliveryBadge = badge === 'delivery' && hasActiveDelivery
             const showContractBadge = id === 'contract' && !contractSigned && contract
             return (
-              <button key={id} onClick={() => setTab(id)}
+              <button key={id} onClick={() => selectTab(id)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
                   active ? 'bg-forest/15 text-forest' : 'text-white/40 hover:bg-white/5 hover:text-white/70'
                 }`}>
@@ -776,14 +796,14 @@ export default function DriverDashboard() {
       </aside>
 
       {/* Main */}
-      <main className="ml-60 flex-1 min-h-screen">
+      <main className="md:ml-60 flex-1 min-h-screen">
         <AnimatePresence mode="wait">
           <motion.div key={tab}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="p-6 max-w-3xl">
+            className="p-6 pt-20 md:pt-6 max-w-3xl">
             {tab === 'offers'      && <OffersTab online={online} onAccepted={() => setTab('delivery')} hasActiveDelivery={hasActiveDelivery} onGoToDelivery={() => setTab('delivery')} />}
             {tab === 'delivery'    && <DeliveryTab onDelivered={() => setHasActiveDelivery(false)} />}
             {tab === 'earnings'    && <EarningsTab />}

@@ -31,6 +31,7 @@ export default function VendorOrdersTab() {
   const [status, setStatus]   = useState('')
   const [advancing, setAdvancing] = useState(null)
   const [advanceError, setAdvanceError] = useState(null)
+  const [loadError, setLoadError] = useState(null)
   const [expanded, setExpanded] = useState(null)
 
   const load = useCallback(async () => {
@@ -41,7 +42,10 @@ export default function VendorOrdersTab() {
       const data = await api.get(`/orders/shop/list?${params}`)
       setOrders(data.orders || [])
       setTotal(data.total || 0)
-    } catch {}
+      setLoadError(null)
+    } catch (err) {
+      setLoadError(err.message || 'Erreur de chargement des commandes')
+    }
     finally { setLoading(false) }
   }, [status])
 
@@ -78,6 +82,14 @@ export default function VendorOrdersTab() {
           <AlertCircle size={14} className="text-red-500 shrink-0" />
           <p className="font-dm text-sm text-red-600 flex-1">{advanceError}</p>
           <button onClick={() => setAdvanceError(null)} className="text-red-400 hover:text-red-600 font-bold text-xs">✕</button>
+        </div>
+      )}
+
+      {loadError && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+          <AlertCircle size={14} className="text-red-500 shrink-0" />
+          <p className="font-dm text-sm text-red-600 flex-1">{loadError}</p>
+          <button onClick={load} className="text-red-600 hover:text-red-700 font-bold text-xs underline">Réessayer</button>
         </div>
       )}
 

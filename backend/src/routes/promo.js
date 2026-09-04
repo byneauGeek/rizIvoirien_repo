@@ -61,9 +61,15 @@ router.post('/', authenticate, requireRole('ADMIN'), async (req, res) => {
 // PUT /api/promo/:id — admin: toggle actif
 router.put('/:id', authenticate, requireRole('ADMIN'), async (req, res) => {
   try {
+    const EDITABLE_FIELDS = ['description', 'type', 'value', 'minOrder', 'maxUses', 'active', 'expiresAt']
+    const data = {}
+    for (const field of EDITABLE_FIELDS) {
+      if (field in req.body) data[field] = req.body[field]
+    }
+    if (data.expiresAt !== undefined) data.expiresAt = data.expiresAt ? new Date(data.expiresAt) : null
     const updated = await prisma.promoCode.update({
       where: { id: Number(req.params.id) },
-      data: req.body,
+      data,
     })
     res.json(updated)
   } catch (e) {

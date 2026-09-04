@@ -105,13 +105,13 @@ export default function CartPage() {
                             onClick={() => item.qty === 1
                               ? dispatch({ type: 'REMOVE', id: item.id })
                               : dispatch({ type: 'UPDATE_QTY', id: item.id, qty: item.qty - 1 })}
-                            className="w-6 h-6 rounded-full bg-white shadow-sm flex items-center justify-center text-charcoal hover:bg-forest/10 transition-colors">
+                            className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-charcoal hover:bg-forest/10 transition-colors">
                             <Minus size={12} />
                           </button>
                           <span className="font-syne font-bold text-sm text-charcoal w-6 text-center">{item.qty}</span>
                           <button
                             onClick={() => dispatch({ type: 'UPDATE_QTY', id: item.id, qty: item.qty + 1 })}
-                            className="w-6 h-6 rounded-full bg-white shadow-sm flex items-center justify-center text-charcoal hover:bg-forest/10 transition-colors">
+                            className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-charcoal hover:bg-forest/10 transition-colors">
                             <Plus size={12} />
                           </button>
                         </div>

@@ -1,6 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
-const { authenticate, requireRole } = require('../middleware/auth')
+const { authenticate, authenticateSSE, requireRole } = require('../middleware/auth')
 const { getSettings, driverRate } = require('../lib/settings')
 
 const BADGES = [
@@ -53,8 +53,9 @@ router.post('/offers/:id/accept', authenticate, requireRole('DRIVER'), async (re
       where: { userId: req.user.id },
       include: { user: { select: { name: true, phone: true } } },
     })
+    const offerId = Number(req.params.id)
     const offer = await prisma.driverOffer.findFirst({
-      where: { id: Number(req.params.id), driverId: driver.id, status: 'PENDING' },
+      where: { id: offerId, driverId: driver.id, status: 'PENDING' },
     })
     if (!offer) return res.status(404).json({ error: 'Offre introuvable ou expirée' })
     if (offer.expiresAt < new Date()) return res.status(400).json({ error: 'Offre expirée' })
@@ -69,22 +70,33 @@ router.post('/offers/:id/accept', authenticate, requireRole('DRIVER'), async (re
       },
     })
 
-    // Le statut reste PRET — le livreur a accepté mais n'a pas encore pris en charge la livraison.
-    // La transition vers IN_TRANSIT se fait quand le livreur démarre le trajet.
-    await Promise.all([
-      prisma.driverOffer.update({ where: { id: offer.id }, data: { status: 'ACCEPTED' } }),
-      prisma.order.update({ where: { id: offer.orderId }, data: { driverId: driver.id } }),
-      prisma.driver.update({
+    // Transition atomique PENDING → ACCEPTED : le where re-vérifie le statut et le
+    // livreur assigné au moment de l'écriture, pour ne jamais accepter une offre déjà
+    // ré-assignée/expirée entre-temps par le moteur d'affectation (course concurrente).
+    // Le statut de la commande reste PRET — le livreur a accepté mais n'a pas encore
+    // pris en charge la livraison. La transition vers IN_TRANSIT se fait au démarrage du trajet.
+    const claimed = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.driverOffer.updateMany({
+        where: { id: offerId, driverId: driver.id, status: 'PENDING' },
+        data: { status: 'ACCEPTED' },
+      })
+      if (count !== 1) return false
+
+      await tx.order.update({ where: { id: offer.orderId }, data: { driverId: driver.id } })
+      await tx.driver.update({
         where: { id: driver.id },
         data: {
           available: false,
           acceptanceRate: Math.min(1, driver.acceptanceRate + 0.01),
         },
-      }),
-      prisma.orderStatusHistory.create({
+      })
+      await tx.orderStatusHistory.create({
         data: { orderId: offer.orderId, status: 'PRET', note: 'Livreur assigné — en route pour la collecte', actorId: req.user.id },
-      }),
-    ])
+      })
+      return true
+    })
+
+    if (!claimed) return res.status(409).json({ error: 'Cette offre vient d\'être réattribuée. Actualisez votre liste.' })
 
     // Calculer la date de livraison estimée
     const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
@@ -488,7 +500,7 @@ router.get('/performance', authenticate, requireRole('DRIVER'), async (req, res)
 
 // ── SSE : stream d'événements temps-réel pour le livreur ──────────────────────
 // GET /api/drivers/events
-router.get('/events', authenticate, requireRole('DRIVER'), (req, res) => {
+router.get('/events', authenticateSSE, requireRole('DRIVER'), (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
   res.setHeader('Connection', 'keep-alive')

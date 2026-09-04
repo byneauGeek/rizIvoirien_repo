@@ -5,6 +5,12 @@ const bcrypt = require('bcryptjs')
 const prisma = new PrismaClient()
 
 async function main() {
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_ALLOW_PRODUCTION !== 'true') {
+    console.error('❌ Seed bloqué : NODE_ENV=production. Ce script efface TOUTES les données et crée des comptes de démo à mot de passe faible (dont un ADMIN).')
+    console.error('   Pour forcer (déconseillé), relancez avec SEED_ALLOW_PRODUCTION=true.')
+    process.exit(1)
+  }
+
   console.log('🌱 Seeding RizIvoirien...')
 
   // Nettoyer la base

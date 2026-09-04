@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+import { API_BASE as BASE } from '../config'
 
 let _onUnauthorized = null
 export function setUnauthorizedHandler(fn) { _onUnauthorized = fn }

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { API_BASE } from '../config'
 
 const SEOContext = createContext(null)
 
@@ -22,7 +23,7 @@ export function SEOProvider({ children }) {
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/settings/public`)
+    fetch(`${API_BASE}/settings/public`)
       .then(r => r.json())
       .then(data => {
         if (data && Object.keys(data).length > 0) {
@@ -41,7 +42,9 @@ export function SEOProvider({ children }) {
     script1.src = `https://www.googletagmanager.com/gtag/js?id=${seo.seoGoogleId}`
     document.head.appendChild(script1)
     const script2 = document.createElement('script')
-    script2.innerHTML = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${seo.seoGoogleId}');`
+    // JSON.stringify échappe correctement la valeur (defense-in-depth : la
+    // validation de format vit côté backend, PUT /admin/settings).
+    script2.innerHTML = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(seo.seoGoogleId)});`
     document.head.appendChild(script2)
     return () => {
       document.head.removeChild(script1)
@@ -53,7 +56,7 @@ export function SEOProvider({ children }) {
   useEffect(() => {
     if (!seo.seoFbPixelId) return
     const script = document.createElement('script')
-    script.innerHTML = `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${seo.seoFbPixelId}');fbq('track','PageView');`
+    script.innerHTML = `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init',${JSON.stringify(seo.seoFbPixelId)});fbq('track','PageView');`
     document.head.appendChild(script)
     return () => { document.head.removeChild(script) }
   }, [seo.seoFbPixelId])

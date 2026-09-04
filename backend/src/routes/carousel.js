@@ -73,9 +73,15 @@ router.get('/suggestions', authenticate, requireRole('ADMIN'), async (req, res) 
 // PUT /api/carousel/:id — admin
 router.put('/:id', authenticate, requireRole('ADMIN'), async (req, res) => {
   try {
+    const EDITABLE_FIELDS = ['type', 'title', 'subtitle', 'badge', 'cta', 'ctaLink', 'bg', 'accent', 'image', 'active', 'position']
+    const data = {}
+    for (const field of EDITABLE_FIELDS) {
+      if (field in req.body) data[field] = req.body[field]
+    }
+    data.updatedAt = new Date()
     const slide = await prisma.carouselSlide.update({
       where: { id: Number(req.params.id) },
-      data: { ...req.body, updatedAt: new Date() },
+      data,
     })
     res.json(slide)
   } catch (e) {

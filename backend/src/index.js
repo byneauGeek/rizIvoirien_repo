@@ -13,12 +13,17 @@ const logger = require('./lib/logger')
 const app = express()
 
 // Log des requêtes HTTP
+// Ne jamais logger un token en clair : le SSE (/api/drivers/events) reçoit son
+// JWT en query string faute d'alternative côté EventSource — on le redacte ici
+// avant qu'il n'atterrisse dans les logs/Sentry/monitoring.
+const redactUrl = (url) => url.replace(/([?&]token=)[^&]+/i, '$1[REDACTED]')
+
 app.use((req, res, next) => {
   const start = Date.now()
   res.on('finish', () => {
     const ms = Date.now() - start
     const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'
-    logger[level]({ method: req.method, url: req.url, status: res.statusCode, ms }, 'http')
+    logger[level]({ method: req.method, url: redactUrl(req.url), status: res.statusCode, ms }, 'http')
   })
   next()
 })

@@ -1,4 +1,11 @@
 // contractGenerator.js
+// Ce HTML est stocké en base et réaffiché tel quel (frontend + éventuel export
+// PDF) — les champs saisis par l'utilisateur (nom, boutique, immatriculation...)
+// doivent être échappés avant interpolation pour éviter toute injection HTML.
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[c]))
+
 function generateShopContract(shop, settings, owner) {
   const date = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
   const commissionPct = Math.round(settings.commissionRate * 100)
@@ -19,7 +26,7 @@ function generateShopContract(shop, settings, owner) {
 
   <h2 style="font-size: 15px; font-weight: bold; color: #1B4332; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 24px;">Article 1 — Parties</h2>
   <p style="font-size: 14px;"><strong>D'une part :</strong> La plateforme <strong>RizIvoirien</strong>, marketplace de vente de riz et produits alimentaires en Côte d'Ivoire, ci-après dénommée « la Plateforme ».</p>
-  <p style="font-size: 14px;"><strong>D'autre part :</strong> <strong>${owner?.name}</strong> (${owner?.email}), propriétaire de la boutique <strong>${shop.name}</strong>${shop.businessName ? ` — ${shop.businessName}` : ''}${shop.rccm ? ` (RCCM : ${shop.rccm})` : ''}, ci-après dénommé(e) « le Vendeur ».</p>
+  <p style="font-size: 14px;"><strong>D'autre part :</strong> <strong>${esc(owner?.name)}</strong> (${esc(owner?.email)}), propriétaire de la boutique <strong>${esc(shop.name)}</strong>${shop.businessName ? ` — ${esc(shop.businessName)}` : ''}${shop.rccm ? ` (RCCM : ${esc(shop.rccm)})` : ''}, ci-après dénommé(e) « le Vendeur ».</p>
 
   <h2 style="font-size: 15px; font-weight: bold; color: #1B4332; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 24px;">Article 2 — Objet du contrat</h2>
   <p style="font-size: 14px;">Le présent contrat définit les conditions dans lesquelles le Vendeur est autorisé à vendre ses produits via la marketplace RizIvoirien, et les obligations réciproques des deux parties.</p>
@@ -70,7 +77,7 @@ function generateShopContract(shop, settings, owner) {
       <div>
         <div style="font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 40px;">Le Vendeur</div>
         <div style="border-bottom: 1px solid #333; width: 180px; margin-bottom: 6px;"></div>
-        <div style="font-size: 12px; color: #888;">${owner?.name} — ${date}</div>
+        <div style="font-size: 12px; color: #888;">${esc(owner?.name)} — ${date}</div>
       </div>
     </div>
   </div>
@@ -97,7 +104,7 @@ function generateDriverContract(driver, settings, user) {
 
   <h2 style="font-size: 15px; font-weight: bold; color: #0F1923; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 24px;">Article 1 — Parties</h2>
   <p style="font-size: 14px;"><strong>D'une part :</strong> La plateforme <strong>RizIvoirien</strong>, ci-après dénommée « la Plateforme ».</p>
-  <p style="font-size: 14px;"><strong>D'autre part :</strong> <strong>${user?.name}</strong> (${user?.email || '—'} — Tél : ${user?.phone || '—'}), titulaire du permis n° ${driver.licenseNumber || '—'}, propriétaire du véhicule ${driver.vehicleType || '—'} immatriculé ${driver.vehiclePlate || '—'}, ci-après dénommé(e) « le Livreur ».</p>
+  <p style="font-size: 14px;"><strong>D'autre part :</strong> <strong>${esc(user?.name)}</strong> (${esc(user?.email) || '—'} — Tél : ${esc(user?.phone) || '—'}), titulaire du permis n° ${esc(driver.licenseNumber) || '—'}, propriétaire du véhicule ${esc(driver.vehicleType) || '—'} immatriculé ${esc(driver.vehiclePlate) || '—'}, ci-après dénommé(e) « le Livreur ».</p>
 
   <h2 style="font-size: 15px; font-weight: bold; color: #0F1923; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 24px;">Article 2 — Objet</h2>
   <p style="font-size: 14px;">Le présent contrat définit les conditions de collaboration entre le Livreur et RizIvoirien pour la réalisation de livraisons de commandes passées sur la marketplace.</p>
@@ -148,7 +155,7 @@ function generateDriverContract(driver, settings, user) {
       <div>
         <div style="font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 40px;">Le Livreur</div>
         <div style="border-bottom: 1px solid #333; width: 180px; margin-bottom: 6px;"></div>
-        <div style="font-size: 12px; color: #888;">${user?.name} — ${date}</div>
+        <div style="font-size: 12px; color: #888;">${esc(user?.name)} — ${date}</div>
       </div>
     </div>
   </div>

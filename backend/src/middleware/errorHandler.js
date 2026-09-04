@@ -11,7 +11,7 @@ module.exports = function errorHandler(err, req, res, next) {
   if (err instanceof Prisma.PrismaClientValidationError)
     return res.status(400).json({ error: 'Données invalides.' })
 
-  logger.error({ err, method: req.method, url: req.url }, 'Erreur serveur')
+  logger.error({ err, method: req.method, url: req.url.replace(/([?&]token=)[^&]+/i, '$1[REDACTED]') }, 'Erreur serveur')
   if (process.env.SENTRY_DSN) Sentry.captureException(err)
   res.status(500).json({ error: 'Erreur serveur interne.' })
 }

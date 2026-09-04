@@ -412,6 +412,7 @@ router.put('/shops/:id/certify', ...commercialGuard, async (req, res) => {
         create: { shopId: shop.id, plan: 'CERTIFIED', status: 'ACTIVE', endDate: new Date(Date.now() + 365 * 24 * 3600 * 1000), amount: settings?.certifiedPlanPrice ?? 15000 },
       })
     }
+    setImmediate(() => logAction(req.user.id, 'SHOP_CERTIFY', 'SHOP', shop.id, { certified: Boolean(certified), plan: shop.plan, shopName: shop.name }))
     res.json(shop)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -534,6 +535,7 @@ router.put('/drivers/:id', ...guard, async (req, res) => {
         available: available !== undefined ? Boolean(available) : undefined,
       },
     })
+    setImmediate(() => logAction(req.user.id, 'DRIVER_UPDATE', 'DRIVER', driver.id, { rating, available }))
     res.json(driver)
   } catch (e) {
     res.status(500).json({ error: e.message })
@@ -593,6 +595,7 @@ router.put('/subscriptions/:id', ...guard, async (req, res) => {
       },
       include: { shop: { select: { name: true, user: { select: { name: true, email: true } } } } },
     })
+    setImmediate(() => logAction(req.user.id, 'SUBSCRIPTION_UPDATE', 'SUBSCRIPTION', sub.id, { plan, status, endDate, amount }))
     res.json(sub)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -608,6 +611,7 @@ router.post('/subscriptions', ...guard, async (req, res) => {
       create: { shopId: Number(shopId), plan, status: 'ACTIVE', endDate: endDate ? new Date(endDate) : null, amount: amount ?? defaultAmount },
     })
     await prisma.shop.update({ where: { id: Number(shopId) }, data: { plan, certified: plan === 'CERTIFIED' } })
+    setImmediate(() => logAction(req.user.id, 'SUBSCRIPTION_CREATE', 'SUBSCRIPTION', sub.id, { shopId, plan, amount: amount ?? defaultAmount }))
     res.status(201).json(sub)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -802,6 +806,16 @@ router.get('/settings', ...guard, async (req, res) => {
 router.put('/settings', ...guard, async (req, res) => {
   try {
     const { id, createdAt, updatedAt, ...data } = req.body
+    // Ces deux champs sont injectés tels quels dans un <script> côté frontend
+    // (tags Google Analytics / Facebook Pixel) — un format libre ouvrirait une
+    // XSS stockée servie à chaque visiteur du site. On les restreint à leur
+    // format attendu.
+    if (data.seoGoogleId && !/^(G|GT|UA)-[A-Za-z0-9-]+$/.test(data.seoGoogleId)) {
+      return res.status(400).json({ error: 'Format Google Analytics ID invalide (attendu : G-XXXXXXX)' })
+    }
+    if (data.seoFbPixelId && !/^\d+$/.test(data.seoFbPixelId)) {
+      return res.status(400).json({ error: 'Format Facebook Pixel ID invalide (numérique uniquement)' })
+    }
     const settings = await prisma.platformSettings.upsert({
       where: { id: 1 },
       update: { ...data, updatedAt: new Date() },

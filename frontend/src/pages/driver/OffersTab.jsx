@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { api } from '../../api/client'
+import { API_BASE } from '../../config'
 import { fmt, fmtOrderId } from '../../utils/status'
 import { Check, X, MapPin, Package, Clock, Zap, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '')
+const BASE = API_BASE.replace('/api', '')
 
 function Countdown({ expiresAt, createdAt }) {
   const [remaining, setRemaining] = useState(0)

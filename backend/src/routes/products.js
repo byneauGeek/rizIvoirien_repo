@@ -193,6 +193,9 @@ router.get('/:slug', async (req, res) => {
 router.post('/', authenticate, requireRole('SELLER'), async (req, res) => {
   const { name, description, category, price, unit, stock, images, badge, origin, harvest, saleType, wholesalePrice, minWholesaleQty } = req.body
   if (!name || !category || !price) return res.status(400).json({ error: 'Champs requis manquants' })
+  if (!Number.isFinite(Number(price)) || Number(price) <= 0) return res.status(400).json({ error: 'Prix invalide' })
+  if (stock !== undefined && (!Number.isFinite(Number(stock)) || Number(stock) < 0)) return res.status(400).json({ error: 'Stock invalide' })
+  if (wholesalePrice != null && wholesalePrice !== '' && (!Number.isFinite(Number(wholesalePrice)) || Number(wholesalePrice) <= 0)) return res.status(400).json({ error: 'Prix de gros invalide' })
 
   try {
     const [shop, settings] = await Promise.all([
@@ -290,21 +293,46 @@ router.put('/:id', authenticate, requireRole('SELLER'), async (req, res) => {
       }
     }
 
+    // Champs modifiables par le vendeur uniquement — jamais shopId, rating, reviewCount, slug, createdAt, id...
+    const EDITABLE_FIELDS = ['name', 'description', 'category', 'unit', 'badge', 'origin', 'harvest', 'saleType', 'active']
+    const data = {}
+    for (const field of EDITABLE_FIELDS) {
+      if (field in req.body) data[field] = req.body[field]
+    }
+    if (data.saleType && !['RETAIL', 'WHOLESALE', 'BOTH'].includes(data.saleType)) delete data.saleType
+
+    if (req.body.price !== undefined) {
+      const price = Number(req.body.price)
+      if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: 'Prix invalide' })
+      data.price = price
+    }
+    if (req.body.stock !== undefined) {
+      const stock = Number(req.body.stock)
+      if (!Number.isFinite(stock) || stock < 0) return res.status(400).json({ error: 'Stock invalide' })
+      data.stock = stock
+    }
+    if (req.body.images !== undefined) data.images = JSON.stringify(req.body.images)
+    if ('wholesalePrice' in req.body) {
+      const wp = req.body.wholesalePrice
+      if (wp != null && wp !== '') {
+        const n = Number(wp)
+        if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'Prix de gros invalide' })
+        data.wholesalePrice = n
+      } else data.wholesalePrice = null
+    }
+    if ('minWholesaleQty' in req.body) {
+      const mq = req.body.minWholesaleQty
+      if (mq != null && mq !== '') {
+        const n = Number(mq)
+        if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'Quantité min. de gros invalide' })
+        data.minWholesaleQty = n
+      } else data.minWholesaleQty = null
+    }
+    data.updatedAt = new Date()
+
     const updated = await prisma.product.update({
       where: { id: product.id },
-      data: {
-        ...req.body,
-        price: req.body.price ? Number(req.body.price) : undefined,
-        stock: req.body.stock !== undefined ? Number(req.body.stock) : undefined,
-        images: req.body.images ? JSON.stringify(req.body.images) : undefined,
-        wholesalePrice:  'wholesalePrice' in req.body
-          ? (req.body.wholesalePrice != null && req.body.wholesalePrice !== '' ? Number(req.body.wholesalePrice) : null)
-          : undefined,
-        minWholesaleQty: 'minWholesaleQty' in req.body
-          ? (req.body.minWholesaleQty != null && req.body.minWholesaleQty !== '' ? Number(req.body.minWholesaleQty) : null)
-          : undefined,
-        updatedAt: new Date(),
-      },
+      data,
     })
 
     // Enregistrement de l'historique si des champs ont changé

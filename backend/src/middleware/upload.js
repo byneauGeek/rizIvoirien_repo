@@ -4,8 +4,9 @@ const fs = require('fs')
 
 // ── Filtre type de fichier ────────────────────────────────────────────────────
 const imageFilter = (req, file, cb) => {
-  const allowed = /jpeg|jpg|png|webp/
-  if (allowed.test(path.extname(file.originalname).toLowerCase())) {
+  const allowedExt  = /jpeg|jpg|png|webp/
+  const allowedMime = /^image\/(jpeg|png|webp)$/
+  if (allowedExt.test(path.extname(file.originalname).toLowerCase()) && allowedMime.test(file.mimetype)) {
     cb(null, true)
   } else {
     cb(new Error('Seuls les formats JPEG, PNG et WebP sont acceptés'))

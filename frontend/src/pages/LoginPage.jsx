@@ -83,27 +83,29 @@ export default function LoginPage() {
             Plateforme officielle du riz ivoirien
           </p>
 
-          {/* Demo accounts */}
-          <div className="mt-12 space-y-2 text-left">
-            <p className="font-syne text-xs font-bold tracking-widest uppercase text-cream/30 mb-3">
-              Comptes démo
-            </p>
-            {[
-              { role: 'Admin',    email: 'admin@rizivoirien.ci',    pw: 'admin123',    color: 'text-red-300' },
-              { role: 'Vendeur',  email: 'vendeur1@rizivoirien.ci', pw: 'vendeur123',  color: 'text-safran' },
-              { role: 'Livreur',  email: 'livreur@rizivoirien.ci',  pw: 'livreur123',  color: 'text-blue-300' },
-              { role: 'Acheteur', email: 'acheteur@rizivoirien.ci', pw: 'acheteur123', color: 'text-green-300' },
-            ].map(({ role, email: e, pw, color }) => (
-              <button
-                key={role}
-                onClick={() => fillDemo(e, pw)}
-                className="w-full flex items-center justify-between bg-cream/5 hover:bg-cream/10 border border-cream/10 rounded-xl px-4 py-3 transition-colors text-left"
-              >
-                <span className={`font-syne text-xs font-bold ${color}`}>{role}</span>
-                <span className="font-dm text-xs text-cream/40">{e}</span>
-              </button>
-            ))}
-          </div>
+          {/* Demo accounts — dev only, never rendered in a production build */}
+          {import.meta.env.DEV && (
+            <div className="mt-12 space-y-2 text-left">
+              <p className="font-syne text-xs font-bold tracking-widest uppercase text-cream/30 mb-3">
+                Comptes démo (dev uniquement)
+              </p>
+              {[
+                { role: 'Admin',    email: 'admin@rizivoirien.ci',    pw: 'admin123',    color: 'text-red-300' },
+                { role: 'Vendeur',  email: 'vendeur1@rizivoirien.ci', pw: 'vendeur123',  color: 'text-safran' },
+                { role: 'Livreur',  email: 'livreur@rizivoirien.ci',  pw: 'livreur123',  color: 'text-blue-300' },
+                { role: 'Acheteur', email: 'acheteur@rizivoirien.ci', pw: 'acheteur123', color: 'text-green-300' },
+              ].map(({ role, email: e, pw, color }) => (
+                <button
+                  key={role}
+                  onClick={() => fillDemo(e, pw)}
+                  className="w-full flex items-center justify-between bg-cream/5 hover:bg-cream/10 border border-cream/10 rounded-xl px-4 py-3 transition-colors text-left"
+                >
+                  <span className={`font-syne text-xs font-bold ${color}`}>{role}</span>
+                  <span className="font-dm text-xs text-cream/40">{e}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

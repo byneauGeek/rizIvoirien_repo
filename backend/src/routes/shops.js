@@ -57,7 +57,11 @@ router.get('/:id', async (req, res) => {
         user: { select: { name: true } },
       },
     })
-    if (!shop) return res.status(404).json({ error: 'Boutique introuvable' })
+    // Une boutique PENDING/SUSPENDED/REJECTED ne doit pas être visible publiquement
+    // (même filtre que la liste GET /) — seule une boutique ACTIVE et sous contrat l'est.
+    if (!shop || shop.status !== 'ACTIVE' || !shop.active || !shop.contractSigned) {
+      return res.status(404).json({ error: 'Boutique introuvable' })
+    }
     res.json(shop)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })

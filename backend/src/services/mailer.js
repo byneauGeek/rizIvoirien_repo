@@ -10,6 +10,14 @@ const nodemailer = require('nodemailer')
 
 const fmt = (n) => Number(n).toLocaleString('fr-FR')
 
+// Les templates interpolent des champs saisis par les utilisateurs (nom, adresse,
+// nom de boutique/produit...) directement dans du HTML envoyé à D'AUTRES utilisateurs
+// (ex : le vendeur reçoit le nom du client). Sans échappement, un nom contenant du
+// HTML/JS pourrait s'exécuter ou injecter un lien dans l'email d'un tiers.
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[c]))
+
 // ─── Transporter ──────────────────────────────────────────────────────────────
 function createTransporter() {
   if (!process.env.SMTP_HOST) {
@@ -89,7 +97,7 @@ const templates = {
     return {
       subject: '🎉 Bienvenue sur RizIvoirien !',
       html: layout('Bienvenue', `
-        <h2>Bienvenue, ${name} !</h2>
+        <h2>Bienvenue, ${esc(name)} !</h2>
         <p>Votre compte <strong>${roleLabel}</strong> a été créé avec succès sur RizIvoirien.</p>
         <p>Vous pouvez dès maintenant vous connecter et profiter de notre marketplace de riz ivoirien de qualité.</p>
         <div class="divider"></div>
@@ -103,20 +111,20 @@ const templates = {
   // Confirmation de commande (acheteur)
   orderConfirmed({ name, orderId, items, total, deliveryFee, discount, address, shopName }) {
     const rows = items.map(i =>
-      `<div class="card-row"><span>${i.quantity}× ${i.name}</span><span>${fmt(i.price * i.quantity)} FCFA</span></div>`
+      `<div class="card-row"><span>${i.quantity}× ${esc(i.name)}</span><span>${fmt(i.price * i.quantity)} FCFA</span></div>`
     ).join('')
     return {
       subject: `✅ Commande #${orderId} confirmée — RizIvoirien`,
       html: layout(`Commande #${orderId}`, `
         <h2>Commande confirmée !</h2>
-        <p>Bonjour <strong>${name}</strong>, votre commande <strong>#${orderId}</strong> auprès de <strong>${shopName}</strong> a bien été reçue.</p>
+        <p>Bonjour <strong>${esc(name)}</strong>, votre commande <strong>#${orderId}</strong> auprès de <strong>${esc(shopName)}</strong> a bien été reçue.</p>
         <div class="card">
           ${rows}
           ${discount > 0 ? `<div class="card-row"><span>Réduction</span><span style="color:#065F46">−${fmt(discount)} FCFA</span></div>` : ''}
           <div class="card-row"><span>Livraison</span><span>${fmt(deliveryFee)} FCFA</span></div>
           <div class="card-row card-total"><span>Total</span><span>${fmt(total + deliveryFee)} FCFA</span></div>
         </div>
-        <p>📍 Adresse de livraison : <strong>${address}</strong></p>
+        <p>📍 Adresse de livraison : <strong>${esc(address)}</strong></p>
         <p>Vous serez notifié à chaque étape de votre livraison.</p>
         <div style="text-align:center">
           <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/orders" class="btn">Suivre ma commande</a>
@@ -128,13 +136,13 @@ const templates = {
   // Nouvelle commande (vendeur)
   newOrder({ shopName, orderId, buyerName, items, total }) {
     const rows = items.map(i =>
-      `<div class="card-row"><span>${i.quantity}× ${i.name}</span><span>${fmt(i.price * i.quantity)} FCFA</span></div>`
+      `<div class="card-row"><span>${i.quantity}× ${esc(i.name)}</span><span>${fmt(i.price * i.quantity)} FCFA</span></div>`
     ).join('')
     return {
       subject: `🛍️ Nouvelle commande #${orderId} — ${shopName}`,
       html: layout(`Commande #${orderId}`, `
         <h2>Nouvelle commande reçue !</h2>
-        <p>La boutique <strong>${shopName}</strong> a reçu une nouvelle commande de <strong>${buyerName}</strong>.</p>
+        <p>La boutique <strong>${esc(shopName)}</strong> a reçu une nouvelle commande de <strong>${esc(buyerName)}</strong>.</p>
         <div class="card">
           ${rows}
           <div class="card-row card-total"><span>Total produits</span><span>${fmt(total)} FCFA</span></div>
@@ -153,7 +161,7 @@ const templates = {
       subject: `🎉 Commande #${orderId} livrée — RizIvoirien`,
       html: layout('Livraison effectuée', `
         <h2>Votre commande est arrivée !</h2>
-        <p>Bonjour <strong>${name}</strong>, votre commande <strong>#${orderId}</strong> de <strong>${shopName}</strong> a été livrée avec succès.</p>
+        <p>Bonjour <strong>${esc(name)}</strong>, votre commande <strong>#${orderId}</strong> de <strong>${esc(shopName)}</strong> a été livrée avec succès.</p>
         <p>Nous espérons que vous êtes satisfait(e) de votre riz. N'hésitez pas à laisser un avis sur les produits reçus.</p>
         <div style="text-align:center">
           <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/orders" class="btn">Laisser un avis</a>
@@ -168,7 +176,7 @@ const templates = {
       subject: `❌ Commande #${orderId} annulée — RizIvoirien`,
       html: layout('Commande annulée', `
         <h2>Commande annulée</h2>
-        <p>Bonjour <strong>${name}</strong>, votre commande <strong>#${orderId}</strong> a été annulée.</p>
+        <p>Bonjour <strong>${esc(name)}</strong>, votre commande <strong>#${orderId}</strong> a été annulée.</p>
         <p>Le stock des articles a été rétabli. Vous pouvez recommander à tout moment.</p>
         <div style="text-align:center">
           <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/shop" class="btn">Continuer mes achats</a>
@@ -182,8 +190,8 @@ const templates = {
     return {
       subject: `✅ Votre boutique "${shopName}" est approuvée !`,
       html: layout('Boutique approuvée', `
-        <h2>Félicitations, ${name} !</h2>
-        <p>Votre boutique <strong>${shopName}</strong> a été approuvée par notre équipe. Vous pouvez maintenant :</p>
+        <h2>Félicitations, ${esc(name)} !</h2>
+        <p>Votre boutique <strong>${esc(shopName)}</strong> a été approuvée par notre équipe. Vous pouvez maintenant :</p>
         <ul style="color:#4A5568;font-size:15px;line-height:2">
           <li>Ajouter vos produits</li>
           <li>Signer votre contrat partenaire</li>
@@ -202,8 +210,8 @@ const templates = {
       subject: `❌ Votre demande pour "${shopName}" n'a pas été acceptée`,
       html: layout('Demande refusée', `
         <h2>Demande non acceptée</h2>
-        <p>Bonjour <strong>${name}</strong>, nous avons examiné votre demande pour la boutique <strong>${shopName}</strong>.</p>
-        ${reason ? `<div class="card"><p style="margin:0;color:#374151"><strong>Motif :</strong> ${reason}</p></div>` : ''}
+        <p>Bonjour <strong>${esc(name)}</strong>, nous avons examiné votre demande pour la boutique <strong>${esc(shopName)}</strong>.</p>
+        ${reason ? `<div class="card"><p style="margin:0;color:#374151"><strong>Motif :</strong> ${esc(reason)}</p></div>` : ''}
         <p>Pour toute question, contactez notre équipe support.</p>
         <div style="text-align:center">
           <a href="mailto:support@rizivoirien.ci" class="btn">Contacter le support</a>
@@ -217,7 +225,7 @@ const templates = {
     return {
       subject: '✅ Votre profil livreur est approuvé — RizIvoirien',
       html: layout('Profil livreur approuvé', `
-        <h2>Bienvenue dans l'équipe, ${name} !</h2>
+        <h2>Bienvenue dans l'équipe, ${esc(name)} !</h2>
         <p>Votre profil de livreur a été validé. Vous pouvez dès maintenant vous connecter, passer en ligne et commencer à recevoir des offres de livraison.</p>
         <div class="card">
           <div class="card-row"><span>📱 Passez en ligne</span><span><span class="badge badge-green">Disponible</span></span></div>
@@ -250,10 +258,10 @@ const templates = {
       subject: `🚚 Votre livreur est en route — Commande #${orderId}`,
       html: layout('Livreur assigné', `
         <h2>Votre livreur a été assigné !</h2>
-        <p>Bonjour <strong>${name}</strong>, un livreur a accepté votre commande <strong>#${orderId}</strong> auprès de <strong>${shopName}</strong>.</p>
+        <p>Bonjour <strong>${esc(name)}</strong>, un livreur a accepté votre commande <strong>#${orderId}</strong> auprès de <strong>${esc(shopName)}</strong>.</p>
 
         <div class="card">
-          <div class="card-row"><span>🧑 Livreur</span><strong>${driverName}</strong></div>
+          <div class="card-row"><span>🧑 Livreur</span><strong>${esc(driverName)}</strong></div>
           <div class="card-row"><span>📞 Contact</span><a href="tel:${driverPhone}" style="color:#1B4332;font-weight:700">${driverPhone || 'Non renseigné'}</a></div>
           <div class="card-row"><span>📅 Livraison prévue</span><strong>${deliveryDate}</strong></div>
         </div>
@@ -277,7 +285,7 @@ const templates = {
       subject: '📧 Vérifiez votre adresse email — RizIvoirien',
       html: layout('Vérification email', `
         <h2>Confirmez votre adresse email</h2>
-        <p>Bonjour <strong>${name}</strong>, merci de vous être inscrit(e) sur RizIvoirien !</p>
+        <p>Bonjour <strong>${esc(name)}</strong>, merci de vous être inscrit(e) sur RizIvoirien !</p>
         <p>Pour activer votre compte et profiter de toutes les fonctionnalités, veuillez confirmer votre adresse email en cliquant sur le bouton ci-dessous.</p>
         <div style="text-align:center;margin:32px 0">
           <a href="${link}" class="btn">✅ Vérifier mon email</a>
@@ -295,7 +303,7 @@ const templates = {
       subject: '🔑 Réinitialisation de votre mot de passe — RizIvoirien',
       html: layout('Mot de passe oublié', `
         <h2>Réinitialiser votre mot de passe</h2>
-        <p>Bonjour <strong>${name}</strong>, nous avons reçu une demande de réinitialisation du mot de passe de votre compte.</p>
+        <p>Bonjour <strong>${esc(name)}</strong>, nous avons reçu une demande de réinitialisation du mot de passe de votre compte.</p>
         <p>Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe :</p>
         <div style="text-align:center;margin:32px 0">
           <a href="${link}" class="btn">🔑 Réinitialiser mon mot de passe</a>
@@ -303,7 +311,7 @@ const templates = {
         <div class="divider"></div>
         <div class="card">
           <div class="card-row"><span>⏱️ Validité du lien</span><strong>1 heure</strong></div>
-          <div class="card-row"><span>📧 Compte concerné</span><strong>${name}</strong></div>
+          <div class="card-row"><span>📧 Compte concerné</span><strong>${esc(name)}</strong></div>
         </div>
         <p style="font-size:13px;color:#9CA3AF">Si vous n'avez pas demandé cette réinitialisation, ignorez cet email — votre mot de passe reste inchangé.</p>
       `),
@@ -325,7 +333,7 @@ const templates = {
       : isRejected
       ? `<div class="card">
            <div class="card-row"><span>❌ Décision</span><strong class="badge badge-red">Litige non retenu</strong></div>
-           ${resolution ? `<div class="card-row"><span>Motif</span><span>${resolution}</span></div>` : ''}
+           ${resolution ? `<div class="card-row"><span>Motif</span><span>${esc(resolution)}</span></div>` : ''}
          </div>
          <p>Si vous souhaitez contester cette décision, contactez notre support.</p>`
       : `<div class="card">
@@ -336,7 +344,7 @@ const templates = {
       subject: `📋 Mise à jour de votre litige — Commande #${orderId}`,
       html: layout('Litige mis à jour', `
         <h2>Mise à jour de votre litige</h2>
-        <p>Bonjour <strong>${name}</strong>, voici une mise à jour concernant votre litige sur la commande <strong>#${orderId}</strong> de <strong>${shopName}</strong>.</p>
+        <p>Bonjour <strong>${esc(name)}</strong>, voici une mise à jour concernant votre litige sur la commande <strong>#${orderId}</strong> de <strong>${esc(shopName)}</strong>.</p>
         ${statusBlock}
         <div class="divider"></div>
         <div style="text-align:center">
@@ -352,9 +360,9 @@ const templates = {
       subject: `⚠️ Stock faible : ${productName}`,
       html: layout('Alerte stock', `
         <h2>Stock faible détecté</h2>
-        <p>La boutique <strong>${shopName}</strong> a un stock faible sur le produit suivant :</p>
+        <p>La boutique <strong>${esc(shopName)}</strong> a un stock faible sur le produit suivant :</p>
         <div class="card">
-          <div class="card-row"><span>Produit</span><strong>${productName}</strong></div>
+          <div class="card-row"><span>Produit</span><strong>${esc(productName)}</strong></div>
           <div class="card-row"><span>Stock restant</span><span class="badge badge-amber">${stock} sac${stock > 1 ? 's' : ''}</span></div>
         </div>
         <p>Pensez à réapprovisionner ce produit pour éviter les ruptures de stock.</p>

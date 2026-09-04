@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Search, AlertCircle, Package } from 'lucide-react'
+import { Search, AlertCircle, Package, MessageCircle, Check, Flag } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { CI_REGIONS, RICE_PRODUCTS } from '../../utils/regions'
@@ -28,6 +28,10 @@ export default function MarketplaceTab() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [contactingId, setContactingId] = useState(null)
+  const [contactedIds, setContactedIds] = useState(new Set())
+  const [contactError, setContactError] = useState(null)
+  const [reportedIds, setReportedIds] = useState(new Set())
 
   const endpoint = view === 'offers' ? '/b2b/offers' : '/b2b/requests'
   const key = view === 'offers' ? 'offers' : 'requests'
@@ -53,6 +57,27 @@ export default function MarketplaceTab() {
   useEffect(() => { load() }, [view]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = (e) => { e.preventDefault(); load() }
+
+  const handleContact = async (item) => {
+    setContactError(null)
+    setContactingId(item.id)
+    try {
+      await api.post('/b2b/contacts', view === 'offers' ? { offerId: item.id } : { requestId: item.id })
+      setContactedIds(prev => new Set(prev).add(item.id))
+    } catch (err) {
+      setContactError(err.message)
+    } finally {
+      setContactingId(null)
+    }
+  }
+
+  const handleReport = (item) => {
+    const reason = window.prompt('Pourquoi signalez-vous cette annonce ?')
+    if (!reason) return
+    api.post('/b2b/reports', { targetType: view === 'offers' ? 'OFFER' : 'REQUEST', targetId: item.id, reason })
+      .then(() => setReportedIds(prev => new Set(prev).add(item.id)))
+      .catch((err) => setContactError(err.message))
+  }
 
   return (
     <div className="space-y-6">
@@ -95,6 +120,14 @@ export default function MarketplaceTab() {
         </div>
       )}
 
+      {contactError && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+          <AlertCircle size={14} className="text-red-500 shrink-0" />
+          <p className="font-dm text-sm text-red-600 flex-1">{contactError}</p>
+          <button onClick={() => setContactError(null)} className="text-red-400 hover:text-red-600 font-bold text-xs">✕</button>
+        </div>
+      )}
+
       {loading ? (
         <div className="p-8 text-center font-dm text-charcoal/40">Chargement…</div>
       ) : items.length === 0 ? (
@@ -119,6 +152,28 @@ export default function MarketplaceTab() {
                 {view === 'offers' ? <SellerBadge item={item} /> : <BuyerBadge item={item} />}
                 {view === 'offers' && item.price != null && (
                   <p className="font-dm text-sm text-charcoal/60 mt-1">{fmt(item.price)} FCFA / {item.unit}</p>
+                )}
+                {user && (
+                  <div className="mt-3 flex items-center gap-4">
+                    {contactedIds.has(item.id) ? (
+                      <p className="flex items-center gap-1.5 font-syne text-xs font-bold text-green-600">
+                        <Check size={12} /> Contact envoyé
+                      </p>
+                    ) : (
+                      <button onClick={() => handleContact(item)} disabled={contactingId === item.id}
+                        className="flex items-center gap-1.5 font-syne text-xs font-bold text-forest hover:text-forest-dark disabled:opacity-50">
+                        <MessageCircle size={12} /> {contactingId === item.id ? 'Envoi…' : 'Contacter'}
+                      </button>
+                    )}
+                    {reportedIds.has(item.id) ? (
+                      <p className="font-dm text-xs text-charcoal/30">Signalée</p>
+                    ) : (
+                      <button onClick={() => handleReport(item)}
+                        className="flex items-center gap-1 font-dm text-xs text-charcoal/30 hover:text-red-500">
+                        <Flag size={11} /> Signaler
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}

@@ -47,6 +47,7 @@ export default function ProfileTab() {
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [requestingVerif, setRequestingVerif] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -97,11 +98,32 @@ export default function ProfileTab() {
 
   const badge = VERIFICATION_LABEL[profile?.verification] || VERIFICATION_LABEL.UNVERIFIED
 
+  const requestVerification = async () => {
+    setRequestingVerif(true)
+    setError(null)
+    try {
+      const updated = await api.post('/b2b/my-profile/request-verification')
+      setProfile(updated)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setRequestingVerif(false)
+    }
+  }
+
   return (
     <div className="max-w-xl space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="font-playfair text-2xl font-bold text-charcoal">Mon profil</h1>
-        <span className={`font-syne text-xs font-bold px-3 py-1.5 rounded-full ${badge.color}`}>{badge.label}</span>
+        <div className="flex items-center gap-2">
+          <span className={`font-syne text-xs font-bold px-3 py-1.5 rounded-full ${badge.color}`}>{badge.label}</span>
+          {profile?.verification === 'UNVERIFIED' && (
+            <button onClick={requestVerification} disabled={requestingVerif}
+              className="font-syne text-xs font-bold text-forest hover:text-forest-dark disabled:opacity-50 underline">
+              {requestingVerif ? '…' : 'Demander la vérification'}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (

@@ -41,6 +41,12 @@ model User {
   trader      Trader?
   processor   Processor?
   exporter    Exporter?
+
+  contactsSent            ContactRequest[] @relation("ContactFrom")
+  contactsReceived        ContactRequest[] @relation("ContactTo")
+  b2bTransactionsAsBuyer  B2BTransaction[] @relation("B2BTransactionBuyer")
+  b2bTransactionsAsSeller B2BTransaction[] @relation("B2BTransactionSeller")
+  b2bReportsFiled         B2BReport[]
 }
 
 // ─── B2B : profils ──────────────────────────────────────────────────────────
@@ -168,6 +174,8 @@ model RiceOffer {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
+  contactRequests ContactRequest[]
+
   @@index([status])
   @@index([region])
   @@index([product])
@@ -193,12 +201,76 @@ model PurchaseRequest {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
+  contactRequests ContactRequest[]
+
   @@index([status])
   @@index([region])
   @@index([product])
   @@index([traderId])
   @@index([processorId])
   @@index([exporterId])
+}
+
+// ─── B2B : mise en relation & transaction déclarée ──────────────────────────
+// Le contact est le SEUL mécanisme qui révèle les coordonnées entre deux
+// utilisateurs B2B (voir b2bContact.js) — jamais exposées directement sur une
+// offre/demande publique.
+model ContactRequest {
+  id         Int              @id @default(autoincrement())
+  fromUserId Int
+  fromUser   User             @relation("ContactFrom", fields: [fromUserId], references: [id])
+  toUserId   Int
+  toUser     User             @relation("ContactTo", fields: [toUserId], references: [id])
+  offerId    Int?
+  offer      RiceOffer?       @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  requestId  Int?
+  request    PurchaseRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  message    String?
+  status     String           @default("PENDING") // PENDING|ACCEPTED|REJECTED
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  transaction B2BTransaction?
+
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([status])
+}
+
+model B2BTransaction {
+  id           Int             @id @default(autoincrement())
+  contactId    Int?            @unique
+  contact      ContactRequest? @relation(fields: [contactId], references: [id])
+  buyerUserId  Int
+  buyer        User            @relation("B2BTransactionBuyer", fields: [buyerUserId], references: [id])
+  sellerUserId Int
+  seller       User            @relation("B2BTransactionSeller", fields: [sellerUserId], references: [id])
+  product      String
+  quantity     Float
+  unit         String
+  region       String
+  amount       Float?
+  status       String          @default("DECLARED") // DECLARED|CANCELLED
+  notes        String?
+  createdAt    DateTime        @default(now())
+
+  @@index([buyerUserId])
+  @@index([sellerUserId])
+  @@index([status])
+}
+
+model B2BReport {
+  id         Int      @id @default(autoincrement())
+  reporterId Int
+  reporter   User     @relation(fields: [reporterId], references: [id])
+  targetType String // PROFILE | OFFER | REQUEST
+  targetId   Int
+  reason     String
+  status     String   @default("PENDING") // PENDING|REVIEWING|RESOLVED|REJECTED
+  createdAt  DateTime @default(now())
+
+  @@index([status])
+  @@index([targetType, targetId])
 }
 
 model Shop {

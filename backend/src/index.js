@@ -73,6 +73,7 @@ app.use('/api/shops', require('./routes/shops'))
 app.use('/api/drivers', require('./routes/drivers'))
 app.use('/api/carousel', require('./routes/carousel'))
 app.use('/api/admin', require('./routes/admin'))
+app.use('/api/admin/b2b', require('./routes/b2bAdmin'))
 app.use('/api/commercial', require('./routes/commercial'))
 app.use('/api/reviews', require('./routes/reviews'))
 app.use('/api/wishlist', require('./routes/wishlist'))
@@ -84,6 +85,7 @@ app.use('/api/promo', require('./routes/promo'))
 app.use('/api/disputes', require('./routes/disputes'))
 app.use('/api/shop-reviews', require('./routes/shopReviews'))
 app.use('/api/b2b', require('./routes/b2b'))
+app.use('/api/b2b', require('./routes/b2bContact'))
 
 // ── Public settings (SEO + maintenance) — no auth needed ──────────────────────
 app.get('/api/settings/public', async (req, res) => {

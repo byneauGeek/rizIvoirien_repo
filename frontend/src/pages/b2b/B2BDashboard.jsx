@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { User, Package, Search, Users, LogOut, ChevronRight, Menu, X } from 'lucide-react'
+import { User, Package, Search, Users, LogOut, ChevronRight, Menu, X, MessageSquare, DollarSign } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { B2B_ROLE_META } from './roleMeta'
 import ProfileTab from './ProfileTab'
 import ListingsTab from './ListingsTab'
 import MarketplaceTab from './MarketplaceTab'
 import MembersTab from './MembersTab'
+import ContactsTab from './ContactsTab'
+import TransactionsTab from './TransactionsTab'
 
 export default function B2BDashboard() {
   const { user, logout } = useAuth()
@@ -23,6 +25,8 @@ export default function B2BDashboard() {
     { id: 'profile',     label: 'Mon profil',       icon: User },
     { id: 'listings',    label: `Mes ${meta.kind === 'offer' ? 'offres' : 'demandes'}`, icon: Package },
     { id: 'marketplace', label: 'Rechercher',        icon: Search },
+    { id: 'contacts',    label: 'Mes contacts',      icon: MessageSquare },
+    { id: 'transactions', label: 'Transactions',     icon: DollarSign },
     ...(user.role === 'COOPERATIVE' ? [{ id: 'members', label: 'Membres', icon: Users }] : []),
   ]
 
@@ -107,6 +111,8 @@ export default function B2BDashboard() {
             {tab === 'profile' && <ProfileTab />}
             {tab === 'listings' && <ListingsTab />}
             {tab === 'marketplace' && <MarketplaceTab />}
+            {tab === 'contacts' && <ContactsTab />}
+            {tab === 'transactions' && <TransactionsTab />}
             {tab === 'members' && user.role === 'COOPERATIVE' && <MembersTab />}
           </motion.div>
         </AnimatePresence>

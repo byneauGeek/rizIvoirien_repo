@@ -63,6 +63,23 @@ router.put('/my-profile', authenticate, requireB2BRole, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// POST /api/b2b/my-profile/request-verification — passe le profil en file
+// d'attente admin (cahier de cadrage §10 : Non vérifié → Vérification en cours).
+router.post('/my-profile/request-verification', authenticate, requireB2BRole, async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    if (actor.profile.verification === 'VERIFIED') return res.status(400).json({ error: 'Ce profil est déjà vérifié' })
+    if (actor.profile.verification === 'PENDING') return res.status(400).json({ error: 'Une demande est déjà en cours' })
+
+    const updated = await prisma[actor.modelName].update({
+      where: { id: actor.profile.id },
+      data: { verification: 'PENDING' },
+    })
+    res.json(updated)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ─── Offres (Producteur / Coopérative) ───────────────────────────────────────
 
 const OFFER_SELLER_ROLES = ['PRODUCER', 'COOPERATIVE']
@@ -70,13 +87,18 @@ const OFFER_SELLER_ROLES = ['PRODUCER', 'COOPERATIVE']
 router.get('/offers', async (req, res) => {
   const { product, region, minQuantity, sellerType, search, limit = '20', offset = '0' } = req.query
   try {
-    const where = { status: 'AVAILABLE' }
-    if (product) where.product = product
-    if (region) where.region = { contains: region }
-    if (minQuantity) where.quantity = { gte: Number(minQuantity) }
-    if (sellerType === 'PRODUCER') where.producerId = { not: null }
-    if (sellerType === 'COOPERATIVE') where.cooperativeId = { not: null }
-    if (search) where.OR = [{ product: { contains: search } }, { variety: { contains: search } }]
+    const and = [{ status: 'AVAILABLE' }]
+    if (product) and.push({ product })
+    if (region) and.push({ region: { contains: region } })
+    if (minQuantity) and.push({ quantity: { gte: Number(minQuantity) } })
+    if (sellerType === 'PRODUCER') and.push({ producerId: { not: null } })
+    if (sellerType === 'COOPERATIVE') and.push({ cooperativeId: { not: null } })
+    if (search) and.push({ OR: [{ product: { contains: search } }, { variety: { contains: search } }] })
+    // Un acteur suspendu (§10) disparaît de la recherche publique — la suspension
+    // administrative doit avoir un effet réel, pas juste cosmétique sur le badge.
+    and.push({ OR: [{ producerId: null }, { producer: { verification: { not: 'SUSPENDED' } } }] })
+    and.push({ OR: [{ cooperativeId: null }, { cooperative: { verification: { not: 'SUSPENDED' } } }] })
+    const where = { AND: and }
 
     const [offers, total] = await Promise.all([
       prisma.riceOffer.findMany({
@@ -110,8 +132,10 @@ router.get('/offers/:id', async (req, res) => {
     const offer = await prisma.riceOffer.findUnique({
       where: { id: Number(req.params.id) },
       include: {
-        producer: { select: { id: true, region: true, verification: true, user: { select: { name: true, phone: true } } } },
-        cooperative: { select: { id: true, name: true, region: true, verification: true, responsable: true } },
+        // Les coordonnées (téléphone) ne sont jamais exposées ici — elles ne se
+        // révèlent qu'après acceptation d'une demande de contact (b2bContact.js).
+        producer: { select: { id: true, region: true, verification: true, user: { select: { id: true, name: true } } } },
+        cooperative: { select: { id: true, name: true, region: true, verification: true, responsable: true, userId: true } },
       },
     })
     if (!offer) return res.status(404).json({ error: 'Offre introuvable' })
@@ -131,6 +155,7 @@ router.post('/offers', authenticate, requireRole(...OFFER_SELLER_ROLES), async (
   try {
     const actor = await myActor(req)
     if (!actor) return res.status(404).json({ error: 'Profil introuvable — complétez votre profil avant de publier' })
+    if (actor.profile.verification === 'SUSPENDED') return res.status(403).json({ error: 'Votre profil est suspendu — contactez le support' })
 
     const offer = await prisma.riceOffer.create({
       data: {
@@ -217,10 +242,14 @@ const REQUEST_ACTOR_FK = { trader: 'traderId', processor: 'processorId', exporte
 router.get('/requests', async (req, res) => {
   const { product, region, search, limit = '20', offset = '0' } = req.query
   try {
-    const where = { status: 'ACTIVE' }
-    if (product) where.product = product
-    if (region) where.region = { contains: region }
-    if (search) where.OR = [{ product: { contains: search } }, { requirements: { contains: search } }]
+    const and = [{ status: 'ACTIVE' }]
+    if (product) and.push({ product })
+    if (region) and.push({ region: { contains: region } })
+    if (search) and.push({ OR: [{ product: { contains: search } }, { requirements: { contains: search } }] })
+    and.push({ OR: [{ traderId: null }, { trader: { verification: { not: 'SUSPENDED' } } }] })
+    and.push({ OR: [{ processorId: null }, { processor: { verification: { not: 'SUSPENDED' } } }] })
+    and.push({ OR: [{ exporterId: null }, { exporter: { verification: { not: 'SUSPENDED' } } }] })
+    const where = { AND: and }
 
     const [requests, total] = await Promise.all([
       prisma.purchaseRequest.findMany({
@@ -255,9 +284,10 @@ router.get('/requests/:id', async (req, res) => {
     const request = await prisma.purchaseRequest.findUnique({
       where: { id: Number(req.params.id) },
       include: {
-        trader: { select: { id: true, companyName: true, verification: true, user: { select: { name: true, phone: true } } } },
-        processor: { select: { id: true, companyName: true, verification: true, user: { select: { name: true, phone: true } } } },
-        exporter: { select: { id: true, companyName: true, verification: true, user: { select: { name: true, phone: true } } } },
+        // Idem : téléphone jamais public, uniquement après contact accepté.
+        trader: { select: { id: true, companyName: true, verification: true, user: { select: { id: true, name: true } } } },
+        processor: { select: { id: true, companyName: true, verification: true, user: { select: { id: true, name: true } } } },
+        exporter: { select: { id: true, companyName: true, verification: true, user: { select: { id: true, name: true } } } },
       },
     })
     if (!request) return res.status(404).json({ error: 'Demande introuvable' })
@@ -274,6 +304,7 @@ router.post('/requests', authenticate, requireRole(...REQUEST_BUYER_ROLES), asyn
   try {
     const actor = await myActor(req)
     if (!actor) return res.status(404).json({ error: 'Profil introuvable — complétez votre profil avant de publier' })
+    if (actor.profile.verification === 'SUSPENDED') return res.status(403).json({ error: 'Votre profil est suspendu — contactez le support' })
     const fk = REQUEST_ACTOR_FK[actor.modelName]
 
     const request = await prisma.purchaseRequest.create({

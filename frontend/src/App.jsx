@@ -29,6 +29,7 @@ const CommercialDashboard     = lazy(() => import('./pages/commercial/Commercial
 const B2BRegisterPage    = lazy(() => import('./pages/B2BRegisterPage'))
 const B2BMarketplacePage = lazy(() => import('./pages/B2BMarketplacePage'))
 const B2BDashboard       = lazy(() => import('./pages/b2b/B2BDashboard'))
+const AccountingDashboard = lazy(() => import('./pages/accounting/AccountingDashboard'))
 const ContactPage       = lazy(() => import('./pages/info/ContactPage'))
 const LivraisonsPage    = lazy(() => import('./pages/info/LivraisonsPage'))
 const CguPage           = lazy(() => import('./pages/info/CguPage'))
@@ -114,6 +115,9 @@ function AppRoutes() {
         } />
         <Route path="/exporter" element={
           <PrivateRoute role="EXPORTER"><B2BDashboard /></PrivateRoute>
+        } />
+        <Route path="/accounting" element={
+          <PrivateRoute role={['ACCOUNTANT', 'ADMIN']}><AccountingDashboard /></PrivateRoute>
         } />
 
         <Route path="/contact"         element={<ContactPage />} />

@@ -615,6 +615,16 @@ CREATE TABLE "CommercialNote" (
     CONSTRAINT "CommercialNote_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
+-- CreateTable
+CREATE TABLE "AccountingPermission" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "userId" INTEGER NOT NULL,
+    "permission" TEXT NOT NULL,
+    "grantedBy" INTEGER NOT NULL,
+    "grantedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "AccountingPermission_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -821,4 +831,10 @@ CREATE INDEX "CommercialNote_shopId_idx" ON "CommercialNote"("shopId");
 
 -- CreateIndex
 CREATE INDEX "CommercialNote_driverId_idx" ON "CommercialNote"("driverId");
+
+-- CreateIndex
+CREATE INDEX "AccountingPermission_userId_idx" ON "AccountingPermission"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AccountingPermission_userId_permission_key" ON "AccountingPermission"("userId", "permission");
 

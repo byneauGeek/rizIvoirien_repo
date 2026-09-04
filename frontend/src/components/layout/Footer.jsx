@@ -98,7 +98,7 @@ export default function Footer() {
 
         <div className="mt-16 pt-8 border-t border-cream/10 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="font-dm text-xs text-cream/40">
-            © {new Date().getFullYear()} RizIvoirien. Fait avec ❤️ en Côte d'Ivoire.
+            © {new Date().getFullYear()} RizIvoirien. Fait Par YASTART CI.
           </p>
           <div className="flex gap-6">
             {BOTTOM.map(l => (

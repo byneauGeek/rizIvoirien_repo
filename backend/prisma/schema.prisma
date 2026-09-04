@@ -47,6 +47,9 @@ model User {
   b2bTransactionsAsBuyer  B2BTransaction[] @relation("B2BTransactionBuyer")
   b2bTransactionsAsSeller B2BTransaction[] @relation("B2BTransactionSeller")
   b2bReportsFiled         B2BReport[]
+
+  // ── Comptabilité ─────────────────────────────────────────────────────────
+  accountingPermissions AccountingPermission[]
 }
 
 // ─── B2B : profils ──────────────────────────────────────────────────────────
@@ -765,4 +768,22 @@ model CommercialNote {
 
   @@index([shopId])
   @@index([driverId])
+}
+
+// ─── Comptabilité — RBAC fin (LOT 1) ─────────────────────────────────────────
+// Rôle ACCOUNTANT (libellé UI "Responsable Comptable") : rôle attribué
+// explicitement par l'Admin (jamais auto-créé), avec des permissions
+// individuelles ci-dessous plutôt qu'un accès comptable tout-ou-rien.
+// L'ADMIN garde un accès complet implicite (voir middleware/accounting.js) —
+// ce modèle ne sert qu'à moduler ce que peut faire un ACCOUNTANT.
+model AccountingPermission {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission String
+  grantedBy  Int
+  grantedAt  DateTime @default(now())
+
+  @@unique([userId, permission])
+  @@index([userId])
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, ClipboardList, Store, Truck, Image, CreditCard, BarChart2, Settings, LogOut, Tag, Users, DollarSign, Bell, Printer, FileText, Percent, AlertTriangle, ScrollText, Briefcase, Menu, X, Sprout } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Store, Truck, Image, CreditCard, BarChart2, Settings, LogOut, Tag, Users, DollarSign, Bell, Printer, FileText, Percent, AlertTriangle, ScrollText, Briefcase, Menu, X, Sprout, Calculator } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../api/client'
@@ -21,6 +21,7 @@ import DisputesAdminTab from './DisputesAdminTab'
 import AuditLogTab from './AuditLogTab'
 import CommercialSettingsTab from './CommercialSettingsTab'
 import B2BAdminTab from './B2BAdminTab'
+import AccountingRoleTab from './AccountingRoleTab'
 
 const TABS = [
   { id: 'analytics', label: 'Vue d\'ensemble',        icon: LayoutDashboard },
@@ -40,6 +41,7 @@ const TABS = [
   { id: 'audit',      label: 'Journal d\'audit',         icon: ScrollText },
   { id: 'commercial', label: 'Espace Commercial',        icon: Briefcase },
   { id: 'b2b',        label: 'Filière B2B',               icon: Sprout, badge: 'b2bPending' },
+  { id: 'accounting-role', label: 'Rôle Comptable',        icon: Calculator },
 ]
 
 export default function AdminDashboard() {
@@ -192,6 +194,7 @@ export default function AdminDashboard() {
             {tab === 'settings'   && <PlatformSettingsTab />}
             {tab === 'commercial' && <CommercialSettingsTab />}
             {tab === 'b2b'        && <B2BAdminTab />}
+            {tab === 'accounting-role' && <AccountingRoleTab />}
           </motion.div>
         </AnimatePresence>
       </main>

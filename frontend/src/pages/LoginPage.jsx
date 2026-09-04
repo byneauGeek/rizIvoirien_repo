@@ -6,11 +6,17 @@ import { useAuth } from '../context/AuthContext'
 import { api } from '../api/client'
 
 const ROLE_REDIRECT = {
-  ADMIN:      '/admin',
-  SELLER:     '/vendor',
-  DRIVER:     '/driver',
-  BUYER:      '/',
-  COMMERCIAL: '/commercial',
+  ADMIN:       '/admin',
+  SELLER:      '/vendor',
+  DRIVER:      '/driver',
+  BUYER:       '/',
+  COMMERCIAL:  '/commercial',
+  ACCOUNTANT:  '/accounting',
+  PRODUCER:    '/producer',
+  COOPERATIVE: '/cooperative',
+  TRADER:      '/trader',
+  PROCESSOR:   '/processor',
+  EXPORTER:    '/exporter',
 }
 
 export default function LoginPage() {

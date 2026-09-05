@@ -247,9 +247,19 @@ router.get('/transactions', authenticate, async (req, res) => {
 // admin.js POST /logistics/b2b/:id/assign) est ce qui crée réellement le
 // Shipment, exactement comme pour une commande B2C prête (PRET) qui n'a pas
 // encore de livreur.
+const VALID_SERVICE_LEVELS = ['ECONOMIC', 'STANDARD', 'EXPRESS']
+
+// LOT 6 (Arbitrage XXX RIZ) : deliveryFee était jusqu'ici une saisie manuelle
+// obligatoire ("jamais un montant inventé par le système, toujours une
+// décision explicite" — commentaire historique LOT2 du schéma). La grille
+// PricingRule (segment=B2B_CARGO) permet désormais un calcul réel, pas
+// inventé : coût interne dérivé de la quantité/zone, comme pour le B2C. La
+// saisie manuelle reste possible et prime toujours si fournie — jamais
+// supprimée, migration progressive uniquement.
 router.put('/transactions/:id/request-logistics', authenticate, async (req, res) => {
-  const { deliveryAddress, deliveryFee } = req.body
+  const { deliveryAddress, deliveryFee, serviceLevel: requestedServiceLevel } = req.body
   if (!deliveryAddress?.trim()) return res.status(400).json({ error: 'deliveryAddress requis' })
+  const serviceLevel = VALID_SERVICE_LEVELS.includes(requestedServiceLevel) ? requestedServiceLevel : 'STANDARD'
 
   try {
     const tx = await prisma.b2BTransaction.findFirst({
@@ -257,12 +267,39 @@ router.put('/transactions/:id/request-logistics', authenticate, async (req, res)
     })
     if (!tx) return res.status(404).json({ error: 'Transaction introuvable, déjà traitée, ou vous n\'en êtes pas l\'acheteur' })
 
+    let finalFee = deliveryFee != null && deliveryFee !== '' ? Number(deliveryFee) : null
+    let deliveryInternalCost = null
+    let deliveryMargin = null
+    if (finalFee == null) {
+      const { estimateB2BWeightKg, geocodeAddress, resolveZoneIdForCity } = require('../services/deliveryService')
+      const pricingEngine = require('../services/pricingEngine')
+      const weightKg = estimateB2BWeightKg(tx.quantity, tx.unit)
+      const originZoneId = await resolveZoneIdForCity(prisma, tx.region)
+      // NB : aucune coordonnée d'origine n'existe pour un vendeur B2B (pas de
+      // Shop, seulement une région déclarative) — distanceKm reste à 0, la
+      // règle ne peut donc facturer que base + poids + corridor, jamais un
+      // coût kilométrique fictif.
+      const destCoords = await geocodeAddress(deliveryAddress.trim())
+      const destinationZoneId = destCoords ? await resolveZoneIdForCity(prisma, destCoords.city) : null
+      const pricing = await pricingEngine.computePricing(prisma, {
+        segment: 'B2B_CARGO', serviceLevel, originZoneId, destinationZoneId, weightKg, distanceKm: 0, packages: 1, extraOrigins: 0,
+      }).catch(() => null)
+      if (pricing) {
+        finalFee = pricing.customerPrice
+        deliveryInternalCost = pricing.internalCost
+        deliveryMargin = pricing.platformMargin
+      }
+    }
+
     const updated = await prisma.b2BTransaction.update({
       where: { id: tx.id },
       data: {
         needsLogistics: true,
         deliveryAddress: deliveryAddress.trim(),
-        deliveryFee: deliveryFee != null && deliveryFee !== '' ? Number(deliveryFee) : null,
+        deliveryFee: finalFee,
+        serviceLevel,
+        deliveryInternalCost,
+        deliveryMargin,
       },
     })
     setImmediate(() => notify(

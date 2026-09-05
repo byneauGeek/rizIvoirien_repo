@@ -22,16 +22,19 @@ const ORDER_STATUS_FLOW = {
   ADMIN:  null, // tous les transitions
 }
 
+const VALID_SERVICE_LEVELS = ['ECONOMIC', 'STANDARD', 'EXPRESS']
+
 // POST /api/orders/estimate-delivery — calcul frais avant commande (public authentifié)
 router.post('/estimate-delivery', authenticate, async (req, res) => {
-  const { items, address } = req.body
+  const { items, address, serviceLevel: requestedServiceLevel } = req.body
   if (!items?.length) return res.status(400).json({ error: 'Articles requis' })
+  const serviceLevel = requestedServiceLevel && VALID_SERVICE_LEVELS.includes(requestedServiceLevel) ? requestedServiceLevel : 'STANDARD'
 
   try {
     const productIds = items.map(i => i.productId)
     const products = await prisma.product.findMany({
       where: { id: { in: productIds }, active: true },
-      include: { shop: { select: { id: true, name: true, latitude: true, longitude: true, location: true } } },
+      include: { shop: { select: { id: true, name: true, latitude: true, longitude: true, location: true, zoneId: true } } },
     })
 
     const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
@@ -54,7 +57,10 @@ router.post('/estimate-delivery', authenticate, async (req, res) => {
       shopCoords = await geocodeAddress(shop.location)
     }
 
-    const result = await estimateDelivery({ items, products, shopCoords, deliveryAddress: address, settings, additionalShops, vehicleTypes })
+    const result = await estimateDelivery({
+      items, products, shopCoords, deliveryAddress: address, settings, additionalShops, vehicleTypes,
+      prisma, segment: 'SMALL_MEDIUM', serviceLevel, originZoneId: shop?.zoneId ?? null,
+    })
     res.json({
       ...result,
       leadDays: settings?.deliveryLeadDays ?? 1,
@@ -69,8 +75,9 @@ router.post('/estimate-delivery', authenticate, async (req, res) => {
 
 // POST /api/orders — acheteur passe commande (mono ou multi-boutiques)
 router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
-  const { items, address, note, promoCode: promoCodeInput, idempotencyKey, deliveryFee: providedFee } = req.body
+  const { items, address, note, promoCode: promoCodeInput, idempotencyKey, deliveryFee: providedFee, serviceLevel: requestedServiceLevel } = req.body
   if (!items?.length || !address) return res.status(400).json({ error: 'Panier et adresse requis' })
+  const serviceLevel = requestedServiceLevel && VALID_SERVICE_LEVELS.includes(requestedServiceLevel) ? requestedServiceLevel : 'STANDARD'
 
   // Anti double-soumission : si même clé d'idempotence, retourner la commande existante
   if (idempotencyKey) {
@@ -84,7 +91,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
     const productIds = items.map(i => i.productId)
     const products = await prisma.product.findMany({
       where: { id: { in: productIds }, active: true },
-      include: { shop: { select: { id: true, name: true, latitude: true, longitude: true, location: true, userId: true, notifyEmail: true } } },
+      include: { shop: { select: { id: true, name: true, latitude: true, longitude: true, location: true, userId: true, notifyEmail: true, zoneId: true } } },
     })
     if (products.length !== productIds.length) return res.status(400).json({ error: 'Produit(s) invalide(s)' })
 
@@ -137,7 +144,14 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
     // Si le frontend envoie la fee pré-calculée (issue de l'estimation affichée), on l'utilise
     // directement pour éviter les divergences dues à un second appel géocoding (API Nominatim
     // non-déterministe) et aux différences de pondération multi-boutiques.
+    // LOT 6 : deliveryInternalCost/deliveryMargin ne sont renseignés que quand
+    // le serveur recalcule réellement via le moteur de tarification (branche
+    // else) — quand le frontend envoie une fee déjà pré-calculée (providedFee,
+    // issue d'un appel /estimate-delivery précédent), on fait confiance à ce
+    // montant sans le recomposer, mais on ne réinvente pas non plus sa
+    // décomposition interne : elle reste absente plutôt que devinée.
     const shopFees = []
+    let pricingBreakdown = { internalCost: null, platformMargin: null }
     if (typeof providedFee === 'number' && providedFee >= 0) {
       const shop1Fee = Math.max(0, Math.round(providedFee - additionalShops * additionalPickupFee))
       shopFees.push(shop1Fee)
@@ -149,8 +163,12 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
           let shopCoords = null
           if (geo?.latitude && geo?.longitude) shopCoords = { lat: geo.latitude, lng: geo.longitude }
           else if (geo?.location) shopCoords = await geocodeAddress(geo.location)
-          const est = await estimateDelivery({ items: groups[0].items, products: groups[0].products, shopCoords, deliveryAddress: address, settings, additionalShops, vehicleTypes })
+          const est = await estimateDelivery({
+            items: groups[0].items, products: groups[0].products, shopCoords, deliveryAddress: address, settings, additionalShops, vehicleTypes,
+            prisma, segment: 'SMALL_MEDIUM', serviceLevel, originZoneId: geo?.zoneId ?? null,
+          })
           shopFees.push(est.deliveryFee)
+          pricingBreakdown = { internalCost: est.internalCost, platformMargin: est.platformMargin }
         } else {
           shopFees.push(Math.round(additionalPickupFee))
         }
@@ -182,6 +200,9 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
             note: note || null,
             total: Math.max(0, groupSubtotal - groupDiscount),
             deliveryFee: shopFees[i],
+            serviceLevel,
+            deliveryInternalCost: i === 0 ? pricingBreakdown.internalCost : null,
+            deliveryMargin: i === 0 ? pricingBreakdown.platformMargin : null,
             discount: groupDiscount,
             promoCode: i === 0 ? appliedPromoCode : null,
             groupId,

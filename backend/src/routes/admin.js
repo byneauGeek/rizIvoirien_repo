@@ -1402,6 +1402,112 @@ router.delete('/logistics/hubs/:id', ...guard, async (req, res) => {
   }
 })
 
+// ─── Logistique — LOT 6 (Arbitrage XXX RIZ) : grille tarifaire ─────────────
+// Administration de PricingRule (segment × serviceLevel × corridor de zones).
+// C'est ce qui rend la tarification RÉELLEMENT branchée plutôt que mockée :
+// tant qu'aucune règle n'existe, deliveryService/pricingEngine retombent sur
+// l'ancien forfait (VehicleType/PlatformSettings) — cette grille est donc
+// strictement additive, jamais un pré-requis pour que la plateforme continue
+// de fonctionner.
+const VALID_PRICING_SEGMENTS = ['SMALL_MEDIUM', 'B2B_CARGO']
+const VALID_PRICING_SERVICE_LEVELS = ['ECONOMIC', 'STANDARD', 'EXPRESS']
+
+router.get('/logistics/pricing-rules', ...guard, async (req, res) => {
+  try {
+    const pricingRules = await prisma.pricingRule.findMany({
+      orderBy: [{ segment: 'asc' }, { serviceLevel: 'asc' }],
+      include: { originZone: { select: { id: true, name: true } }, destinationZone: { select: { id: true, name: true } } },
+    })
+    res.json({ pricingRules })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/logistics/pricing-rules', ...guard, async (req, res) => {
+  const {
+    segment, serviceLevel, originZoneId, destinationZoneId,
+    basePrice, pricePerKg, pricePerKm, pricePerPackage, pricePerExtraOrigin, pricePerExtraStop,
+    marginPct, maxDeliveryFee,
+  } = req.body
+  if (!VALID_PRICING_SEGMENTS.includes(segment)) return res.status(400).json({ error: 'segment invalide' })
+  if (!VALID_PRICING_SERVICE_LEVELS.includes(serviceLevel)) return res.status(400).json({ error: 'serviceLevel invalide' })
+  if (!(basePrice >= 0)) return res.status(400).json({ error: 'basePrice (>= 0) requis' })
+
+  const normOriginZoneId = originZoneId ? Number(originZoneId) : null
+  const normDestinationZoneId = destinationZoneId ? Number(destinationZoneId) : null
+
+  try {
+    // Un joker complet (origine ET destination null) n'est pas couvert par la
+    // contrainte UNIQUE de la table (NULL != NULL en SQL) — contrôlé ici.
+    if (normOriginZoneId == null && normDestinationZoneId == null) {
+      const existingWildcard = await prisma.pricingRule.findFirst({
+        where: { segment, serviceLevel, originZoneId: null, destinationZoneId: null },
+      })
+      if (existingWildcard) return res.status(409).json({ error: 'Une règle par défaut (sans corridor précis) existe déjà pour ce segment/niveau de service' })
+    }
+
+    const pricingRule = await prisma.pricingRule.create({
+      data: {
+        segment, serviceLevel,
+        originZoneId: normOriginZoneId, destinationZoneId: normDestinationZoneId,
+        basePrice: Number(basePrice),
+        pricePerKg: pricePerKg != null ? Number(pricePerKg) : 0,
+        pricePerKm: pricePerKm != null ? Number(pricePerKm) : 0,
+        pricePerPackage: pricePerPackage != null ? Number(pricePerPackage) : 0,
+        pricePerExtraOrigin: pricePerExtraOrigin != null ? Number(pricePerExtraOrigin) : 0,
+        pricePerExtraStop: pricePerExtraStop != null ? Number(pricePerExtraStop) : 0,
+        marginPct: marginPct != null ? Number(marginPct) : 0.20,
+        maxDeliveryFee: maxDeliveryFee != null && maxDeliveryFee !== '' ? Number(maxDeliveryFee) : null,
+      },
+    })
+    setImmediate(() => logAction(req.user.id, 'PRICING_RULE_CREATE', 'PricingRule', pricingRule.id, req.body))
+    res.status(201).json({ pricingRule })
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'Une règle existe déjà pour ce segment/niveau de service/corridor' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.put('/logistics/pricing-rules/:id', ...guard, async (req, res) => {
+  const {
+    basePrice, pricePerKg, pricePerKm, pricePerPackage, pricePerExtraOrigin, pricePerExtraStop,
+    marginPct, maxDeliveryFee, active,
+  } = req.body
+  try {
+    const pricingRule = await prisma.pricingRule.update({
+      where: { id: Number(req.params.id) },
+      data: {
+        ...(basePrice !== undefined && { basePrice: Number(basePrice) }),
+        ...(pricePerKg !== undefined && { pricePerKg: Number(pricePerKg) }),
+        ...(pricePerKm !== undefined && { pricePerKm: Number(pricePerKm) }),
+        ...(pricePerPackage !== undefined && { pricePerPackage: Number(pricePerPackage) }),
+        ...(pricePerExtraOrigin !== undefined && { pricePerExtraOrigin: Number(pricePerExtraOrigin) }),
+        ...(pricePerExtraStop !== undefined && { pricePerExtraStop: Number(pricePerExtraStop) }),
+        ...(marginPct !== undefined && { marginPct: Number(marginPct) }),
+        ...(maxDeliveryFee !== undefined && { maxDeliveryFee: maxDeliveryFee === null || maxDeliveryFee === '' ? null : Number(maxDeliveryFee) }),
+        ...(active !== undefined && { active: Boolean(active) }),
+      },
+    })
+    setImmediate(() => logAction(req.user.id, 'PRICING_RULE_UPDATE', 'PricingRule', pricingRule.id, req.body))
+    res.json({ pricingRule })
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Règle tarifaire introuvable' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.delete('/logistics/pricing-rules/:id', ...guard, async (req, res) => {
+  try {
+    await prisma.pricingRule.delete({ where: { id: Number(req.params.id) } })
+    setImmediate(() => logAction(req.user.id, 'PRICING_RULE_DELETE', 'PricingRule', Number(req.params.id), {}))
+    res.status(204).end()
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Règle tarifaire introuvable' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ─── Logistique — LOT 11 : réconciliation Comptabilité ↔ Logistique ────────
 // (arbitrage Décision 2, Option B) — les deux sources restent distinctes
 // (aucune donnée supprimée), mais deviennent enfin comparables au même

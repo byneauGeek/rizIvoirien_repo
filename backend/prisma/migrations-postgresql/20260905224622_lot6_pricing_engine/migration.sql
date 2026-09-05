@@ -186,6 +186,9 @@ CREATE TABLE "B2BTransaction" (
     "needsLogistics" BOOLEAN NOT NULL DEFAULT false,
     "deliveryAddress" TEXT,
     "deliveryFee" DOUBLE PRECISION,
+    "serviceLevel" TEXT NOT NULL DEFAULT 'STANDARD',
+    "deliveryInternalCost" DOUBLE PRECISION,
+    "deliveryMargin" DOUBLE PRECISION,
 
     CONSTRAINT "B2BTransaction_pkey" PRIMARY KEY ("id")
 );
@@ -341,6 +344,9 @@ CREATE TABLE "Order" (
     "promoCode" TEXT,
     "address" TEXT NOT NULL,
     "note" TEXT,
+    "serviceLevel" TEXT NOT NULL DEFAULT 'STANDARD',
+    "deliveryInternalCost" DOUBLE PRECISION,
+    "deliveryMargin" DOUBLE PRECISION,
     "groupId" TEXT,
     "idempotencyKey" TEXT,
     "paymentMethod" TEXT NOT NULL DEFAULT 'CASH_ON_DELIVERY',
@@ -461,6 +467,28 @@ CREATE TABLE "Zone" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Zone_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PricingRule" (
+    "id" SERIAL NOT NULL,
+    "segment" TEXT NOT NULL,
+    "serviceLevel" TEXT NOT NULL,
+    "originZoneId" INTEGER,
+    "destinationZoneId" INTEGER,
+    "basePrice" DOUBLE PRECISION NOT NULL,
+    "pricePerKg" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "pricePerKm" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "pricePerPackage" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "pricePerExtraOrigin" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "pricePerExtraStop" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "marginPct" DOUBLE PRECISION NOT NULL DEFAULT 0.20,
+    "maxDeliveryFee" DOUBLE PRECISION,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PricingRule_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1245,6 +1273,15 @@ CREATE INDEX "ShipmentEvent_shipmentId_idx" ON "ShipmentEvent"("shipmentId");
 CREATE UNIQUE INDEX "VehicleType_code_key" ON "VehicleType"("code");
 
 -- CreateIndex
+CREATE INDEX "PricingRule_originZoneId_idx" ON "PricingRule"("originZoneId");
+
+-- CreateIndex
+CREATE INDEX "PricingRule_destinationZoneId_idx" ON "PricingRule"("destinationZoneId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PricingRule_segment_serviceLevel_originZoneId_destinationZo_key" ON "PricingRule"("segment", "serviceLevel", "originZoneId", "destinationZoneId");
+
+-- CreateIndex
 CREATE INDEX "Hub_zoneId_idx" ON "Hub"("zoneId");
 
 -- CreateIndex
@@ -1537,6 +1574,12 @@ ALTER TABLE "DriverLocationHistory" ADD CONSTRAINT "DriverLocationHistory_driver
 
 -- AddForeignKey
 ALTER TABLE "ShipmentEvent" ADD CONSTRAINT "ShipmentEvent_shipmentId_fkey" FOREIGN KEY ("shipmentId") REFERENCES "Shipment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PricingRule" ADD CONSTRAINT "PricingRule_originZoneId_fkey" FOREIGN KEY ("originZoneId") REFERENCES "Zone"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PricingRule" ADD CONSTRAINT "PricingRule_destinationZoneId_fkey" FOREIGN KEY ("destinationZoneId") REFERENCES "Zone"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Hub" ADD CONSTRAINT "Hub_zoneId_fkey" FOREIGN KEY ("zoneId") REFERENCES "Zone"("id") ON DELETE SET NULL ON UPDATE CASCADE;

@@ -1,5 +1,6 @@
 const https = require('https')
 const { haversineKm } = require('../lib/gps')
+const pricingEngine = require('./pricingEngine')
 
 // Coefficient route / vol-d'oiseau pour villes africaines
 const ROAD_FACTOR = 1.4
@@ -7,6 +8,19 @@ const ROAD_FACTOR = 1.4
 function parseWeightKg(unit) {
   const m = String(unit || '').match(/^(\d+(?:\.\d+)?)\s*kg$/i)
   return m ? parseFloat(m[1]) : 1
+}
+
+// LOT 6 (Arbitrage XXX RIZ) : contrairement au catalogue B2C (Product.unit
+// est toujours un poids explicite, ex. "50kg"), une transaction B2B décrit sa
+// quantité en unité commerciale libre (kg | tonne | sac — cahier de cadrage
+// filière riz) qui n'est pas un poids en soi. Conversion approximative
+// documentée plutôt que silencieuse : 1 sac ≈ 50 kg (standard riz en Côte
+// d'Ivoire), 1 tonne = 1000 kg. Une unité inconnue retombe sur l'hypothèse
+// "sac" (la plus fréquente dans ce marché) plutôt que de bloquer le calcul.
+const B2B_UNIT_TO_KG = { kg: 1, sac: 50, tonne: 1000, tonnes: 1000 }
+function estimateB2BWeightKg(quantity, unit) {
+  const factor = B2B_UNIT_TO_KG[String(unit || '').trim().toLowerCase()] ?? B2B_UNIT_TO_KG.sac
+  return Number(quantity || 0) * factor
 }
 
 // LOT 18 (préparation production) : la politique d'usage de Nominatim (API
@@ -32,9 +46,16 @@ function throttledGeocode(address) {
 function rawGeocodeAddress(address) {
   return new Promise((resolve) => {
     const q = encodeURIComponent(`${address}, Côte d'Ivoire`)
+    // LOT 6 (Arbitrage XXX RIZ) : addressdetails=1 ajouté pour extraire la
+    // ville/commune de la destination, SANS requête supplémentaire (même
+    // appel Nominatim déjà fait pour la distance) — sert à résoudre la Zone
+    // de destination pour la tarification par zone (voir resolveZoneIdForCity
+    // ci-dessous). N'affecte pas lat/lng, donc rétro-compatible avec tous les
+    // appelants existants (ETA, haversine) qui ignorent le champ city.
+    const path = `/search?format=json&addressdetails=1&q=${q}&limit=1&countrycodes=ci`
     const options = {
       hostname: 'nominatim.openstreetmap.org',
-      path: `/search?format=json&q=${q}&limit=1&countrycodes=ci`,
+      path,
       headers: { 'User-Agent': 'RizIvoirien/1.0 (contact@rizivoirien.ci)' },
     }
     const req = https.get(options, (res) => {
@@ -43,14 +64,32 @@ function rawGeocodeAddress(address) {
       res.on('end', () => {
         try {
           const list = JSON.parse(raw)
-          if (list.length) resolve({ lat: parseFloat(list[0].lat), lng: parseFloat(list[0].lon) })
-          else resolve(null)
+          if (!list.length) return resolve(null)
+          const a = list[0].address || {}
+          const city = a.city || a.town || a.municipality || a.county || a.suburb || null
+          resolve({ lat: parseFloat(list[0].lat), lng: parseFloat(list[0].lon), city })
         } catch { resolve(null) }
       })
     })
     req.on('error', () => resolve(null))
     req.setTimeout(6000, () => { req.destroy(); resolve(null) })
   })
+}
+
+// LOT 6 : résout une Zone à partir du nom de ville renvoyé par le géocodage —
+// correspondance insensible à la casse sur Zone.city, puis Zone.name en repli
+// (une zone peut porter le nom de sa ville, ex. "Abidjan"). Retourne null si
+// aucune zone ne correspond (corridor "joker" utilisé par le moteur de
+// tarification) — jamais une erreur, la ville peut simplement ne pas encore
+// être configurée comme Zone.
+async function resolveZoneIdForCity(prisma, cityName) {
+  if (!cityName) return null
+  const zones = await prisma.zone.findMany({ where: { active: true } })
+  const norm = cityName.trim().toLowerCase()
+  const byCity = zones.find(z => z.city && z.city.trim().toLowerCase() === norm)
+  if (byCity) return byCity.id
+  const byName = zones.find(z => z.name && z.name.trim().toLowerCase() === norm)
+  return byName ? byName.id : null
 }
 
 function geocodeAddress(address) {
@@ -101,7 +140,15 @@ function calcDeliveryFee(weightKg, distanceKm, orderTotal, settings, additionalS
   return Math.round(fee)
 }
 
-async function estimateDelivery({ items, products, shopCoords, deliveryAddress, settings, additionalShops = 0, vehicleTypes = [] }) {
+// LOT 6 : prisma/segment/serviceLevel/originZoneId sont optionnels et
+// rétro-compatibles — si prisma n'est pas fourni (ou qu'aucune PricingRule
+// active ne couvre ce segment/serviceLevel), le calcul retombe entièrement
+// sur l'ancien forfait calcDeliveryFee(), comportement identique à avant ce
+// lot pour tout appelant qui ne passe pas ces nouveaux paramètres.
+async function estimateDelivery({
+  items, products, shopCoords, deliveryAddress, settings, additionalShops = 0, vehicleTypes = [],
+  prisma = null, segment = 'SMALL_MEDIUM', serviceLevel = 'STANDARD', originZoneId = null,
+}) {
   const weightKg = items.reduce((sum, item) => {
     const p = products.find(pr => pr.id === item.productId)
     return sum + parseWeightKg(p?.unit) * item.quantity
@@ -114,6 +161,7 @@ async function estimateDelivery({ items, products, shopCoords, deliveryAddress, 
 
   let distanceKm = 0
   let geocoded = false
+  let destinationZoneId = null
 
   if (shopCoords && deliveryAddress) {
     const destCoords = await geocodeAddress(deliveryAddress)
@@ -121,6 +169,7 @@ async function estimateDelivery({ items, products, shopCoords, deliveryAddress, 
       const crow = haversineKm(shopCoords.lat, shopCoords.lng, destCoords.lat, destCoords.lng)
       distanceKm = Math.round(crow * ROAD_FACTOR * 10) / 10
       geocoded = true
+      if (prisma) destinationZoneId = await resolveZoneIdForCity(prisma, destCoords.city)
     }
   }
 
@@ -132,15 +181,40 @@ async function estimateDelivery({ items, products, shopCoords, deliveryAddress, 
   const weightCost   = Math.round(weightKg   * perKg)
   const distanceCost = Math.round(distanceKm * perKm)
   const pickupCost   = Math.round(additionalShops * pickupFee)
+  const freeAbove    = s.deliveryFreeAbove   ?? 0
+
+  let pricing = null
+  if (prisma && !(freeAbove > 0 && orderTotal >= freeAbove)) {
+    pricing = await pricingEngine.computePricing(prisma, {
+      segment, serviceLevel, originZoneId, destinationZoneId,
+      weightKg, distanceKm, packages: 1, extraOrigins: additionalShops,
+    }).catch(() => null)
+  }
+
+  const deliveryFee = pricing
+    ? pricing.customerPrice
+    : calcDeliveryFee(weightKg, distanceKm, orderTotal, settings, additionalShops, vehicleTypes)
 
   return {
-    deliveryFee: calcDeliveryFee(weightKg, distanceKm, orderTotal, settings, additionalShops, vehicleTypes),
+    deliveryFee,
     weightKg:    Math.round(weightKg * 10) / 10,
     distanceKm,
     geocoded,
     additionalShops,
     breakdown: { base, weightCost, distanceCost, pickupCost },
+    // LOT 6 : présent uniquement quand une PricingRule a réellement été
+    // appliquée — permet à l'appelant (routes) de persister la décomposition
+    // coût interne / marge pour audit, sans jamais l'inventer si aucune règle
+    // n'est configurée (pricingRuleId reste alors absent).
+    pricingRuleId: pricing?.pricingRuleId ?? null,
+    internalCost: pricing?.internalCost ?? null,
+    platformMargin: pricing?.platformMargin ?? null,
+    serviceLevel,
+    destinationZoneId,
   }
 }
 
-module.exports = { parseWeightKg, haversineKm, geocodeAddress, calcDeliveryFee, estimateDelivery, ROAD_FACTOR }
+module.exports = {
+  parseWeightKg, estimateB2BWeightKg, haversineKm, geocodeAddress, calcDeliveryFee, estimateDelivery, ROAD_FACTOR,
+  resolveZoneIdForCity,
+}

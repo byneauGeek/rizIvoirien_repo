@@ -291,10 +291,19 @@ model B2BTransaction {
   // EMPLOYEE en comptabilité) tant que la tarification par zone/volume
   // (lot ultérieur) n'est pas branchée : jamais un montant inventé par le
   // système, toujours une décision explicite de qui organise la livraison.
-  needsLogistics  Boolean   @default(false)
-  deliveryAddress String?
-  deliveryFee     Float?
-  shipment        Shipment?
+  needsLogistics       Boolean   @default(false)
+  deliveryAddress      String?
+  deliveryFee          Float?
+  // LOT 6 (Arbitrage XXX RIZ) : deliveryFee peut désormais être auto-calculé
+  // via la grille PricingRule (segment=B2B_CARGO) au lieu d'être une saisie
+  // manuelle obligatoire (voir commentaire historique ci-dessus, LOT2) — la
+  // saisie manuelle reste possible (décision explicite qui prime toujours sur
+  // le calcul automatique), jamais supprimée. Mêmes champs de décomposition
+  // que Order pour la même raison.
+  serviceLevel         String    @default("STANDARD")
+  deliveryInternalCost Float?
+  deliveryMargin       Float?
+  shipment             Shipment?
 
   @@index([buyerUserId])
   @@index([sellerUserId])
@@ -498,26 +507,36 @@ model ProductHistory {
 }
 
 model Order {
-  id             Int      @id @default(autoincrement())
-  buyerId        Int
-  buyer          User     @relation("BuyerOrders", fields: [buyerId], references: [id])
-  shopId         Int
-  shop           Shop     @relation(fields: [shopId], references: [id])
-  driverId       Int?
-  driver         Driver?  @relation(fields: [driverId], references: [id])
-  status         String   @default("PENDING")
-  total          Float
-  deliveryFee    Float    @default(0)
-  discount       Float    @default(0)
-  promoCode      String?
-  address        String
-  note           String?
-  groupId        String?
-  idempotencyKey String?
-  paymentMethod  String   @default("CASH_ON_DELIVERY")
-  driverRated    Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                   Int      @id @default(autoincrement())
+  buyerId              Int
+  buyer                User     @relation("BuyerOrders", fields: [buyerId], references: [id])
+  shopId               Int
+  shop                 Shop     @relation(fields: [shopId], references: [id])
+  driverId             Int?
+  driver               Driver?  @relation(fields: [driverId], references: [id])
+  status               String   @default("PENDING")
+  total                Float
+  deliveryFee          Float    @default(0)
+  discount             Float    @default(0)
+  promoCode            String?
+  address              String
+  note                 String?
+  // LOT 6 (Arbitrage XXX RIZ) : deliveryFee reste le prix CLIENT (déjà
+  // existant). deliveryInternalCost/deliveryMargin sont la décomposition
+  // financière (coût réel plateforme / marge ou subvention) quand une
+  // PricingRule a été appliquée — null si le calcul est retombé sur l'ancien
+  // forfait (aucune règle configurée pour ce corridor). serviceLevel choisi
+  // par l'acheteur à la commande, indépendant du segment (implicite B2C =
+  // SMALL_MEDIUM ici, pas stocké car non ambigu pour ce modèle).
+  serviceLevel         String   @default("STANDARD") // ECONOMIC | STANDARD | EXPRESS
+  deliveryInternalCost Float?
+  deliveryMargin       Float?
+  groupId              String?
+  idempotencyKey       String?
+  paymentMethod        String   @default("CASH_ON_DELIVERY")
+  driverRated          Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   items         OrderItem[]
   statusHistory OrderStatusHistory[]
@@ -725,8 +744,61 @@ model Zone {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  shops Shop[]
-  hubs  Hub[]
+  shops                     Shop[]
+  hubs                      Hub[]
+  // LOT 6 (Arbitrage XXX RIZ) : une Zone peut apparaître comme origine ET
+  // comme destination dans la grille tarifaire (deux relations distinctes,
+  // sinon Prisma ne sait pas quel FK de PricingRule appartient à laquelle).
+  pricingRulesAsOrigin      PricingRule[] @relation("PricingRuleOrigin")
+  pricingRulesAsDestination PricingRule[] @relation("PricingRuleDestination")
+}
+
+// LOT 6 (Arbitrage XXX RIZ, décision "tarification par zone réellement
+// branchée") : remplace le forfait unique (base + poids + distance, LOT6 du
+// programme précédent) par une grille à 3 axes INDÉPENDANTS — SEGMENT (nature
+// du fret : B2C consommateur vs B2B cargo), SERVICE_LEVEL (rapidité choisie
+// par le client) et corridor (zone d'origine -> zone de destination). Le prix
+// client n'est jamais un pourcentage du montant de la commande — toujours
+// recalculé depuis poids/distance/colis/origines/arrêts, mais avec des
+// coefficients qui dépendent maintenant de ces 3 axes plutôt que d'être
+// globaux. originZoneId/destinationZoneId à null = joker (repli progressif :
+// corridor précis > joker), même logique que resolveMaxFee() pour VehicleType.
+// Si AUCUNE règle n'est configurée pour un (segment, serviceLevel) donné, le
+// moteur retombe sur l'ancien calcul (PlatformSettings + VehicleType) —
+// jamais de rupture, migration progressive pièce par pièce de la grille.
+model PricingRule {
+  id           Int    @id @default(autoincrement())
+  segment      String // SMALL_MEDIUM | B2B_CARGO
+  serviceLevel String // ECONOMIC | STANDARD | EXPRESS
+
+  originZoneId      Int?
+  originZone        Zone? @relation("PricingRuleOrigin", fields: [originZoneId], references: [id])
+  destinationZoneId Int?
+  destinationZone   Zone? @relation("PricingRuleDestination", fields: [destinationZoneId], references: [id])
+
+  // Coût interne (ce que la livraison coûte réellement à la plateforme) :
+  basePrice           Float
+  pricePerKg          Float    @default(0)
+  pricePerKm          Float    @default(0)
+  pricePerPackage     Float    @default(0) // au-delà du 1er colis
+  pricePerExtraOrigin Float    @default(0) // ramassages multiples (paniers multi-boutiques, LOT2 B2B)
+  pricePerExtraStop   Float    @default(0) // multi-arrêts (LOT7 à venir)
+  // Prix CLIENT = coût interne * (1 + marginPct) — jamais l'inverse (le coût
+  // interne n'est jamais dérivé du prix affiché). Une marge négative est une
+  // subvention plateforme assumée, pas une erreur.
+  marginPct           Float    @default(0.20)
+  maxDeliveryFee      Float?
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // NB : l'unicité ne bloque pas deux jokers (originZoneId ET
+  // destinationZoneId null) pour le même segment+serviceLevel — NULL n'est
+  // jamais égal à NULL dans une contrainte UNIQUE SQL. Ce cas (rare, erreur de
+  // configuration admin) est contrôlé côté applicatif (routes admin), pas ici.
+  @@unique([segment, serviceLevel, originZoneId, destinationZoneId])
+  @@index([originZoneId])
+  @@index([destinationZoneId])
 }
 
 model Hub {

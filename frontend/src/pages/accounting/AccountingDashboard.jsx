@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutDashboard, Receipt, CreditCard, Coins, Wallet, Users, FileBarChart, LogOut, ChevronRight, Menu, X, AlertCircle, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Receipt, CreditCard, Coins, Wallet, Users, FileBarChart, ShieldAlert, LogOut, ChevronRight, Menu, X, AlertCircle, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { api } from '../../api/client'
 import OverviewTab from './OverviewTab'
@@ -11,7 +11,12 @@ import DebtsReceivablesTab from './DebtsReceivablesTab'
 import TreasuryTab from './TreasuryTab'
 import RemunerationsTab from './RemunerationsTab'
 import ReportsTab from './ReportsTab'
+import ControlsTab from './ControlsTab'
 
+// `permission` : une seule permission requise. `permissions` : visible si
+// l'utilisateur a AU MOINS UNE d'entre elles (Contrôles réunit deux familles
+// de permissions indépendantes — audit et rapprochement — qui peuvent être
+// accordées séparément).
 const TAB_DEFS = [
   { id: 'overview',        label: 'Vue d\'ensemble',   icon: LayoutDashboard, permission: 'accounting.view' },
   { id: 'transactions',    label: 'Transactions',      icon: Receipt,         permission: 'accounting.transactions.view' },
@@ -20,7 +25,10 @@ const TAB_DEFS = [
   { id: 'treasury',        label: 'Trésorerie',        icon: Wallet,          permission: 'accounting.treasury.view' },
   { id: 'remunerations',   label: 'Rémunérations',     icon: Users,           permission: 'accounting.payroll.view' },
   { id: 'reports',         label: 'Rapports',          icon: FileBarChart,    permission: 'accounting.reports.view' },
+  { id: 'controls',        label: 'Contrôles',         icon: ShieldAlert,     permissions: ['accounting.audit.view', 'accounting.reconciliation.view'] },
 ]
+
+const tabAllowed = (t, granted) => t.permission ? granted.includes(t.permission) : t.permissions.some(p => granted.includes(p))
 
 export default function AccountingDashboard() {
   const { user, logout } = useAuth()
@@ -53,7 +61,7 @@ export default function AccountingDashboard() {
     )
   }
 
-  const visibleTabs = TAB_DEFS.filter(t => access.permissions.includes(t.permission))
+  const visibleTabs = TAB_DEFS.filter(t => tabAllowed(t, access.permissions))
   const activeTab = visibleTabs.find(t => t.id === tab) ? tab : (visibleTabs[0]?.id || null)
   const selectTab = (id) => { setTab(id); setMenuOpen(false) }
   const navigateIfAllowed = (id) => { if (visibleTabs.some(t => t.id === id)) selectTab(id) }
@@ -149,6 +157,7 @@ export default function AccountingDashboard() {
             {activeTab === 'treasury'       && <TreasuryTab permissions={access.permissions} />}
             {activeTab === 'remunerations'  && <RemunerationsTab permissions={access.permissions} />}
             {activeTab === 'reports'        && <ReportsTab permissions={access.permissions} />}
+            {activeTab === 'controls'       && <ControlsTab permissions={access.permissions} />}
           </motion.div>
         </AnimatePresence>
       </main>

@@ -839,6 +839,9 @@ model FinancialTransaction {
   createdBy         Int
   validatedBy       Int?
   validatedAt       DateTime?
+  reconciled        Boolean          @default(false) // rapprochement bancaire (LOT 7, §28)
+  reconciledAt      DateTime?
+  reconciledBy      Int?
   date              DateTime         @default(now())
   createdAt         DateTime         @default(now())
 
@@ -848,6 +851,7 @@ model FinancialTransaction {
   @@index([accountId])
   @@index([beneficiaryUserId])
   @@index([date])
+  @@index([reconciled])
 }
 
 model Debt {

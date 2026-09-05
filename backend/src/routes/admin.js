@@ -5,6 +5,7 @@ const { logAction } = require('../services/adminLog')
 const { notify } = require('../services/notifications')
 const { pushToUser } = require('../services/sse')
 const { computeScore } = require('../services/assignmentEngine')
+const { isFreshLocation, haversineKm } = require('../lib/gps')
 const { getSettings, driverRate } = require('../lib/settings')
 const deliveryLifecycle = require('../services/deliveryLifecycle')
 
@@ -189,6 +190,12 @@ router.get('/orders', ...guard, async (req, res) => {
 router.get('/orders/:id/candidates', ...guard, async (req, res) => {
   try {
     const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
+    const order = await prisma.order.findUnique({
+      where: { id: Number(req.params.id) },
+      select: { shop: { select: { latitude: true, longitude: true } } },
+    })
+    const shopLat = order?.shop?.latitude
+    const shopLng = order?.shop?.longitude
     const drivers = await prisma.driver.findMany({
       where: {
         online: true,
@@ -196,10 +203,16 @@ router.get('/orders/:id/candidates', ...guard, async (req, res) => {
         status: 'ACTIVE',
         rating: { gte: settings?.minDriverRating ?? 3.5 },
       },
-      include: { user: { select: { id: true, name: true, phone: true } } },
+      include: { user: { select: { id: true, name: true, phone: true } }, currentLocation: true },
     })
     const scored = drivers
-      .map(d => ({ ...d, score: computeScore(d) }))
+      .map(d => {
+        let distanceKm = null
+        if (shopLat != null && shopLng != null && d.currentLocation && isFreshLocation(d.currentLocation.updatedAt)) {
+          distanceKm = haversineKm(shopLat, shopLng, d.currentLocation.lat, d.currentLocation.lng)
+        }
+        return { ...d, distanceKm, score: computeScore(d, distanceKm) }
+      })
       .sort((a, b) => b.score - a.score)
     res.json({ candidates: scored })
   } catch (e) {

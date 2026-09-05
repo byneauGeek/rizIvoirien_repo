@@ -1,11 +1,18 @@
 const prisma = require('../lib/prisma')
 const { pushToUser } = require('./sse')
+const { isFreshLocation, haversineKm } = require('../lib/gps')
 
-const computeScore = (driver) =>
+// distanceKm optionnel (LOT5) : absent pour tout appelant qui ne le calcule
+// pas (ex. admin.js candidates avant cette évolution) — dans ce cas le score
+// est inchangé (bonus de proximité neutre à 0), pas pénalisé. Bonus maximal
+// à distance ~0, dégressif jusqu'à 15 km puis nul au-delà — poids comparable
+// à celui de la note (0.4) pour que la proximité pèse réellement sur le choix.
+const computeScore = (driver, distanceKm = null) =>
   (driver.plan === 'PREMIUM' ? 0.3 : 0) +
   (driver.rating / 5) * 0.4 +
   driver.acceptanceRate * 0.35 +
-  Math.min(driver.totalDeliveries / 100, 1) * 0.25
+  Math.min(driver.totalDeliveries / 100, 1) * 0.25 +
+  (distanceKm == null ? 0 : Math.max(0, 1 - Math.min(distanceKm, 15) / 15) * 0.4)
 
 // ── Vérification des seuils de pénalité ──────────────────────────────────────
 async function applyPenaltyAndCheck(driverId, settings) {
@@ -94,7 +101,19 @@ async function assignOrder(orderId) {
     return null
   }
 
-  const excludeDriverIds = existing ? [existing.driverId] : []
+  // Exclusion CUMULATIVE sur tout l'historique de la commande (LOT5) : DriverOffer
+  // n'a qu'une ligne par commande (réécrite à chaque réaffectation), donc se fier
+  // à elle seule ne permet d'exclure que le tout dernier livreur sollicité, pas
+  // ceux des tentatives précédentes — qui pourraient sinon être re-proposés.
+  const history = await prisma.driverOfferHistory.findMany({ where: { orderId }, select: { driverId: true } })
+  const excludeDriverIds = [...new Set(history.map(h => h.driverId))]
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { shop: { select: { latitude: true, longitude: true } } },
+  })
+  const shopLat = order?.shop?.latitude
+  const shopLng = order?.shop?.longitude
 
   const drivers = await prisma.driver.findMany({
     where: {
@@ -103,11 +122,18 @@ async function assignOrder(orderId) {
       id: { notIn: excludeDriverIds },
       rating: { gte: settings?.minDriverRating ?? 3.5 },
     },
+    include: { currentLocation: true },
   })
 
   if (!drivers.length) return null
 
-  const scored = drivers.map(d => ({ ...d, score: computeScore(d) })).sort((a, b) => b.score - a.score)
+  const scored = drivers.map(d => {
+    let distanceKm = null
+    if (shopLat != null && shopLng != null && d.currentLocation && isFreshLocation(d.currentLocation.updatedAt)) {
+      distanceKm = haversineKm(shopLat, shopLng, d.currentLocation.lat, d.currentLocation.lng)
+    }
+    return { ...d, distanceKm, score: computeScore(d, distanceKm) }
+  }).sort((a, b) => b.score - a.score)
   const best = scored[0]
 
   const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000)
@@ -122,6 +148,7 @@ async function assignOrder(orderId) {
       data: { orderId, driverId: best.id, status: 'PENDING', attempt, expiresAt },
     })
   }
+  await prisma.driverOfferHistory.create({ data: { orderId, driverId: best.id } })
 
   // Charger l'offre complète pour la notification SSE
   try {

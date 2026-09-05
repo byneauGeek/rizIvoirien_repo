@@ -492,6 +492,16 @@ CREATE TABLE "DriverOffer" (
 );
 
 -- CreateTable
+CREATE TABLE "DriverOfferHistory" (
+    "id" SERIAL NOT NULL,
+    "orderId" INTEGER NOT NULL,
+    "driverId" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DriverOfferHistory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "DriverMetric" (
     "id" SERIAL NOT NULL,
     "driverId" INTEGER NOT NULL,
@@ -1179,6 +1189,9 @@ CREATE INDEX "DriverCurrentLocation_orderId_idx" ON "DriverCurrentLocation"("ord
 
 -- CreateIndex
 CREATE UNIQUE INDEX "DriverOffer_orderId_key" ON "DriverOffer"("orderId");
+
+-- CreateIndex
+CREATE INDEX "DriverOfferHistory_orderId_idx" ON "DriverOfferHistory"("orderId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "DriverMetric_driverId_month_year_key" ON "DriverMetric"("driverId", "month", "year");

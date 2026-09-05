@@ -695,6 +695,21 @@ model DriverOffer {
   createdAt DateTime @default(now())
 }
 
+// Logistique — LOT 5 : historique append-only de tous les livreurs à qui une
+// commande a été proposée. DriverOffer est unique par commande (une seule
+// ligne, réécrite à chaque réaffectation) donc ne conserve QUE le dernier
+// livreur sollicité — assignOrder() ne pouvait exclure que lui, pas
+// l'historique complet, ce qui pouvait re-solliciter un livreur ayant déjà
+// refusé/expiré 2 tentatives plus tôt. Ce journal corrige ça.
+model DriverOfferHistory {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  driverId  Int
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+}
+
 model DriverMetric {
   id         Int      @id @default(autoincrement())
   driverId   Int

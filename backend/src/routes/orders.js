@@ -556,8 +556,9 @@ router.post('/:id/rate-driver', authenticate, requireRole('BUYER'), async (req, 
 // survit à un redémarrage serveur) au lieu du Map en mémoire de sse.js.
 // Une position vieille de plus de 10 min est traitée comme absente — même
 // seuil que l'ancienne purge automatique de sse.js, appliqué ici à la lecture
-// plutôt que par un job de nettoyage périodique.
-const GPS_STALE_MS = 10 * 60 * 1000
+// plutôt que par un job de nettoyage périodique. Seuil partagé avec le
+// moteur d'affectation (LOT5) via lib/gps.js.
+const { isFreshLocation } = require('../lib/gps')
 
 router.get('/:id/track', authenticate, async (req, res) => {
   try {
@@ -575,7 +576,7 @@ router.get('/:id/track', authenticate, async (req, res) => {
     const location = await prisma.driverCurrentLocation.findFirst({
       where: { driverId: order.driverId, orderId: order.id },
     })
-    const fresh = location && (Date.now() - new Date(location.updatedAt).getTime()) < GPS_STALE_MS
+    const fresh = isFreshLocation(location?.updatedAt)
     const tracking = fresh ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy, orderId: order.id, ts: new Date(location.updatedAt).getTime() } : null
 
     res.json({ tracking, status: order.status })

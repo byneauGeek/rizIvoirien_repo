@@ -622,7 +622,8 @@ model Shipment {
   deliveryCodeAttempts    Int     @default(0)
   deliveryProofDistanceKm Float?
 
-  events ShipmentEvent[]
+  events             ShipmentEvent[]
+  verificationTokens DeliveryVerificationToken[]
 
   @@index([driverId])
   @@index([status])
@@ -631,6 +632,28 @@ model Shipment {
   // table Shipment — sans cet index composite, une table qui grossit force
   // un scan complet à chaque consultation du tableau de bord.
   @@index([status, updatedAt])
+}
+
+// LOT 3 (Arbitrage XXX RIZ) : QR dynamique — mécanisme PRINCIPAL de preuve de
+// livraison, l'OTP (deliveryCode, LOT9) devenant son fallback contrôlé.
+// `token` : valeur aléatoire opaque (32 octets, hex), PAS l'id du shipment ni
+// aucun identifiant exploitable — c'est la valeur encodée dans le QR affiché
+// à l'acheteur. Conservée en clair (pas hachée) : elle doit pouvoir être
+// re-servie à l'acheteur à chaque poll de /orders/:id/track (LOT8, toutes les
+// 10s) tant qu'elle est active, ce qu'un hash à sens unique interdirait —
+// même compromis déjà accepté pour deliveryCode (LOT9). La sécurité vient de
+// la longueur (non devinable), de l'expiration courte (qrTokenTtlMinutes) et
+// de l'usage unique (usedAt), jamais exposée au livreur (voir drivers.js).
+model DeliveryVerificationToken {
+  id         Int       @id @default(autoincrement())
+  shipmentId Int
+  shipment   Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  token      String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([shipmentId])
 }
 
 // LOT 9 (arbitrage Décision 4) : historique GPS, absent jusqu'ici (seule la
@@ -885,6 +908,9 @@ model PlatformSettings {
   penaltyWarn1Rate        Float    @default(0.70)
   penaltyWarn2Rate        Float    @default(0.50)
   penaltySuspendRate      Float    @default(0.30)
+  // LOT 3 (Arbitrage XXX RIZ) : durée de vie du QR dynamique de preuve de
+  // livraison — jamais codée en dur (même principe que offerExpiryMin).
+  qrTokenTtlMinutes       Int      @default(15)
   // ── Général ───────────────────────────────────────
   autoValidateOrders      Boolean  @default(true)
   maintenanceMode         Boolean  @default(false)

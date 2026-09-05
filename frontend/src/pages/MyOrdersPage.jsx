@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext'
 import { STATUS_LABELS, STATUS_COLORS, STATUS_DOT, fmt, fmtDate, fmtOrderId } from '../utils/status'
 import { usePageTitle } from '../hooks/usePageTitle'
 import DeliveryMap from '../components/orders/DeliveryMap'
+import { QRCodeSVG } from 'qrcode.react'
 
 const STEPS = ['CONFIRMED', 'EN_PREPARATION', 'PRET', 'IN_TRANSIT', 'DELIVERED']
 const STEP_LABELS = {
@@ -45,14 +46,17 @@ const DISPUTE_STATUS = {
 // LOT 8 (Logistique) : conserve désormais toute la réponse (eta, destination
 // géocodée pour la carte), pas seulement la position du livreur.
 function useTracking(orderId, active) {
-  const [state, setState] = useState({ tracking: null, eta: null, destination: null, deliveryCode: null })
+  const [state, setState] = useState({ tracking: null, eta: null, destination: null, deliveryCode: null, qrToken: null, shipmentStatus: null })
 
   useEffect(() => {
-    if (!active || !orderId) { setState({ tracking: null, eta: null, destination: null, deliveryCode: null }); return }
+    if (!active || !orderId) { setState({ tracking: null, eta: null, destination: null, deliveryCode: null, qrToken: null, shipmentStatus: null }); return }
 
     const poll = () => {
       api.get(`/orders/${orderId}/track`)
-        .then(data => setState({ tracking: data.tracking || null, eta: data.eta || null, destination: data.destination || null, deliveryCode: data.deliveryCode || null }))
+        .then(data => setState({
+          tracking: data.tracking || null, eta: data.eta || null, destination: data.destination || null,
+          deliveryCode: data.deliveryCode || null, qrToken: data.qrToken || null, shipmentStatus: data.shipmentStatus || null,
+        }))
         .catch(() => {})
     }
     poll()
@@ -63,20 +67,39 @@ function useTracking(orderId, active) {
   return state
 }
 
+// LOT 3 (Arbitrage XXX RIZ) : QR dynamique — mécanisme PRINCIPAL de preuve de
+// livraison une fois le livreur arrivé (Shipment.status === 'ARRIVED'). Le
+// code OTP (LOT9) reste affiché en dessous comme solution de secours
+// contrôlée, jamais retiré — le backend accepte les deux indépendamment.
+function QrCodeBadge({ qrToken, shipmentStatus }) {
+  if (!qrToken) return null
+  return (
+    <div className="mt-2 flex flex-col items-center gap-2 bg-safran/10 border border-safran/30 rounded-xl px-3 py-3">
+      <p className="font-dm text-xs text-charcoal/70 text-center">
+        {shipmentStatus === 'ARRIVED' ? 'Votre livreur est arrivé — présentez ce QR :' : 'Code de vérification de livraison :'}
+      </p>
+      <div className="bg-white p-2 rounded-lg">
+        <QRCodeSVG value={qrToken} size={140} data-testid="delivery-qr" />
+      </div>
+    </div>
+  )
+}
+
 // LOT 9 : code de preuve de livraison à communiquer au livreur — affiché quel
-// que soit l'état du GPS (le code est indépendant de la position).
+// que soit l'état du GPS (le code est indépendant de la position). LOT 3 :
+// devient le secours du QR ci-dessus, toujours disponible en parallèle.
 function DeliveryCodeBadge({ code }) {
   if (!code) return null
   return (
-    <div className="mt-2 flex items-center justify-between gap-2 bg-safran/10 border border-safran/30 rounded-xl px-3 py-2">
-      <p className="font-dm text-xs text-charcoal/70">Code à communiquer au livreur à la remise :</p>
+    <div className="mt-2 flex items-center justify-between gap-2 bg-charcoal/5 border border-charcoal/10 rounded-xl px-3 py-2">
+      <p className="font-dm text-xs text-charcoal/60">Code de secours (si le QR ne peut pas être scanné) :</p>
       <span data-testid="delivery-code" className="font-syne text-lg font-bold tracking-[0.3em] text-charcoal">{code}</span>
     </div>
   )
 }
 
 function TrackingBanner({ orderId }) {
-  const { tracking, eta, destination, deliveryCode } = useTracking(orderId, true)
+  const { tracking, eta, destination, deliveryCode, qrToken, shipmentStatus } = useTracking(orderId, true)
 
   if (!tracking) return (
     <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-2xl">
@@ -84,6 +107,7 @@ function TrackingBanner({ orderId }) {
         <Truck size={14} className="text-blue-500 shrink-0" />
         <p className="font-dm text-xs text-blue-700">Votre livreur est en route — position en cours de récupération…</p>
       </div>
+      <QrCodeBadge qrToken={qrToken} shipmentStatus={shipmentStatus} />
       <DeliveryCodeBadge code={deliveryCode} />
     </div>
   )
@@ -113,6 +137,7 @@ function TrackingBanner({ orderId }) {
         </div>
       </div>
       <DeliveryMap driverPosition={{ lat: tracking.lat, lng: tracking.lng }} destination={destination} />
+      <QrCodeBadge qrToken={qrToken} shipmentStatus={shipmentStatus} />
       <DeliveryCodeBadge code={deliveryCode} />
     </div>
   )

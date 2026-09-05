@@ -7,6 +7,7 @@ import {
   Store, User, Clock, ChevronDown, ChevronUp, AlertCircle,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Html5Qrcode } from 'html5-qrcode'
 
 const PAYMENT_LABELS = {
   CASH_ON_DELIVERY: { label: 'Paiement en espèces à la livraison', icon: Banknote, color: 'bg-amber-50 text-amber-800 border-amber-200' },
@@ -51,6 +52,65 @@ function Section({ title, children, defaultOpen = true }) {
   )
 }
 
+// LOT 3 (Arbitrage XXX RIZ) : scanner de QR — absent jusqu'ici, tout se
+// faisait par saisie de code. html5-qrcode gère la demande de permission
+// caméra et le décodage ; on ne fait que réagir au premier scan valide et
+// arrêter immédiatement le flux vidéo (`hasScanned`, sinon la caméra
+// continue de décoder pendant l'appel réseau et peut redéclencher onScan
+// plusieurs fois pour le même QR).
+function QrScanner({ onScan, onClose }) {
+  const hasScannedRef = useRef(false)
+  // html5-qrcode's stop() peut lever une exception SYNCHRONE (pas seulement
+  // une promesse rejetée) si le scanner n'a jamais réellement démarré (ex.
+  // permission caméra refusée) — un .catch() seul ne protège pas contre ça,
+  // et une exception non interceptée dans un useEffect fait planter tout
+  // l'arbre React (constaté en le testant : ErrorBoundary déclenchée,
+  // "Cannot stop, scanner is not running or paused"). D'où ce garde-fou
+  // explicite (hasStartedRef) EN PLUS d'un try/catch synchrone.
+  const hasStartedRef = useRef(false)
+  const [error, setError] = useState(null)
+
+  const safeStop = (qr) => {
+    if (!hasStartedRef.current) return
+    try { qr.stop().catch(() => {}) } catch { /* déjà arrêté ou jamais démarré */ }
+  }
+
+  useEffect(() => {
+    const qr = new Html5Qrcode('qr-reader')
+    let stopped = false
+    qr.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: 220 },
+      (decodedText) => {
+        if (hasScannedRef.current || stopped) return
+        hasScannedRef.current = true
+        safeStop(qr)
+        onScan(decodedText)
+      },
+      () => {} // pas de QR détecté sur cette frame — pas une erreur
+    ).then(() => { hasStartedRef.current = true })
+      .catch(() => setError('Caméra indisponible — vérifiez les autorisations du navigateur.'))
+
+    return () => { stopped = true; safeStop(qr) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div className="bg-white rounded-3xl shadow-card p-5 space-y-3">
+      <p className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50">Scanner le QR du client</p>
+      {error ? (
+        <p className="font-dm text-sm text-red-600">{error}</p>
+      ) : (
+        <div id="qr-reader" className="rounded-2xl overflow-hidden" />
+      )}
+      <button onClick={onClose}
+        className="w-full font-syne font-bold text-sm py-3 rounded-2xl border-2 border-charcoal/10 text-charcoal/60 hover:bg-charcoal/5 transition-colors">
+        Annuler
+      </button>
+    </div>
+  )
+}
+
 export default function DeliveryTab({ onDelivered }) {
   const [order, setOrder] = useState(null)
   const [commission, setCommission] = useState(0.15)
@@ -63,13 +123,20 @@ export default function DeliveryTab({ onDelivered }) {
   const [failReason, setFailReason] = useState('')
   const [gpsActive, setGpsActive] = useState(false)
   const [gpsDenied, setGpsDenied] = useState(false)
+  // LOT 3 (Arbitrage XXX RIZ) : sous-état Shipment (ARRIVED/QR_SCANNED),
+  // invisible jusqu'ici côté driver — GET /drivers/active-delivery ne
+  // renvoyait que Order.status, insuffisant pour savoir si le QR a déjà été
+  // généré ou scanné.
+  const [shipmentStatus, setShipmentStatus] = useState(null)
+  const [showScanner, setShowScanner] = useState(false)
   const gpsRef = useRef(null)
 
   const load = useCallback(() => {
     api.get('/drivers/active-delivery')
-      .then(({ order, commission }) => {
+      .then(({ order, commission, shipmentStatus }) => {
         setOrder(order)
         setCommission(commission)
+        setShipmentStatus(shipmentStatus)
       })
       .catch(() => setOrder(null))
       .finally(() => setLoading(false))
@@ -155,6 +222,30 @@ export default function DeliveryTab({ onDelivered }) {
       setShowFailInput(false); setFailReason('')
       load()
     } catch (err) { setAdvanceError(err.message || 'Erreur lors du signalement') }
+    finally { setUpdating(false) }
+  }
+
+  // LOT 3 : mécanisme PRINCIPAL de preuve de livraison — génère le QR côté
+  // serveur, affiché à l'acheteur (jamais renvoyé ici). Le code de secours
+  // (OTP, LOT9) reste accessible indépendamment via showOtpInput.
+  const markArrived = async () => {
+    if (!order) return
+    setUpdating(true); setAdvanceError(null)
+    try {
+      await api.put(`/drivers/delivery/${order.id}/status`, { status: 'ARRIVED' })
+      load()
+    } catch (err) { setAdvanceError(err.message || 'Erreur lors de la mise à jour') }
+    finally { setUpdating(false) }
+  }
+
+  const onQrScanned = async (decodedText) => {
+    if (!order) return
+    setUpdating(true); setAdvanceError(null)
+    try {
+      await api.put(`/drivers/delivery/${order.id}/status`, { status: 'QR_SCANNED', qrToken: decodedText })
+      setShowScanner(false)
+      load()
+    } catch (err) { setAdvanceError(err.message || 'QR invalide ou expiré'); setShowScanner(false) }
     finally { setUpdating(false) }
   }
 
@@ -347,18 +438,22 @@ export default function DeliveryTab({ onDelivered }) {
       )}
 
       {/* ── CTA principal ──
-          Pas de mode="wait" ici : sur cette bascule bouton/formulaire OTP, une
-          transition qui attendrait la fin de l'animation de sortie avant de
-          monter la suivante peut rester bloquée si l'onglet est mis en arrière-
-          plan (le livreur qui bascule sur ses SMS pour lire le code, cas
-          fréquent) — les navigateurs mobiles limitent alors requestAnimationFrame
-          et l'animation de sortie ne se termine jamais, empêchant le formulaire
-          d'apparaître. Les 3 branches restent mutuellement exclusives (mêmes
-          conditions), un fondu concurrent suffit. */}
-      <AnimatePresence>
+          Ni mode="wait", ni même `exit` sur ces panneaux : AnimatePresence
+          retarde le démontage d'un élément SORTANT jusqu'à la fin de SA
+          PROPRE animation `exit`, indépendamment du mode — si cette
+          animation ne se termine jamais (onglet en arrière-plan, livreur qui
+          bascule sur ses SMS pour lire le code ; constaté aussi en testant :
+          l'ancien panneau reste affiché EN PLUS du nouveau, indéfiniment,
+          même une fois le state React correct), le livreur reste bloqué sur
+          un écran obsolète. Ces panneaux sont des étapes FONCTIONNELLES d'un
+          parcours de livraison, pas une décoration — la fiabilité prime sur
+          le fondu de sortie. `initial`/`animate` suffisent pour une entrée
+          soignée ; pas besoin d'AnimatePresence du tout sans `exit` à
+          coordonner. */}
+      <>
         {!isDelivered && canAdvance && showOtpInput && (
           <motion.div key="otp"
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-3xl shadow-card p-5 space-y-3">
             <p className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50">Code de livraison</p>
             <p className="font-dm text-sm text-charcoal/60">Demandez au client le code à 4 chiffres reçu par e-mail.</p>
@@ -385,7 +480,7 @@ export default function DeliveryTab({ onDelivered }) {
 
         {!isDelivered && canAdvance && showFailInput && (
           <motion.div key="fail"
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-3xl shadow-card p-5 space-y-3">
             <p className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50">Signaler un échec de livraison</p>
             <textarea
@@ -408,21 +503,52 @@ export default function DeliveryTab({ onDelivered }) {
           </motion.div>
         )}
 
-        {!isDelivered && canAdvance && !showOtpInput && !showFailInput && (
-          <motion.div key="cta" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-2">
-            <button onClick={advance} disabled={updating}
-              className={`w-full flex items-center justify-center gap-2 font-syne font-bold text-base py-4 rounded-2xl transition-all
-                ${nextStatus === 'DELIVERED'
-                  ? 'bg-green-500 text-cream hover:bg-green-600'
-                  : 'bg-forest text-cream hover:bg-forest-light'
-                } disabled:opacity-60`}>
-              {updating
-                ? <div className="w-5 h-5 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
-                : nextStatus === 'DELIVERED'
-                  ? <><CheckCircle2 size={20} /> Confirmer la livraison</>
-                  : <><Package size={20} /> Colis récupéré · En route</>
-              }
-            </button>
+        {/* LOT 3 : scanner de QR — remplace temporairement le CTA pendant le scan. */}
+        {!isDelivered && canAdvance && showScanner && (
+          <motion.div key="scanner" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+            <QrScanner onScan={onQrScanned} onClose={() => setShowScanner(false)} />
+          </motion.div>
+        )}
+
+        {!isDelivered && canAdvance && !showOtpInput && !showFailInput && !showScanner && (
+          <motion.div key="cta" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
+            {nextStatus !== 'DELIVERED' ? (
+              <button onClick={advance} disabled={updating}
+                className="w-full flex items-center justify-center gap-2 font-syne font-bold text-base py-4 rounded-2xl bg-forest text-cream hover:bg-forest-light transition-all disabled:opacity-60">
+                {updating
+                  ? <div className="w-5 h-5 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
+                  : <><Package size={20} /> Colis récupéré · En route</>}
+              </button>
+            ) : shipmentStatus === 'ARRIVED' ? (
+              <button onClick={() => setShowScanner(true)} disabled={updating}
+                className="w-full flex items-center justify-center gap-2 font-syne font-bold text-base py-4 rounded-2xl bg-green-500 text-cream hover:bg-green-600 transition-all disabled:opacity-60">
+                <CheckCircle2 size={20} /> Scanner le QR du client
+              </button>
+            ) : shipmentStatus === 'QR_SCANNED' ? (
+              <>
+                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-2xl px-4 py-3">
+                  <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+                  <p className="font-dm text-sm text-green-700">QR vérifié — finalisez avec le code de secours ci-dessous.</p>
+                </div>
+                <button onClick={() => setShowOtpInput(true)} disabled={updating}
+                  className="w-full flex items-center justify-center gap-2 font-syne font-bold text-base py-4 rounded-2xl bg-green-500 text-cream hover:bg-green-600 transition-all disabled:opacity-60">
+                  <CheckCircle2 size={20} /> Confirmer la livraison
+                </button>
+              </>
+            ) : (
+              <button onClick={markArrived} disabled={updating}
+                className="w-full flex items-center justify-center gap-2 font-syne font-bold text-base py-4 rounded-2xl bg-forest text-cream hover:bg-forest-light transition-all disabled:opacity-60">
+                {updating
+                  ? <div className="w-5 h-5 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
+                  : <><MapPin size={20} /> Je suis arrivé</>}
+              </button>
+            )}
+            {nextStatus === 'DELIVERED' && shipmentStatus !== 'QR_SCANNED' && (
+              <button onClick={() => setShowOtpInput(true)}
+                className="w-full text-center font-dm text-xs text-charcoal/40 hover:text-forest transition-colors py-1">
+                Confirmer avec un code de secours à la place
+              </button>
+            )}
             {nextStatus === 'DELIVERED' && (
               <button onClick={() => setShowFailInput(true)}
                 className="w-full text-center font-dm text-xs text-charcoal/40 hover:text-red-500 transition-colors py-1">
@@ -443,7 +569,7 @@ export default function DeliveryTab({ onDelivered }) {
             </p>
           </motion.div>
         )}
-      </AnimatePresence>
+      </>
     </div>
   )
 }

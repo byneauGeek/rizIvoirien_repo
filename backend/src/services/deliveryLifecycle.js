@@ -12,13 +12,25 @@
 // admin.js, commercial.js) continuent de fonctionner sans modification —
 // Shipment ne les remplace pas, il devient l'unique écrivain.
 const prisma = require('../lib/prisma')
+const crypto = require('crypto')
 const { getSettings, driverRate } = require('../lib/settings')
 const { geocodeAddress } = require('./deliveryService')
 const { isFreshLocation, haversineKm } = require('../lib/gps')
 const stockEngine = require('./stockEngine')
 const { reportBackgroundError } = require('../lib/logger')
 
-const SHIPMENT_STATUSES = ['PENDING_PICKUP', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'FAILED', 'CANCELLED']
+// LOT 3 (Arbitrage XXX RIZ) : ARRIVED (le livreur est sur place, un QR est
+// généré) et QR_SCANNED (le livreur a scanné le QR affiché par l'acheteur)
+// s'insèrent AVANT DELIVERED plutôt que de renommer ce dernier — DELIVERED
+// reste le statut terminal lu directement à 23 endroits (drivers.js, gains,
+// dashboard admin LOT14/15) ; le renommer aurait cassé tout ça sans bénéfice
+// fonctionnel. QR_SCANNED n'est PAS terminal : la confirmation acheteur
+// (LOT 4/5) s'ajoutera entre QR_SCANNED et DELIVERED. En attendant, l'OTP
+// (deliveryCode, LOT9) reste un chemin complet et indépendant vers DELIVERED
+// depuis n'importe quel statut non terminal — c'est littéralement le
+// "fallback contrôlé" demandé, sans code dupliqué : checkDeliveryOtp() ne
+// regarde jamais le statut courant, seulement qu'il n'est pas déjà final.
+const SHIPMENT_STATUSES = ['PENDING_PICKUP', 'PICKED_UP', 'IN_TRANSIT', 'ARRIVED', 'QR_SCANNED', 'DELIVERED', 'FAILED', 'CANCELLED']
 
 // LOT 9 : preuve de livraison — était totalement absente avant ce lot (aucune
 // vérification à DELIVERED). Code à 4 chiffres, verrouillé après quelques
@@ -33,6 +45,26 @@ function invalidOtpError(message) {
   const err = new Error(message)
   err.code = 'INVALID_OTP'
   return err
+}
+
+function invalidQrError(message) {
+  const err = new Error(message)
+  err.code = 'INVALID_QR'
+  return err
+}
+
+// LOT 3 : valide un QR scanné par le livreur. Contrairement à checkDeliveryOtp,
+// pas de compteur de tentatives à faire survivre à un rollback (un token est
+// exact-match, pas un code court devinable par essais successifs) — la
+// vérification peut donc rester entièrement DANS la transaction, pas de
+// phase séparée avant ouverture.
+async function validateQrToken(tx, { shipmentId, qrToken }) {
+  if (!qrToken) throw invalidQrError('Code QR manquant')
+  const record = await tx.deliveryVerificationToken.findUnique({ where: { token: qrToken } })
+  if (!record || record.shipmentId !== shipmentId) throw invalidQrError('QR invalide pour cette livraison')
+  if (record.usedAt) throw invalidQrError('Ce QR a déjà été utilisé')
+  if (record.expiresAt < new Date()) throw invalidQrError('QR expiré — demandez au client de le réafficher')
+  await tx.deliveryVerificationToken.update({ where: { id: record.id }, data: { usedAt: new Date() } })
 }
 
 // LOT 8 : géocodage paresseux de l'adresse de dépose, déclenché par la
@@ -174,7 +206,7 @@ async function advanceShipment(client, params) {
 }
 
 async function advanceShipmentInTransaction(tx, params, settings) {
-  const { status, actorId = null, note = null, failureReason = null } = params
+  const { status, actorId = null, note = null, failureReason = null, qrToken = null } = params
   if (!SHIPMENT_STATUSES.includes(status)) throw new Error(`Statut de livraison invalide : ${status}`)
   if (status === 'FAILED' && (!failureReason || !failureReason.trim())) {
     throw new Error('Un motif est requis pour signaler un échec de livraison')
@@ -207,6 +239,23 @@ async function advanceShipmentInTransaction(tx, params, settings) {
     // être réassigné à un autre livreur, LOT3 upsert).
     data.deliveryCode = generateDeliveryCode()
     data.deliveryCodeAttempts = 0
+  }
+  let rawQrToken = null
+  if (status === 'ARRIVED') {
+    // Invalide tout token actif précédent (ex. second passage "Arrivé" après
+    // un premier resté sans scan) — un seul token actif à la fois. Suppression
+    // plutôt qu'un champ "revoked" séparé : un token expiré/remplacé n'a
+    // aucune valeur d'audit propre, ShipmentEvent (créé plus bas) trace déjà
+    // que ce statut a été atteint plusieurs fois si besoin.
+    await tx.deliveryVerificationToken.deleteMany({ where: { shipmentId: shipment.id, usedAt: null } })
+    rawQrToken = crypto.randomBytes(32).toString('hex')
+    const ttlMinutes = settings?.qrTokenTtlMinutes ?? 15
+    await tx.deliveryVerificationToken.create({
+      data: { shipmentId: shipment.id, token: rawQrToken, expiresAt: new Date(Date.now() + ttlMinutes * 60 * 1000) },
+    })
+  }
+  if (status === 'QR_SCANNED') {
+    await validateQrToken(tx, { shipmentId: shipment.id, qrToken })
   }
   if (status === 'DELIVERED') {
     // Le code a déjà été vérifié par checkDeliveryOtp() avant l'ouverture de

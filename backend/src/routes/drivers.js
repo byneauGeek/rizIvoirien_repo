@@ -304,8 +304,18 @@ router.get('/active-delivery', authenticate, requireRole('DRIVER'), async (req, 
       getSettings(),
     ])
 
+    // LOT 3 (Arbitrage XXX RIZ) : le livreur ne voyait jusqu'ici que
+    // Order.status (IN_TRANSIT), sans distinction ARRIVED/QR_SCANNED — sans
+    // ça, l'app driver ne peut pas savoir si le QR a déjà été généré/scanné.
+    // shipmentStatus uniquement, JAMAIS deliveryCode (règle LOT9 inchangée).
+    let shipmentStatus = null
+    if (order) {
+      const shipment = await prisma.shipment.findUnique({ where: { orderId: order.id }, select: { status: true } })
+      shipmentStatus = shipment?.status || null
+    }
+
     const commission = driverRate(settings, driver.plan)
-    res.json({ order: order || null, commission })
+    res.json({ order: order || null, commission, shipmentStatus })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -316,11 +326,15 @@ router.get('/active-delivery', authenticate, requireRole('DRIVER'), async (req, 
 // — point d'entrée unique désormais partagé avec le chemin admin (voir
 // orders.js), plus de logique de rémunération dupliquée ici.
 router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), async (req, res) => {
-  const { status, note, otp, failureReason } = req.body
+  const { status, note, otp, failureReason, qrToken } = req.body
   // LOT 10 : FAILED — signaler un échec de livraison (client injoignable,
   // adresse introuvable, refus...) était jusqu'ici totalement impossible :
   // le livreur n'avait que IN_TRANSIT/DELIVERED, sans échappatoire.
-  const ALLOWED = ['IN_TRANSIT', 'DELIVERED', 'FAILED']
+  // LOT 3 (Arbitrage XXX RIZ) : ARRIVED (génère le QR affiché à l'acheteur)
+  // et QR_SCANNED (le livreur soumet ce qu'il a scanné) — l'OTP existant
+  // reste un chemin complet vers DELIVERED, indépendant de ces deux statuts
+  // (fallback contrôlé, voir deliveryLifecycle.js).
+  const ALLOWED = ['IN_TRANSIT', 'ARRIVED', 'QR_SCANNED', 'DELIVERED', 'FAILED']
   if (!ALLOWED.includes(status)) return res.status(400).json({ error: 'Statut invalide' })
   if (status === 'FAILED' && !failureReason?.trim()) {
     return res.status(400).json({ error: 'Un motif est requis pour signaler un échec de livraison' })
@@ -334,17 +348,21 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
     if (!order) return res.status(404).json({ error: 'Commande introuvable' })
 
     const autoNote = {
-      IN_TRANSIT: 'Colis récupéré par le livreur — en route pour la livraison',
-      DELIVERED:  'Colis remis au client',
-      FAILED:     'Échec de livraison signalé par le livreur',
+      IN_TRANSIT:  'Colis récupéré par le livreur — en route pour la livraison',
+      ARRIVED:     'Livreur arrivé au point de livraison — QR généré',
+      QR_SCANNED:  'QR scanné et validé par le livreur',
+      DELIVERED:   'Colis remis au client',
+      FAILED:      'Échec de livraison signalé par le livreur',
     }
     // 'IN_TRANSIT' côté API (vocabulaire Order, inchangé pour ne pas casser
     // le contrat avec DeliveryTab.jsx) correspond à 'PICKED_UP' côté Shipment
     // (premier point de collecte — pas d'étape distincte aujourd'hui).
+    // ARRIVED/QR_SCANNED/DELIVERED/FAILED se nomment identiquement côté API
+    // et côté Shipment — aucune traduction nécessaire pour eux.
     const shipmentStatus = status === 'IN_TRANSIT' ? 'PICKED_UP' : status
 
     const { shipment } = await deliveryLifecycle.advanceShipment(prisma, {
-      orderId: order.id, status: shipmentStatus, actorId: req.user.id, note: note || autoNote[status] || null, otp, failureReason,
+      orderId: order.id, status: shipmentStatus, actorId: req.user.id, note: note || autoNote[status] || null, otp, failureReason, qrToken,
     })
 
     const { notify } = require('../services/notifications')
@@ -362,6 +380,17 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
         const buyerUser = await prisma.user.findUnique({ where: { id: order.buyerId }, select: { name: true, email: true } })
         if (buyerUser?.email) sendMail(buyerUser.email, 'deliveryCode', { name: buyerUser.name, orderId: order.id, code: shipment.deliveryCode })
       })
+    } else if (status === 'ARRIVED') {
+      // LOT 3 : le QR lui-même n'est JAMAIS renvoyé au livreur — seul
+      // l'acheteur le reçoit, via /orders/:id/track (comme le code OTP).
+      setImmediate(() => notify(
+        order.buyerId, 'DRIVER_ARRIVED', 'Votre livreur est arrivé !',
+        `Le livreur est arrivé pour votre commande #${order.id} — présentez le QR affiché dans l'application.`,
+        { orderId: order.id }
+      ))
+    } else if (status === 'QR_SCANNED') {
+      // Étape intermédiaire — la confirmation acheteur (LOT 4/5) reste à
+      // venir avant DELIVERED ; pas de notification supplémentaire ici.
     } else if (status === 'DELIVERED') {
       await notify(order.buyerId, 'DELIVERED', 'Commande livrée !', `Votre commande #${order.id} a été livrée. Merci !`, { orderId: order.id })
       // Email de confirmation — avant le LOT 3, ce template n'était déclenché
@@ -386,7 +415,7 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
 
     res.json({ success: true })
   } catch (e) {
-    if (e.code === 'INVALID_OTP') return res.status(400).json({ error: e.message })
+    if (e.code === 'INVALID_OTP' || e.code === 'INVALID_QR') return res.status(400).json({ error: e.message })
     res.status(500).json({ error: e.message })
   }
 })

@@ -578,8 +578,18 @@ router.get('/:id/track', authenticate, async (req, res) => {
 
     const [location, shipment] = await Promise.all([
       prisma.driverCurrentLocation.findFirst({ where: { driverId: order.driverId, orderId: order.id } }),
-      prisma.shipment.findUnique({ where: { orderId: order.id }, select: { id: true, dropoffAddress: true, dropoffLat: true, dropoffLng: true, deliveryCode: true } }),
+      prisma.shipment.findUnique({ where: { orderId: order.id }, select: { id: true, status: true, dropoffAddress: true, dropoffLat: true, dropoffLng: true, deliveryCode: true } }),
     ])
+    // LOT 3 (Arbitrage XXX RIZ) : QR dynamique — actif uniquement entre
+    // ARRIVED et son utilisation (usedAt renseigné dès le scan, voir
+    // deliveryLifecycle.js validateQrToken). Jamais renvoyé au livreur.
+    const qrToken = shipment
+      ? (await prisma.deliveryVerificationToken.findFirst({
+          where: { shipmentId: shipment.id, usedAt: null, expiresAt: { gt: new Date() } },
+          orderBy: { createdAt: 'desc' },
+          select: { token: true },
+        }))?.token || null
+      : null
     const fresh = isFreshLocation(location?.updatedAt)
     const tracking = fresh ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy, orderId: order.id, ts: new Date(location.updatedAt).getTime() } : null
 
@@ -605,7 +615,12 @@ router.get('/:id/track', authenticate, async (req, res) => {
     // LOT 9 : code de preuve de livraison — déjà envoyé par e-mail à la
     // récupération du colis (PICKED_UP), aussi exposé ici pour l'acheteur qui
     // aurait perdu l'e-mail. Jamais renvoyé au livreur (voir drivers.js).
-    res.json({ tracking, status: order.status, eta, destination, deliveryCode: shipment?.deliveryCode || null })
+    res.json({
+      tracking, status: order.status, eta, destination,
+      deliveryCode: shipment?.deliveryCode || null,
+      shipmentStatus: shipment?.status || null,
+      qrToken,
+    })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

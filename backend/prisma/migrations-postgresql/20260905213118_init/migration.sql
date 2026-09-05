@@ -401,6 +401,18 @@ CREATE TABLE "Shipment" (
 );
 
 -- CreateTable
+CREATE TABLE "DeliveryVerificationToken" (
+    "id" SERIAL NOT NULL,
+    "shipmentId" INTEGER NOT NULL,
+    "token" TEXT NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "usedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DeliveryVerificationToken_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "DriverLocationHistory" (
     "id" SERIAL NOT NULL,
     "driverId" INTEGER NOT NULL,
@@ -600,6 +612,7 @@ CREATE TABLE "PlatformSettings" (
     "penaltyWarn1Rate" DOUBLE PRECISION NOT NULL DEFAULT 0.70,
     "penaltyWarn2Rate" DOUBLE PRECISION NOT NULL DEFAULT 0.50,
     "penaltySuspendRate" DOUBLE PRECISION NOT NULL DEFAULT 0.30,
+    "qrTokenTtlMinutes" INTEGER NOT NULL DEFAULT 15,
     "autoValidateOrders" BOOLEAN NOT NULL DEFAULT true,
     "maintenanceMode" BOOLEAN NOT NULL DEFAULT false,
     "supportEmail" TEXT NOT NULL DEFAULT 'support@rizivoirien.ci',
@@ -1214,6 +1227,12 @@ CREATE INDEX "Shipment_status_idx" ON "Shipment"("status");
 CREATE INDEX "Shipment_status_updatedAt_idx" ON "Shipment"("status", "updatedAt");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "DeliveryVerificationToken_token_key" ON "DeliveryVerificationToken"("token");
+
+-- CreateIndex
+CREATE INDEX "DeliveryVerificationToken_shipmentId_idx" ON "DeliveryVerificationToken"("shipmentId");
+
+-- CreateIndex
 CREATE INDEX "DriverLocationHistory_driverId_createdAt_idx" ON "DriverLocationHistory"("driverId", "createdAt");
 
 -- CreateIndex
@@ -1509,6 +1528,9 @@ ALTER TABLE "Shipment" ADD CONSTRAINT "Shipment_b2bTransactionId_fkey" FOREIGN K
 
 -- AddForeignKey
 ALTER TABLE "Shipment" ADD CONSTRAINT "Shipment_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DeliveryVerificationToken" ADD CONSTRAINT "DeliveryVerificationToken_shipmentId_fkey" FOREIGN KEY ("shipmentId") REFERENCES "Shipment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DriverLocationHistory" ADD CONSTRAINT "DriverLocationHistory_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE CASCADE ON UPDATE CASCADE;

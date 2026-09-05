@@ -797,7 +797,17 @@ export default function DriverDashboard() {
 
       {/* Main */}
       <main className="md:ml-60 flex-1 min-h-screen">
-        <AnimatePresence mode="wait">
+        {/* Pas de mode="wait" ici : une transition qui attend la fin de
+            l'animation de sortie de l'onglet précédent avant de monter le
+            suivant peut rester bloquée indéfiniment si l'onglet navigateur
+            passe en arrière-plan (livreur qui change d'app en pleine
+            livraison) — les navigateurs mobiles limitent alors
+            requestAnimationFrame et l'animation ne se termine jamais,
+            gelant TOUTE navigation entre onglets du tableau de bord livreur
+            (constaté en le testant : impossible de changer d'onglet). Même
+            bug, même correctif que celui déjà appliqué au formulaire de code
+            de livraison dans DeliveryTab.jsx (LOT9). */}
+        <AnimatePresence>
           <motion.div key={tab}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}

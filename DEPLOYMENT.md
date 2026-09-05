@@ -76,6 +76,37 @@ Si elle est absente au moment du build (`npm run build`), l'app retombe sur
 `localhost:3001` et log une erreur explicite en console — vérifiez toujours les
 logs de build CI pour ce message avant de publier.
 
+## Logistique (LOT 1-18) — points spécifiques
+
+- **Géocodage (Nominatim)** : utilisé pour l'estimation de frais de livraison
+  et le suivi client (ETA, LOT8). API publique gratuite, sans clé, mais avec
+  une politique d'usage stricte (max 1 req/s) — throttlée en interne
+  (`deliveryService.js`, LOT18) pour ne jamais risquer un blocage de l'IP du
+  serveur, qui casserait le géocodage pour toute l'application. Rien à
+  configurer, mais à savoir si le volume de commandes grossit beaucoup : la
+  file d'attente est en mémoire de process, donc pas partagée entre plusieurs
+  instances backend (passage à une instance unique tant que le volume reste
+  modeste, ou prévoir une file partagée — Redis — sinon).
+- **PlatformSettings logistique** : `deliveryAvgSpeedKmh` (20 km/h par
+  défaut, LOT8), `gpsHistoryRetentionDays` (30 jours, LOT9),
+  `deliveryMaxPrice`/catégories de véhicule (LOT4/6) sont des valeurs de
+  démarrage raisonnables, pas des choix métier validés pour la Côte
+  d'Ivoire réelle — à revoir avec l'équipe produit après le premier
+  déploiement, via l'admin (Paramètres de la plateforme / Logistique).
+- **Catalogue VehicleType** : s'auto-amorce avec 5 catégories par défaut
+  (Vélo/Moto/Tricycle/Voiture/Camionnette) à la première consultation admin
+  ou livreur — aucune action requise, mais à vérifier/ajuster une fois en
+  production (`/admin` → Logistique → Véhicules).
+- **Rétention GPS** : DriverLocationHistory est purgée automatiquement selon
+  `gpsHistoryRetentionDays` — vérifier que cette durée est conforme à la
+  politique de confidentialité affichée aux livreurs avant le lancement.
+- **Tests E2E (LOT17)** : `cd e2e && npm test` lance le cycle de livraison
+  complet dans un vrai navigateur (Playwright), contre une base SQLite
+  dédiée (`backend/prisma/e2e.db`, jamais dev.db). À exécuter avant tout
+  déploiement touchant au parcours livraison — c'est le seul test de ce
+  projet qui fait réellement passer par le frontend, pas seulement par
+  l'API.
+
 ## Checklist avant mise en production
 
 - [ ] `DATABASE_URL` pointe vers PostgreSQL (pas SQLite)
@@ -88,3 +119,7 @@ logs de build CI pour ce message avant de publier.
 - [ ] Panneau "comptes démo" absent du build frontend (automatique via `import.meta.env.DEV`, à vérifier visuellement une fois déployé)
 - [ ] `GET /api/health` répond `{ ok: true, db: 'ok' }`
 - [ ] Sauvegardes automatiques de la base PostgreSQL configurées côté hébergeur
+- [ ] Valeurs de PlatformSettings logistique (vitesse moyenne ETA, rétention
+      GPS, plafonds de frais par véhicule) revues avec l'équipe produit —
+      les défauts sont des points de départ, pas des choix validés
+- [ ] `cd e2e && npm test` passe contre le build à déployer

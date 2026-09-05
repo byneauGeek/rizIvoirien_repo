@@ -9,7 +9,27 @@ function parseWeightKg(unit) {
   return m ? parseFloat(m[1]) : 1
 }
 
-function geocodeAddress(address) {
+// LOT 18 (préparation production) : la politique d'usage de Nominatim (API
+// publique gratuite, sans clé) impose un maximum d'1 requête/seconde — au-delà,
+// l'IP du serveur peut être bloquée, cassant le géocodage pour TOUTE
+// l'application (estimation de commande ET dropoff paresseux des Shipment,
+// LOT8, qui partagent cette même fonction). Rien ne l'empêchait jusqu'ici :
+// plusieurs commandes/livraisons ayant besoin d'un géocodage au même moment
+// pouvaient partir en parallèle. File d'attente globale, en mémoire de
+// process — suffisant pour une seule instance ; à revoir (Redis) si le
+// backend passe un jour en plusieurs instances.
+const MIN_GEOCODE_INTERVAL_MS = 1100
+let geocodeQueueTail = Promise.resolve()
+
+function throttledGeocode(address) {
+  const run = geocodeQueueTail.then(() => rawGeocodeAddress(address))
+  // La prochaine requête de la file attend au moins MIN_GEOCODE_INTERVAL_MS
+  // après le DÉBUT de celle-ci, qu'elle réussisse ou échoue.
+  geocodeQueueTail = run.catch(() => {}).then(() => new Promise(r => setTimeout(r, MIN_GEOCODE_INTERVAL_MS)))
+  return run
+}
+
+function rawGeocodeAddress(address) {
   return new Promise((resolve) => {
     const q = encodeURIComponent(`${address}, Côte d'Ivoire`)
     const options = {
@@ -31,6 +51,10 @@ function geocodeAddress(address) {
     req.on('error', () => resolve(null))
     req.setTimeout(6000, () => { req.destroy(); resolve(null) })
   })
+}
+
+function geocodeAddress(address) {
+  return throttledGeocode(address)
 }
 
 // LOT 6 (arbitrage Décision 5) : le plafond n'est plus un forfait unique.

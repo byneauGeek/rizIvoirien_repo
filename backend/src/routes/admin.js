@@ -1011,13 +1011,24 @@ router.put('/users/:id/ban', ...guard, async (req, res) => {
 
 // ─── Finance ───────────────────────────────────────────────────────────────
 
+// LOT 8 (Arbitrage XXX RIZ, "cohérence logistique ↔ finance ↔ rémunération") :
+// avant ce lot, ce tableau de bord n'agrégeait que les Order (B2C) — une
+// transaction B2B livrée (needsLogistics=true, deliveryFee réellement facturé
+// et réellement payé au livreur via payDriverForDelivery, voir
+// deliveryLifecycle.js) était totalement absente d'ici, alors même que
+// Driver.monthlyEarnings/DriverMetric.earnings l'incluaient déjà. driverPayouts
+// et netRevenue sous-estimaient donc systématiquement la réalité dès qu'un
+// livreur faisait des livraisons B2B. La commission plateforme (rate),
+// elle, reste calculée sur le GMV B2C uniquement — le B2B n'a pas de
+// commission sur la valeur d'échange (modèle différent, confirmé à l'audit :
+// seule la logistique B2B génère un revenu plateforme).
 router.get('/finance', ...guard, async (req, res) => {
   try {
     const settings = await getSettings()
     const rate = settings.commissionRate
     const deliveryShare = settings.driverCommission
 
-    const [totalRevAgg, monthRevAgg, deliveredCount, totalDeliveryAgg] = await Promise.all([
+    const [totalRevAgg, monthRevAgg, deliveredCount, totalDeliveryAgg, b2bDeliveryAgg] = await Promise.all([
       prisma.order.aggregate({ where: { status: 'DELIVERED' }, _sum: { total: true, deliveryFee: true } }),
       prisma.order.aggregate({
         where: { status: 'DELIVERED', createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } },
@@ -1025,11 +1036,14 @@ router.get('/finance', ...guard, async (req, res) => {
       }),
       prisma.order.count({ where: { status: 'DELIVERED' } }),
       prisma.order.aggregate({ where: { status: 'DELIVERED' }, _sum: { deliveryFee: true } }),
+      prisma.b2BTransaction.aggregate({ where: { status: 'DELIVERED', needsLogistics: true }, _sum: { deliveryFee: true } }),
     ])
 
     const totalGMV = totalRevAgg._sum.total || 0
     const monthGMV = monthRevAgg._sum.total || 0
-    const totalDeliveryFees = totalDeliveryAgg._sum.deliveryFee || 0
+    const b2cDeliveryFees = totalDeliveryAgg._sum.deliveryFee || 0
+    const b2bDeliveryFees = b2bDeliveryAgg._sum.deliveryFee || 0
+    const totalDeliveryFees = b2cDeliveryFees + b2bDeliveryFees
     const platformCommission = Math.round(totalGMV * rate)
     const driverPayouts = Math.round(totalDeliveryFees * deliveryShare)
     const netRevenue = platformCommission + Math.round(totalDeliveryFees * (1 - deliveryShare))
@@ -1040,19 +1054,28 @@ router.get('/finance', ...guard, async (req, res) => {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
       const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1)
-      const agg = await prisma.order.aggregate({
-        where: { status: 'DELIVERED', createdAt: { gte: d, lt: end } },
-        _sum: { total: true, deliveryFee: true },
-      })
+      const [agg, b2bAgg] = await Promise.all([
+        prisma.order.aggregate({
+          where: { status: 'DELIVERED', createdAt: { gte: d, lt: end } },
+          _sum: { total: true, deliveryFee: true },
+        }),
+        prisma.b2BTransaction.aggregate({
+          where: { status: 'DELIVERED', needsLogistics: true, createdAt: { gte: d, lt: end } },
+          _sum: { deliveryFee: true },
+        }),
+      ])
       monthly.push({
         month: d.toLocaleString('fr-FR', { month: 'short' }),
         gmv: agg._sum.total || 0,
         commission: Math.round((agg._sum.total || 0) * rate),
-        deliveryFees: agg._sum.deliveryFee || 0,
+        deliveryFees: (agg._sum.deliveryFee || 0) + (b2bAgg._sum.deliveryFee || 0),
       })
     }
 
-    res.json({ totalGMV, monthGMV, platformCommission, driverPayouts, netRevenue, deliveredCount, monthly, rate, deliveryShare: deliveryShare })
+    res.json({
+      totalGMV, monthGMV, platformCommission, driverPayouts, netRevenue, deliveredCount, monthly, rate, deliveryShare: deliveryShare,
+      b2cDeliveryFees, b2bDeliveryFees, totalDeliveryFees,
+    })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -1109,10 +1132,28 @@ router.get('/drivers/:id/payslip', ...commercialGuard, async (req, res) => {
       orderBy: { createdAt: 'desc' },
     })
 
-    const totalDeliveries    = orders.length
-    const grossDeliveryFees  = orders.reduce((s, o) => s + (o.deliveryFee || 0), 0)
-    const driverEarnings     = Math.round(grossDeliveryFees * driverShare)
-    const platformEarnings   = Math.round(grossDeliveryFees * platformShare)
+    // LOT 8 (Arbitrage XXX RIZ) : avant ce lot, la fiche de paie ne listait
+    // que des Order (B2C) — un livreur ayant fait des livraisons B2B pendant
+    // la période voyait une fiche INCOHÉRENTE avec ce qu'il a réellement
+    // touché (Driver.monthlyEarnings/DriverMetric.earnings, déjà crédités par
+    // payDriverForDelivery pour le B2B aussi). Le driverId vit sur Shipment,
+    // pas sur B2BTransaction — d'où la requête via Shipment plutôt qu'un
+    // findMany direct sur b2BTransaction.
+    const b2bShipments = await prisma.shipment.findMany({
+      where: {
+        driverId, status: 'DELIVERED', b2bTransactionId: { not: null },
+        updatedAt: { gte: startDate, lte: now },
+      },
+      include: { b2bTransaction: { include: { buyer: { select: { name: true } }, seller: { select: { name: true } } } } },
+      orderBy: { updatedAt: 'desc' },
+    })
+
+    const grossDeliveryFeesB2C = orders.reduce((s, o) => s + (o.deliveryFee || 0), 0)
+    const grossDeliveryFeesB2B = b2bShipments.reduce((s, sh) => s + (sh.b2bTransaction?.deliveryFee || 0), 0)
+    const grossDeliveryFees    = grossDeliveryFeesB2C + grossDeliveryFeesB2B
+    const totalDeliveries      = orders.length + b2bShipments.length
+    const driverEarnings       = Math.round(grossDeliveryFees * driverShare)
+    const platformEarnings     = Math.round(grossDeliveryFees * platformShare)
 
     res.json({
       driver,
@@ -1133,6 +1174,14 @@ router.get('/drivers/:id/payslip', ...commercialGuard, async (req, res) => {
         orderTotal:    o.total       || 0,
         deliveryFee:   o.deliveryFee || 0,
         driverEarning: Math.round((o.deliveryFee || 0) * driverShare),
+      })),
+      b2bDeliveries: b2bShipments.map(sh => ({
+        id:            sh.b2bTransactionId,
+        deliveredAt:   sh.updatedAt,
+        buyer:         sh.b2bTransaction?.buyer?.name  || '—',
+        seller:        sh.b2bTransaction?.seller?.name || '—',
+        deliveryFee:   sh.b2bTransaction?.deliveryFee  || 0,
+        driverEarning: Math.round((sh.b2bTransaction?.deliveryFee || 0) * driverShare),
       })),
     })
   } catch (e) {

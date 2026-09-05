@@ -378,6 +378,25 @@ router.get('/drivers/:id', ...guard, async (req, res) => {
 
     if (!driver) return res.status(404).json({ error: 'Livreur introuvable' })
 
+    // LOT 8 (Arbitrage XXX RIZ, "cohérence logistique ↔ finance ↔
+    // rémunération") : sans ce complément, un livreur ayant fait des
+    // livraisons B2B apparaissait ici avec des statistiques mensuelles
+    // sous-estimées par rapport à ce qu'il a réellement touché
+    // (Driver.monthlyEarnings, déjà crédité pour le B2B par
+    // payDriverForDelivery). Même agrégation que le B2C, via Shipment (le
+    // driverId d'une livraison B2B vit sur Shipment, pas sur B2BTransaction).
+    const [b2bThisMonth, b2bLastMonth] = await Promise.all([
+      prisma.shipment.findMany({
+        where: { driverId, status: 'DELIVERED', b2bTransactionId: { not: null }, updatedAt: { gte: startOfMonth } },
+        include: { b2bTransaction: { select: { deliveryFee: true } } },
+      }),
+      prisma.shipment.findMany({
+        where: { driverId, status: 'DELIVERED', b2bTransactionId: { not: null }, updatedAt: { gte: startOfLastMonth, lt: startOfMonth } },
+        include: { b2bTransaction: { select: { deliveryFee: true } } },
+      }),
+    ])
+    const sumB2BFees = (shipments) => shipments.reduce((s, sh) => s + (sh.b2bTransaction?.deliveryFee || 0), 0)
+
     const commissionRate = driver.plan === 'PREMIUM'
       ? (settings?.premiumDriverCommission ?? 0.20)
       : (settings?.driverCommission ?? 0.15)
@@ -387,8 +406,14 @@ router.get('/drivers/:id', ...guard, async (req, res) => {
       commissionRate,
       recentDeliveries,
       stats: {
-        thisMonth: { deliveries: thisMonthAgg._count.id ?? 0, fees: thisMonthAgg._sum.deliveryFee ?? 0 },
-        lastMonth: { deliveries: lastMonthAgg._count.id ?? 0, fees: lastMonthAgg._sum.deliveryFee ?? 0 },
+        thisMonth: {
+          deliveries: (thisMonthAgg._count.id ?? 0) + b2bThisMonth.length,
+          fees: (thisMonthAgg._sum.deliveryFee ?? 0) + sumB2BFees(b2bThisMonth),
+        },
+        lastMonth: {
+          deliveries: (lastMonthAgg._count.id ?? 0) + b2bLastMonth.length,
+          fees: (lastMonthAgg._sum.deliveryFee ?? 0) + sumB2BFees(b2bLastMonth),
+        },
       },
     })
   } catch (e) {

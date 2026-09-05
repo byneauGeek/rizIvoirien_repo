@@ -345,6 +345,11 @@ model Shop {
   createdAt          DateTime  @default(now())
   contractSigned     Boolean   @default(false)
   contract           Contract?
+  // Logistique (LOT 4) — rattachement optionnel à une zone de livraison,
+  // posé pour un usage futur (tarification, hubs) : non lu par le moteur
+  // d'affectation ni par la tarification à ce lot (arbitrage Décision 6, Option B).
+  zoneId             Int?
+  zone               Zone?     @relation(fields: [zoneId], references: [id])
 
   products            Product[]
   orders              Order[]
@@ -352,6 +357,8 @@ model Shop {
   shopReviews         ShopReview[]
   planUpgradeRequests PlanUpgradeRequest[]
   commercialNotes     CommercialNote[]
+
+  @@index([zoneId])
 }
 
 model Product {
@@ -380,10 +387,10 @@ model Product {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  orderItems OrderItem[]
-  reviews    Review[]
-  wishlist   Wishlist[]
-  history    ProductHistory[]
+  orderItems    OrderItem[]
+  reviews       Review[]
+  wishlist      Wishlist[]
+  history       ProductHistory[]
   stockPosition StockPosition?
 
   @@index([shopId])
@@ -557,6 +564,59 @@ model ShipmentEvent {
   createdAt  DateTime @default(now())
 
   @@index([shipmentId])
+}
+
+// Logistique — LOT 4 : Architecture logistique (arbitrage Décision 6, Option B).
+// Ces 3 modèles posent le SCHÉMA d'une architecture logistique par
+// zones/hubs/catégories de véhicule. Ils ne sont PAS lus par le moteur
+// d'affectation (assignmentEngine.js reste 1 livreur ↔ 1 commande) ni par
+// le calcul du tarif de livraison à ce lot — ce sera le travail des lots
+// suivants (LOT5 affectation, LOT6 tarification) une fois ces données
+// disponibles et administrées. Aucune tournée/optimisation de trajet
+// (Route/Stop) n'est introduite : hors-scope, explicitement refusé à
+// l'arbitrage.
+
+// Catalogue des catégories de véhicule et de leur capacité — remplace le
+// besoin de coder en dur une capacité par type dans le calcul tarifaire
+// (LOT6). Driver.vehicleType (chaîne libre existante) n'est PAS modifié
+// par ce lot pour ne casser aucun consommateur existant (inscription,
+// profil livreur, génération de contrat) ; le rapprochement des deux se
+// fera par convention de code au moment de l'usage réel en LOT6.
+model VehicleType {
+  id         Int      @id @default(autoincrement())
+  code       String   @unique
+  label      String
+  capacityKg Float
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Zone {
+  id        Int      @id @default(autoincrement())
+  name      String
+  city      String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shops Shop[]
+  hubs  Hub[]
+}
+
+model Hub {
+  id        Int      @id @default(autoincrement())
+  name      String
+  address   String
+  zoneId    Int?
+  zone      Zone?    @relation(fields: [zoneId], references: [id])
+  latitude  Float?
+  longitude Float?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([zoneId])
 }
 
 model Driver {

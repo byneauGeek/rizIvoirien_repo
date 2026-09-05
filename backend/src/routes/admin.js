@@ -1204,4 +1204,205 @@ router.get('/shops/:id/payslip', ...commercialGuard, async (req, res) => {
   }
 })
 
+// ─── Logistique — LOT 4 : architecture (arbitrage Décision 6, Option B) ─────
+// Référentiels administrés (catégories de véhicule, zones, hubs). Non lus
+// par le moteur d'affectation ni la tarification à ce lot — posent le
+// schéma pour les lots suivants (LOT5/LOT6).
+
+const DEFAULT_VEHICLE_TYPES = [
+  { code: 'VELO',        label: 'Vélo',        capacityKg: 20 },
+  { code: 'MOTO',        label: 'Moto',        capacityKg: 50 },
+  { code: 'TRICYCLE',    label: 'Tricycle',    capacityKg: 300 },
+  { code: 'VOITURE',     label: 'Voiture',     capacityKg: 400 },
+  { code: 'CAMIONNETTE', label: 'Camionnette', capacityKg: 1500 },
+]
+
+// Même logique que getSettings() (lib/settings.js) : jamais de valeur codée
+// en dur consommée directement, on s'assure juste qu'un jeu de départ
+// exploitable existe avant de le lire. `code` étant unique, une double
+// initialisation concurrente ne crée pas de doublons (la 2e upsert échoue
+// silencieusement en no-op sur update:{}).
+async function ensureDefaultVehicleTypes() {
+  const count = await prisma.vehicleType.count()
+  if (count > 0) return
+  for (const vt of DEFAULT_VEHICLE_TYPES) {
+    await prisma.vehicleType.upsert({ where: { code: vt.code }, update: {}, create: vt })
+  }
+}
+
+router.get('/logistics/vehicle-types', ...guard, async (req, res) => {
+  try {
+    await ensureDefaultVehicleTypes()
+    const vehicleTypes = await prisma.vehicleType.findMany({ orderBy: { capacityKg: 'asc' } })
+    res.json({ vehicleTypes })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/logistics/vehicle-types', ...guard, async (req, res) => {
+  const { code, label, capacityKg } = req.body
+  if (!code || !label || !(capacityKg > 0)) {
+    return res.status(400).json({ error: 'code, label et capacityKg (> 0) sont requis' })
+  }
+  try {
+    const vehicleType = await prisma.vehicleType.create({
+      data: { code: String(code).toUpperCase().trim(), label, capacityKg: Number(capacityKg) },
+    })
+    setImmediate(() => logAction(req.user.id, 'VEHICLE_TYPE_CREATE', 'VehicleType', vehicleType.id, { code, label, capacityKg }))
+    res.status(201).json({ vehicleType })
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'Ce code existe déjà' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.put('/logistics/vehicle-types/:id', ...guard, async (req, res) => {
+  const { label, capacityKg, active } = req.body
+  try {
+    const vehicleType = await prisma.vehicleType.update({
+      where: { id: Number(req.params.id) },
+      data: {
+        ...(label !== undefined && { label }),
+        ...(capacityKg !== undefined && { capacityKg: Number(capacityKg) }),
+        ...(active !== undefined && { active: Boolean(active) }),
+      },
+    })
+    setImmediate(() => logAction(req.user.id, 'VEHICLE_TYPE_UPDATE', 'VehicleType', vehicleType.id, req.body))
+    res.json({ vehicleType })
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Catégorie introuvable' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.delete('/logistics/vehicle-types/:id', ...guard, async (req, res) => {
+  try {
+    await prisma.vehicleType.delete({ where: { id: Number(req.params.id) } })
+    setImmediate(() => logAction(req.user.id, 'VEHICLE_TYPE_DELETE', 'VehicleType', Number(req.params.id), {}))
+    res.status(204).end()
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Catégorie introuvable' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.get('/logistics/zones', ...guard, async (req, res) => {
+  try {
+    const zones = await prisma.zone.findMany({
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { shops: true, hubs: true } } },
+    })
+    res.json({ zones })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/logistics/zones', ...guard, async (req, res) => {
+  const { name, city } = req.body
+  if (!name) return res.status(400).json({ error: 'name est requis' })
+  try {
+    const zone = await prisma.zone.create({ data: { name, city: city || null } })
+    setImmediate(() => logAction(req.user.id, 'ZONE_CREATE', 'Zone', zone.id, { name, city }))
+    res.status(201).json({ zone })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.put('/logistics/zones/:id', ...guard, async (req, res) => {
+  const { name, city, active } = req.body
+  try {
+    const zone = await prisma.zone.update({
+      where: { id: Number(req.params.id) },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(city !== undefined && { city }),
+        ...(active !== undefined && { active: Boolean(active) }),
+      },
+    })
+    setImmediate(() => logAction(req.user.id, 'ZONE_UPDATE', 'Zone', zone.id, req.body))
+    res.json({ zone })
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Zone introuvable' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.delete('/logistics/zones/:id', ...guard, async (req, res) => {
+  try {
+    // Zone.shops / Zone.hubs sont des relations optionnelles (ON DELETE SET NULL) :
+    // supprimer une zone détache les boutiques/hubs qui y étaient rattachés,
+    // elle ne les supprime jamais.
+    await prisma.zone.delete({ where: { id: Number(req.params.id) } })
+    setImmediate(() => logAction(req.user.id, 'ZONE_DELETE', 'Zone', Number(req.params.id), {}))
+    res.status(204).end()
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Zone introuvable' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.get('/logistics/hubs', ...guard, async (req, res) => {
+  try {
+    const hubs = await prisma.hub.findMany({ orderBy: { name: 'asc' }, include: { zone: true } })
+    res.json({ hubs })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/logistics/hubs', ...guard, async (req, res) => {
+  const { name, address, zoneId, latitude, longitude } = req.body
+  if (!name || !address) return res.status(400).json({ error: 'name et address sont requis' })
+  try {
+    const hub = await prisma.hub.create({
+      data: {
+        name, address,
+        zoneId: zoneId ? Number(zoneId) : null,
+        latitude: latitude !== undefined ? Number(latitude) : null,
+        longitude: longitude !== undefined ? Number(longitude) : null,
+      },
+    })
+    setImmediate(() => logAction(req.user.id, 'HUB_CREATE', 'Hub', hub.id, { name, address, zoneId }))
+    res.status(201).json({ hub })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.put('/logistics/hubs/:id', ...guard, async (req, res) => {
+  const { name, address, zoneId, latitude, longitude, active } = req.body
+  try {
+    const hub = await prisma.hub.update({
+      where: { id: Number(req.params.id) },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(address !== undefined && { address }),
+        ...(zoneId !== undefined && { zoneId: zoneId ? Number(zoneId) : null }),
+        ...(latitude !== undefined && { latitude: latitude === null ? null : Number(latitude) }),
+        ...(longitude !== undefined && { longitude: longitude === null ? null : Number(longitude) }),
+        ...(active !== undefined && { active: Boolean(active) }),
+      },
+    })
+    setImmediate(() => logAction(req.user.id, 'HUB_UPDATE', 'Hub', hub.id, req.body))
+    res.json({ hub })
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Hub introuvable' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.delete('/logistics/hubs/:id', ...guard, async (req, res) => {
+  try {
+    await prisma.hub.delete({ where: { id: Number(req.params.id) } })
+    setImmediate(() => logAction(req.user.id, 'HUB_DELETE', 'Hub', Number(req.params.id), {}))
+    res.status(204).end()
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Hub introuvable' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
 module.exports = router

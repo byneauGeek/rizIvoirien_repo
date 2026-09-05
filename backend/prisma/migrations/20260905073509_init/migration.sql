@@ -1,45 +1,42 @@
 -- CreateTable
 CREATE TABLE "User" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "phone" TEXT,
     "role" TEXT NOT NULL DEFAULT 'BUYER',
     "banned" BOOLEAN NOT NULL DEFAULT false,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
     "emailVerified" BOOLEAN NOT NULL DEFAULT false,
     "emailVerifyToken" TEXT,
     "resetToken" TEXT,
-    "resetTokenExpiry" TIMESTAMP(3),
-
-    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+    "resetTokenExpiry" DATETIME
 );
 
 -- CreateTable
 CREATE TABLE "Producer" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
     "region" TEXT NOT NULL,
     "department" TEXT,
     "commune" TEXT,
     "locality" TEXT,
     "farmType" TEXT,
-    "surfaceHa" DOUBLE PRECISION,
-    "capacityKg" DOUBLE PRECISION,
+    "surfaceHa" REAL,
+    "capacityKg" REAL,
     "photo" TEXT,
     "description" TEXT,
     "verification" TEXT NOT NULL DEFAULT 'UNVERIFIED',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Producer_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Producer_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Cooperative" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
     "name" TEXT NOT NULL,
     "responsable" TEXT NOT NULL,
@@ -47,162 +44,159 @@ CREATE TABLE "Cooperative" (
     "zone" TEXT,
     "description" TEXT,
     "verification" TEXT NOT NULL DEFAULT 'UNVERIFIED',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Cooperative_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Cooperative_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "CooperativeMember" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "cooperativeId" INTEGER NOT NULL,
     "producerId" INTEGER NOT NULL,
-    "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "CooperativeMember_pkey" PRIMARY KEY ("id")
+    "joinedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "CooperativeMember_cooperativeId_fkey" FOREIGN KEY ("cooperativeId") REFERENCES "Cooperative" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "CooperativeMember_producerId_fkey" FOREIGN KEY ("producerId") REFERENCES "Producer" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Trader" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
     "companyName" TEXT NOT NULL,
     "activity" TEXT,
     "zones" TEXT,
     "verification" TEXT NOT NULL DEFAULT 'UNVERIFIED',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Trader_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Trader_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Processor" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
     "companyName" TEXT NOT NULL,
     "zones" TEXT,
     "verification" TEXT NOT NULL DEFAULT 'UNVERIFIED',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Processor_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Processor_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Exporter" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
     "companyName" TEXT NOT NULL,
-    "capacityKg" DOUBLE PRECISION,
+    "capacityKg" REAL,
     "zones" TEXT,
     "verification" TEXT NOT NULL DEFAULT 'UNVERIFIED',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Exporter_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Exporter_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "RiceOffer" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "producerId" INTEGER,
     "cooperativeId" INTEGER,
     "product" TEXT NOT NULL,
     "variety" TEXT,
-    "quantity" DOUBLE PRECISION NOT NULL,
+    "quantity" REAL NOT NULL,
     "unit" TEXT NOT NULL,
     "region" TEXT NOT NULL,
-    "availableFrom" TIMESTAMP(3),
+    "availableFrom" DATETIME,
     "quality" TEXT,
-    "price" DOUBLE PRECISION,
+    "price" REAL,
     "photos" TEXT NOT NULL DEFAULT '[]',
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "RiceOffer_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "RiceOffer_producerId_fkey" FOREIGN KEY ("producerId") REFERENCES "Producer" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "RiceOffer_cooperativeId_fkey" FOREIGN KEY ("cooperativeId") REFERENCES "Cooperative" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "PurchaseRequest" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "traderId" INTEGER,
     "processorId" INTEGER,
     "exporterId" INTEGER,
     "product" TEXT NOT NULL,
-    "quantity" DOUBLE PRECISION NOT NULL,
+    "quantity" REAL NOT NULL,
     "unit" TEXT NOT NULL,
     "region" TEXT NOT NULL,
     "period" TEXT,
     "requirements" TEXT,
     "status" TEXT NOT NULL DEFAULT 'ACTIVE',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "PurchaseRequest_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "PurchaseRequest_traderId_fkey" FOREIGN KEY ("traderId") REFERENCES "Trader" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "PurchaseRequest_processorId_fkey" FOREIGN KEY ("processorId") REFERENCES "Processor" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "PurchaseRequest_exporterId_fkey" FOREIGN KEY ("exporterId") REFERENCES "Exporter" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "ContactRequest" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "fromUserId" INTEGER NOT NULL,
     "toUserId" INTEGER NOT NULL,
     "offerId" INTEGER,
     "requestId" INTEGER,
     "message" TEXT,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "ContactRequest_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "ContactRequest_fromUserId_fkey" FOREIGN KEY ("fromUserId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "ContactRequest_toUserId_fkey" FOREIGN KEY ("toUserId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "ContactRequest_offerId_fkey" FOREIGN KEY ("offerId") REFERENCES "RiceOffer" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "ContactRequest_requestId_fkey" FOREIGN KEY ("requestId") REFERENCES "PurchaseRequest" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "B2BTransaction" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "contactId" INTEGER,
     "buyerUserId" INTEGER NOT NULL,
     "sellerUserId" INTEGER NOT NULL,
     "product" TEXT NOT NULL,
-    "quantity" DOUBLE PRECISION NOT NULL,
+    "quantity" REAL NOT NULL,
     "unit" TEXT NOT NULL,
     "region" TEXT NOT NULL,
-    "amount" DOUBLE PRECISION,
+    "amount" REAL,
     "status" TEXT NOT NULL DEFAULT 'DECLARED',
     "notes" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "B2BTransaction_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "B2BTransaction_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "ContactRequest" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "B2BTransaction_buyerUserId_fkey" FOREIGN KEY ("buyerUserId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "B2BTransaction_sellerUserId_fkey" FOREIGN KEY ("sellerUserId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "B2BReport" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "reporterId" INTEGER NOT NULL,
     "targetType" TEXT NOT NULL,
     "targetId" INTEGER NOT NULL,
     "reason" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "B2BReport_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "B2BReport_reporterId_fkey" FOREIGN KEY ("reporterId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "B2BReferenceItem" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "type" TEXT NOT NULL,
     "value" TEXT NOT NULL,
-    "active" BOOLEAN NOT NULL DEFAULT true,
-
-    CONSTRAINT "B2BReferenceItem_pkey" PRIMARY KEY ("id")
+    "active" BOOLEAN NOT NULL DEFAULT true
 );
 
 -- CreateTable
 CREATE TABLE "Shop" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
@@ -214,12 +208,12 @@ CREATE TABLE "Shop" (
     "phone" TEXT,
     "email" TEXT,
     "location" TEXT,
-    "latitude" DOUBLE PRECISION,
-    "longitude" DOUBLE PRECISION,
+    "latitude" REAL,
+    "longitude" REAL,
     "deliveryZones" TEXT,
     "coverImage" TEXT,
     "avatar" TEXT,
-    "minOrder" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "minOrder" REAL NOT NULL DEFAULT 0,
     "preparationTime" INTEGER NOT NULL DEFAULT 30,
     "openingHours" TEXT,
     "paused" BOOLEAN NOT NULL DEFAULT false,
@@ -237,64 +231,88 @@ CREATE TABLE "Shop" (
     "active" BOOLEAN NOT NULL DEFAULT false,
     "plan" TEXT NOT NULL DEFAULT 'BASIC',
     "certified" BOOLEAN NOT NULL DEFAULT false,
-    "rating" DOUBLE PRECISION NOT NULL DEFAULT 5.0,
+    "rating" REAL NOT NULL DEFAULT 5.0,
     "reviewCount" INTEGER NOT NULL DEFAULT 0,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "contractSigned" BOOLEAN NOT NULL DEFAULT false,
-
-    CONSTRAINT "Shop_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "Shop_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Product" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "shopId" INTEGER NOT NULL,
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
     "description" TEXT,
     "category" TEXT NOT NULL,
-    "price" DOUBLE PRECISION NOT NULL,
+    "price" REAL NOT NULL,
     "unit" TEXT NOT NULL DEFAULT '5kg',
-    "pricePerKg" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "pricePerKg" REAL NOT NULL DEFAULT 0,
     "stock" INTEGER NOT NULL DEFAULT 0,
     "images" TEXT NOT NULL DEFAULT '[]',
     "badge" TEXT,
     "origin" TEXT,
     "harvest" TEXT,
     "saleType" TEXT NOT NULL DEFAULT 'BOTH',
-    "wholesalePrice" DOUBLE PRECISION,
+    "wholesalePrice" REAL,
     "minWholesaleQty" INTEGER,
-    "rating" DOUBLE PRECISION NOT NULL DEFAULT 5.0,
+    "rating" REAL NOT NULL DEFAULT 5.0,
     "reviewCount" INTEGER NOT NULL DEFAULT 0,
     "active" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Product_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
 
-    CONSTRAINT "Product_pkey" PRIMARY KEY ("id")
+-- CreateTable
+CREATE TABLE "StockPosition" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "productId" INTEGER NOT NULL,
+    "quantity" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "StockPosition_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "StockMovement" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "stockPositionId" INTEGER NOT NULL,
+    "productId" INTEGER NOT NULL,
+    "type" TEXT NOT NULL,
+    "quantity" INTEGER NOT NULL,
+    "quantityBefore" INTEGER NOT NULL,
+    "quantityAfter" INTEGER NOT NULL,
+    "sourceType" TEXT,
+    "sourceId" INTEGER,
+    "reason" TEXT,
+    "actorId" INTEGER,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "StockMovement_stockPositionId_fkey" FOREIGN KEY ("stockPositionId") REFERENCES "StockPosition" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "ProductHistory" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "productId" INTEGER NOT NULL,
     "actorId" INTEGER NOT NULL,
     "actorName" TEXT NOT NULL,
     "changes" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "ProductHistory_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ProductHistory_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Order" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "buyerId" INTEGER NOT NULL,
     "shopId" INTEGER NOT NULL,
     "driverId" INTEGER,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
-    "total" DOUBLE PRECISION NOT NULL,
-    "deliveryFee" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "discount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "total" REAL NOT NULL,
+    "deliveryFee" REAL NOT NULL DEFAULT 0,
+    "discount" REAL NOT NULL DEFAULT 0,
     "promoCode" TEXT,
     "address" TEXT NOT NULL,
     "note" TEXT,
@@ -302,39 +320,39 @@ CREATE TABLE "Order" (
     "idempotencyKey" TEXT,
     "paymentMethod" TEXT NOT NULL DEFAULT 'CASH_ON_DELIVERY',
     "driverRated" BOOLEAN NOT NULL DEFAULT false,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Order_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Order_buyerId_fkey" FOREIGN KEY ("buyerId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "Order_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "Order_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "OrderItem" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "orderId" INTEGER NOT NULL,
     "productId" INTEGER NOT NULL,
     "quantity" INTEGER NOT NULL,
-    "price" DOUBLE PRECISION NOT NULL,
+    "price" REAL NOT NULL,
     "name" TEXT NOT NULL,
-
-    CONSTRAINT "OrderItem_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "OrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "OrderItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "OrderStatusHistory" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "orderId" INTEGER NOT NULL,
     "status" TEXT NOT NULL,
     "note" TEXT,
     "actorId" INTEGER,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "OrderStatusHistory_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "OrderStatusHistory_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Driver" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
     "inviteCode" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
@@ -349,51 +367,49 @@ CREATE TABLE "Driver" (
     "vehicleType" TEXT,
     "vehiclePlate" TEXT,
     "vehiclePhoto" TEXT,
-    "rating" DOUBLE PRECISION NOT NULL DEFAULT 5.0,
+    "rating" REAL NOT NULL DEFAULT 5.0,
     "totalDeliveries" INTEGER NOT NULL DEFAULT 0,
-    "acceptanceRate" DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    "acceptanceRate" REAL NOT NULL DEFAULT 1.0,
     "warningCount" INTEGER NOT NULL DEFAULT 0,
     "autoSuspended" BOOLEAN NOT NULL DEFAULT false,
-    "monthlyEarnings" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "monthlyEarnings" REAL NOT NULL DEFAULT 0,
     "earningsMonth" INTEGER NOT NULL DEFAULT 0,
     "earningsYear" INTEGER NOT NULL DEFAULT 0,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "contractSigned" BOOLEAN NOT NULL DEFAULT false,
     "plan" TEXT NOT NULL DEFAULT 'BASIC',
-
-    CONSTRAINT "Driver_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "Driver_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "DriverOffer" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "orderId" INTEGER NOT NULL,
     "driverId" INTEGER NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
     "attempt" INTEGER NOT NULL DEFAULT 1,
-    "expiresAt" TIMESTAMP(3) NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "DriverOffer_pkey" PRIMARY KEY ("id")
+    "expiresAt" DATETIME NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "DriverOffer_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "DriverOffer_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "DriverMetric" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "driverId" INTEGER NOT NULL,
     "month" INTEGER NOT NULL,
     "year" INTEGER NOT NULL,
     "deliveries" INTEGER NOT NULL DEFAULT 0,
-    "earnings" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "rating" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "DriverMetric_pkey" PRIMARY KEY ("id")
+    "earnings" REAL NOT NULL DEFAULT 0,
+    "rating" REAL NOT NULL DEFAULT 0,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "DriverMetric_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "CarouselSlide" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "type" TEXT NOT NULL DEFAULT 'promotion',
     "title" TEXT NOT NULL,
     "subtitle" TEXT,
@@ -405,42 +421,40 @@ CREATE TABLE "CarouselSlide" (
     "image" TEXT,
     "active" BOOLEAN NOT NULL DEFAULT false,
     "position" INTEGER NOT NULL DEFAULT 0,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "CarouselSlide_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
 CREATE TABLE "PlatformSettings" (
-    "id" INTEGER NOT NULL DEFAULT 1,
-    "commissionRate" DOUBLE PRECISION NOT NULL DEFAULT 0.05,
-    "driverCommission" DOUBLE PRECISION NOT NULL DEFAULT 0.15,
-    "deliveryBasePrice" DOUBLE PRECISION NOT NULL DEFAULT 500,
-    "deliveryPricePerKg" DOUBLE PRECISION NOT NULL DEFAULT 25,
-    "deliveryPricePerKm" DOUBLE PRECISION NOT NULL DEFAULT 100,
-    "deliveryMaxPrice" DOUBLE PRECISION NOT NULL DEFAULT 8000,
-    "deliveryFreeAbove" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT DEFAULT 1,
+    "commissionRate" REAL NOT NULL DEFAULT 0.05,
+    "driverCommission" REAL NOT NULL DEFAULT 0.15,
+    "deliveryBasePrice" REAL NOT NULL DEFAULT 500,
+    "deliveryPricePerKg" REAL NOT NULL DEFAULT 25,
+    "deliveryPricePerKm" REAL NOT NULL DEFAULT 100,
+    "deliveryMaxPrice" REAL NOT NULL DEFAULT 8000,
+    "deliveryFreeAbove" REAL NOT NULL DEFAULT 0,
     "deliveryLeadDays" INTEGER NOT NULL DEFAULT 1,
-    "additionalPickupFee" DOUBLE PRECISION NOT NULL DEFAULT 500,
-    "basicPlanPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "certifiedPlanPrice" DOUBLE PRECISION NOT NULL DEFAULT 15000,
-    "certifiedMonthlyPrice" DOUBLE PRECISION NOT NULL DEFAULT 1500,
-    "driverSubPrice" DOUBLE PRECISION NOT NULL DEFAULT 5000,
-    "driverAnnualPrice" DOUBLE PRECISION NOT NULL DEFAULT 48000,
+    "additionalPickupFee" REAL NOT NULL DEFAULT 500,
+    "basicPlanPrice" REAL NOT NULL DEFAULT 0,
+    "certifiedPlanPrice" REAL NOT NULL DEFAULT 15000,
+    "certifiedMonthlyPrice" REAL NOT NULL DEFAULT 1500,
+    "driverSubPrice" REAL NOT NULL DEFAULT 5000,
+    "driverAnnualPrice" REAL NOT NULL DEFAULT 48000,
     "basicMaxProducts" INTEGER NOT NULL DEFAULT 0,
-    "premiumDriverCommission" DOUBLE PRECISION NOT NULL DEFAULT 0.20,
+    "premiumDriverCommission" REAL NOT NULL DEFAULT 0.20,
     "basicCanAnalytics" BOOLEAN NOT NULL DEFAULT true,
     "shopBasicFeatures" TEXT,
     "shopCertifiedFeatures" TEXT,
     "driverBasicFeatures" TEXT,
     "driverPremiumFeatures" TEXT,
     "offerExpiryMin" INTEGER NOT NULL DEFAULT 15,
-    "minDriverRating" DOUBLE PRECISION NOT NULL DEFAULT 3.5,
+    "minDriverRating" REAL NOT NULL DEFAULT 3.5,
     "maxOfferAttempts" INTEGER NOT NULL DEFAULT 3,
-    "penaltyWarn1Rate" DOUBLE PRECISION NOT NULL DEFAULT 0.70,
-    "penaltyWarn2Rate" DOUBLE PRECISION NOT NULL DEFAULT 0.50,
-    "penaltySuspendRate" DOUBLE PRECISION NOT NULL DEFAULT 0.30,
+    "penaltyWarn1Rate" REAL NOT NULL DEFAULT 0.70,
+    "penaltyWarn2Rate" REAL NOT NULL DEFAULT 0.50,
+    "penaltySuspendRate" REAL NOT NULL DEFAULT 0.30,
     "autoValidateOrders" BOOLEAN NOT NULL DEFAULT true,
     "maintenanceMode" BOOLEAN NOT NULL DEFAULT false,
     "supportEmail" TEXT NOT NULL DEFAULT 'support@rizivoirien.ci',
@@ -454,145 +468,136 @@ CREATE TABLE "PlatformSettings" (
     "seoFbPixelId" TEXT NOT NULL DEFAULT '',
     "seoRobotsIndex" BOOLEAN NOT NULL DEFAULT true,
     "seoSitemapEnabled" BOOLEAN NOT NULL DEFAULT true,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "PlatformSettings_pkey" PRIMARY KEY ("id")
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
 CREATE TABLE "Subscription" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "shopId" INTEGER NOT NULL,
     "plan" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'ACTIVE',
-    "startDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "endDate" TIMESTAMP(3),
-    "amount" DOUBLE PRECISION NOT NULL,
-
-    CONSTRAINT "Subscription_pkey" PRIMARY KEY ("id")
+    "startDate" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "endDate" DATETIME,
+    "amount" REAL NOT NULL,
+    CONSTRAINT "Subscription_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Contract" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "type" TEXT NOT NULL,
     "shopId" INTEGER,
     "driverId" INTEGER,
     "content" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'PENDING_SIGNATURE',
-    "generatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "signedAt" TIMESTAMP(3),
-
-    CONSTRAINT "Contract_pkey" PRIMARY KEY ("id")
+    "generatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "signedAt" DATETIME,
+    CONSTRAINT "Contract_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "Contract_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "InviteCode" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "code" TEXT NOT NULL,
     "used" BOOLEAN NOT NULL DEFAULT false,
     "usedById" INTEGER,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "InviteCode_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- CreateTable
 CREATE TABLE "Address" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
     "label" TEXT NOT NULL,
     "address" TEXT NOT NULL,
     "city" TEXT NOT NULL DEFAULT 'Abidjan',
     "isDefault" BOOLEAN NOT NULL DEFAULT false,
-
-    CONSTRAINT "Address_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "Address_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Review" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "productId" INTEGER NOT NULL,
     "userId" INTEGER NOT NULL,
     "orderId" INTEGER,
     "rating" INTEGER NOT NULL,
     "comment" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "Review_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Review_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "Review_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Wishlist" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
     "productId" INTEGER NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "Wishlist_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Wishlist_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "Wishlist_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Notification" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
     "type" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "message" TEXT NOT NULL,
     "data" TEXT,
     "read" BOOLEAN NOT NULL DEFAULT false,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "Notification_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Dispute" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "orderId" INTEGER NOT NULL,
     "buyerId" INTEGER NOT NULL,
     "reason" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'OPEN',
-    "refundAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "refundAmount" REAL NOT NULL DEFAULT 0,
     "refundProcessed" BOOLEAN NOT NULL DEFAULT false,
     "resolution" TEXT,
-    "resolvedAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Dispute_pkey" PRIMARY KEY ("id")
+    "resolvedAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Dispute_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "Dispute_buyerId_fkey" FOREIGN KEY ("buyerId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "ShopReview" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "shopId" INTEGER NOT NULL,
     "userId" INTEGER NOT NULL,
     "orderId" INTEGER,
     "rating" INTEGER NOT NULL,
     "comment" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "ShopReview_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ShopReview_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "ShopReview_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "AdminLog" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "adminId" INTEGER NOT NULL,
     "action" TEXT NOT NULL,
     "targetType" TEXT,
     "targetId" INTEGER,
     "details" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "AdminLog_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- CreateTable
 CREATE TABLE "PlanUpgradeRequest" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "type" TEXT NOT NULL,
     "shopId" INTEGER,
     "driverId" INTEGER,
@@ -602,74 +607,70 @@ CREATE TABLE "PlanUpgradeRequest" (
     "billingPeriod" TEXT NOT NULL DEFAULT 'monthly',
     "note" TEXT,
     "adminNote" TEXT,
-    "amount" DOUBLE PRECISION,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "PlanUpgradeRequest_pkey" PRIMARY KEY ("id")
+    "amount" REAL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "PlanUpgradeRequest_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "PlanUpgradeRequest_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "PromoCode" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "code" TEXT NOT NULL,
     "description" TEXT,
     "type" TEXT NOT NULL DEFAULT 'PERCENT',
-    "value" DOUBLE PRECISION NOT NULL,
-    "minOrder" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "value" REAL NOT NULL,
+    "minOrder" REAL NOT NULL DEFAULT 0,
     "maxUses" INTEGER NOT NULL DEFAULT 100,
     "usedCount" INTEGER NOT NULL DEFAULT 0,
     "active" BOOLEAN NOT NULL DEFAULT true,
-    "expiresAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "PromoCode_pkey" PRIMARY KEY ("id")
+    "expiresAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- CreateTable
 CREATE TABLE "CommercialNote" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "shopId" INTEGER,
     "driverId" INTEGER,
     "authorId" INTEGER NOT NULL,
     "content" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "CommercialNote_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "CommercialNote_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "CommercialNote_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "CommercialNote_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "AccountingPermission" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
     "permission" TEXT NOT NULL,
     "grantedBy" INTEGER NOT NULL,
-    "grantedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "AccountingPermission_pkey" PRIMARY KEY ("id")
+    "grantedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "AccountingPermission_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "TreasuryAccount" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "name" TEXT NOT NULL,
     "type" TEXT NOT NULL,
-    "balance" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "balance" REAL NOT NULL DEFAULT 0,
     "currency" TEXT NOT NULL DEFAULT 'XOF',
     "active" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "TreasuryAccount_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
 CREATE TABLE "FinancialTransaction" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "reference" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "direction" TEXT NOT NULL,
-    "amount" DOUBLE PRECISION NOT NULL,
+    "amount" REAL NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'XOF',
     "status" TEXT NOT NULL DEFAULT 'PENDING',
     "sourceType" TEXT,
@@ -682,107 +683,98 @@ CREATE TABLE "FinancialTransaction" (
     "description" TEXT,
     "createdBy" INTEGER NOT NULL,
     "validatedBy" INTEGER,
-    "validatedAt" TIMESTAMP(3),
+    "validatedAt" DATETIME,
     "reconciled" BOOLEAN NOT NULL DEFAULT false,
-    "reconciledAt" TIMESTAMP(3),
+    "reconciledAt" DATETIME,
     "reconciledBy" INTEGER,
-    "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "FinancialTransaction_pkey" PRIMARY KEY ("id")
+    "date" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "FinancialTransaction_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "TreasuryAccount" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Debt" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "beneficiaryUserId" INTEGER,
     "beneficiaryName" TEXT,
     "sourceType" TEXT NOT NULL,
     "sourceId" INTEGER,
-    "initialAmount" DOUBLE PRECISION NOT NULL,
-    "paidAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "initialAmount" REAL NOT NULL,
+    "paidAmount" REAL NOT NULL DEFAULT 0,
     "currency" TEXT NOT NULL DEFAULT 'XOF',
     "status" TEXT NOT NULL DEFAULT 'OPEN',
-    "dueDate" TIMESTAMP(3),
+    "dueDate" DATETIME,
     "description" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Debt_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
 CREATE TABLE "Receivable" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "debtorUserId" INTEGER,
     "debtorName" TEXT,
     "sourceType" TEXT NOT NULL,
     "sourceId" INTEGER,
-    "amount" DOUBLE PRECISION NOT NULL,
-    "receivedAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "amount" REAL NOT NULL,
+    "receivedAmount" REAL NOT NULL DEFAULT 0,
     "currency" TEXT NOT NULL DEFAULT 'XOF',
     "status" TEXT NOT NULL DEFAULT 'OPEN',
-    "dueDate" TIMESTAMP(3),
+    "dueDate" DATETIME,
     "description" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Receivable_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
 CREATE TABLE "CommissionRule" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "type" TEXT NOT NULL,
-    "rate" DOUBLE PRECISION,
-    "fixedAmount" DOUBLE PRECISION,
+    "rate" REAL,
+    "fixedAmount" REAL,
     "category" TEXT,
     "actorType" TEXT,
-    "startDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "endDate" TIMESTAMP(3),
+    "startDate" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "endDate" DATETIME,
     "status" TEXT NOT NULL DEFAULT 'ACTIVE',
     "createdBy" INTEGER NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "CommissionRule_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- CreateTable
 CREATE TABLE "Remuneration" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "reference" TEXT NOT NULL,
     "beneficiaryUserId" INTEGER NOT NULL,
     "beneficiaryType" TEXT NOT NULL,
-    "periodStart" TIMESTAMP(3) NOT NULL,
-    "periodEnd" TIMESTAMP(3) NOT NULL,
+    "periodStart" DATETIME NOT NULL,
+    "periodEnd" DATETIME NOT NULL,
     "sourceType" TEXT NOT NULL,
-    "grossAmount" DOUBLE PRECISION NOT NULL,
-    "bonusAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "penaltyAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "advanceAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "netAmount" DOUBLE PRECISION NOT NULL,
-    "appliedCommissionRate" DOUBLE PRECISION,
+    "grossAmount" REAL NOT NULL,
+    "bonusAmount" REAL NOT NULL DEFAULT 0,
+    "penaltyAmount" REAL NOT NULL DEFAULT 0,
+    "advanceAmount" REAL NOT NULL DEFAULT 0,
+    "netAmount" REAL NOT NULL,
+    "appliedCommissionRate" REAL,
     "calculationDetail" TEXT NOT NULL DEFAULT '[]',
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
     "documentType" TEXT,
     "createdBy" INTEGER NOT NULL,
-    "calculatedAt" TIMESTAMP(3),
+    "calculatedAt" DATETIME,
     "validatedBy" INTEGER,
-    "validatedAt" TIMESTAMP(3),
+    "validatedAt" DATETIME,
     "rejectedReason" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Remuneration_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
 CREATE TABLE "PaymentOrder" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "reference" TEXT NOT NULL,
     "beneficiaryUserId" INTEGER,
     "beneficiaryName" TEXT,
-    "amount" DOUBLE PRECISION NOT NULL,
+    "amount" REAL NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'XOF',
     "reason" TEXT NOT NULL,
     "sourceType" TEXT NOT NULL,
@@ -794,18 +786,17 @@ CREATE TABLE "PaymentOrder" (
     "holdReason" TEXT,
     "rejectedReason" TEXT,
     "createdBy" INTEGER NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "PaymentOrder_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "PaymentOrder_remunerationId_fkey" FOREIGN KEY ("remunerationId") REFERENCES "Remuneration" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Payment" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "reference" TEXT NOT NULL,
     "paymentOrderId" INTEGER NOT NULL,
-    "amount" DOUBLE PRECISION NOT NULL,
+    "amount" REAL NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'XOF',
     "beneficiaryUserId" INTEGER,
     "beneficiaryName" TEXT,
@@ -813,23 +804,22 @@ CREATE TABLE "Payment" (
     "method" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
     "executedBy" INTEGER,
-    "executedAt" TIMESTAMP(3),
+    "executedAt" DATETIME,
     "failureReason" TEXT,
     "documentUrl" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Payment_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Payment_paymentOrderId_fkey" FOREIGN KEY ("paymentOrderId") REFERENCES "PaymentOrder" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "Expense" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "reference" TEXT NOT NULL,
     "category" TEXT NOT NULL,
-    "amount" DOUBLE PRECISION NOT NULL,
+    "amount" REAL NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'XOF',
-    "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "date" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "supplier" TEXT,
     "accountId" INTEGER,
     "description" TEXT,
@@ -837,32 +827,26 @@ CREATE TABLE "Expense" (
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
     "createdBy" INTEGER NOT NULL,
     "validatedBy" INTEGER,
-    "validatedAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Expense_pkey" PRIMARY KEY ("id")
+    "validatedAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
 CREATE TABLE "AccountingDocument" (
-    "id" SERIAL NOT NULL,
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "targetType" TEXT NOT NULL,
     "targetId" INTEGER NOT NULL,
     "docType" TEXT NOT NULL,
     "url" TEXT NOT NULL,
     "uploadedBy" INTEGER NOT NULL,
-    "uploadedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "AccountingDocument_pkey" PRIMARY KEY ("id")
+    "uploadedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- CreateTable
 CREATE TABLE "AccountingSequence" (
-    "key" TEXT NOT NULL,
-    "counter" INTEGER NOT NULL DEFAULT 0,
-
-    CONSTRAINT "AccountingSequence_pkey" PRIMARY KEY ("key")
+    "key" TEXT NOT NULL PRIMARY KEY,
+    "counter" INTEGER NOT NULL DEFAULT 0
 );
 
 -- CreateIndex
@@ -990,6 +974,27 @@ CREATE INDEX "Product_active_idx" ON "Product"("active");
 
 -- CreateIndex
 CREATE INDEX "Product_saleType_idx" ON "Product"("saleType");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "StockPosition_productId_key" ON "StockPosition"("productId");
+
+-- CreateIndex
+CREATE INDEX "StockPosition_productId_idx" ON "StockPosition"("productId");
+
+-- CreateIndex
+CREATE INDEX "StockMovement_stockPositionId_idx" ON "StockMovement"("stockPositionId");
+
+-- CreateIndex
+CREATE INDEX "StockMovement_productId_idx" ON "StockMovement"("productId");
+
+-- CreateIndex
+CREATE INDEX "StockMovement_type_idx" ON "StockMovement"("type");
+
+-- CreateIndex
+CREATE INDEX "StockMovement_sourceType_sourceId_idx" ON "StockMovement"("sourceType", "sourceId");
+
+-- CreateIndex
+CREATE INDEX "StockMovement_createdAt_idx" ON "StockMovement"("createdAt");
 
 -- CreateIndex
 CREATE INDEX "Order_buyerId_idx" ON "Order"("buyerId");
@@ -1173,169 +1178,4 @@ CREATE INDEX "Expense_category_idx" ON "Expense"("category");
 
 -- CreateIndex
 CREATE INDEX "AccountingDocument_targetType_targetId_idx" ON "AccountingDocument"("targetType", "targetId");
-
--- AddForeignKey
-ALTER TABLE "Producer" ADD CONSTRAINT "Producer_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Cooperative" ADD CONSTRAINT "Cooperative_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "CooperativeMember" ADD CONSTRAINT "CooperativeMember_cooperativeId_fkey" FOREIGN KEY ("cooperativeId") REFERENCES "Cooperative"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "CooperativeMember" ADD CONSTRAINT "CooperativeMember_producerId_fkey" FOREIGN KEY ("producerId") REFERENCES "Producer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Trader" ADD CONSTRAINT "Trader_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Processor" ADD CONSTRAINT "Processor_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Exporter" ADD CONSTRAINT "Exporter_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "RiceOffer" ADD CONSTRAINT "RiceOffer_producerId_fkey" FOREIGN KEY ("producerId") REFERENCES "Producer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "RiceOffer" ADD CONSTRAINT "RiceOffer_cooperativeId_fkey" FOREIGN KEY ("cooperativeId") REFERENCES "Cooperative"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "PurchaseRequest" ADD CONSTRAINT "PurchaseRequest_traderId_fkey" FOREIGN KEY ("traderId") REFERENCES "Trader"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "PurchaseRequest" ADD CONSTRAINT "PurchaseRequest_processorId_fkey" FOREIGN KEY ("processorId") REFERENCES "Processor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "PurchaseRequest" ADD CONSTRAINT "PurchaseRequest_exporterId_fkey" FOREIGN KEY ("exporterId") REFERENCES "Exporter"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ContactRequest" ADD CONSTRAINT "ContactRequest_fromUserId_fkey" FOREIGN KEY ("fromUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ContactRequest" ADD CONSTRAINT "ContactRequest_toUserId_fkey" FOREIGN KEY ("toUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ContactRequest" ADD CONSTRAINT "ContactRequest_offerId_fkey" FOREIGN KEY ("offerId") REFERENCES "RiceOffer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ContactRequest" ADD CONSTRAINT "ContactRequest_requestId_fkey" FOREIGN KEY ("requestId") REFERENCES "PurchaseRequest"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "B2BTransaction" ADD CONSTRAINT "B2BTransaction_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "ContactRequest"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "B2BTransaction" ADD CONSTRAINT "B2BTransaction_buyerUserId_fkey" FOREIGN KEY ("buyerUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "B2BTransaction" ADD CONSTRAINT "B2BTransaction_sellerUserId_fkey" FOREIGN KEY ("sellerUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "B2BReport" ADD CONSTRAINT "B2BReport_reporterId_fkey" FOREIGN KEY ("reporterId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Shop" ADD CONSTRAINT "Shop_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Product" ADD CONSTRAINT "Product_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ProductHistory" ADD CONSTRAINT "ProductHistory_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Order" ADD CONSTRAINT "Order_buyerId_fkey" FOREIGN KEY ("buyerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Order" ADD CONSTRAINT "Order_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Order" ADD CONSTRAINT "Order_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "OrderStatusHistory" ADD CONSTRAINT "OrderStatusHistory_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Driver" ADD CONSTRAINT "Driver_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "DriverOffer" ADD CONSTRAINT "DriverOffer_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "DriverOffer" ADD CONSTRAINT "DriverOffer_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "DriverMetric" ADD CONSTRAINT "DriverMetric_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Subscription" ADD CONSTRAINT "Subscription_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Contract" ADD CONSTRAINT "Contract_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Contract" ADD CONSTRAINT "Contract_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Address" ADD CONSTRAINT "Address_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Review" ADD CONSTRAINT "Review_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Review" ADD CONSTRAINT "Review_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Wishlist" ADD CONSTRAINT "Wishlist_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Wishlist" ADD CONSTRAINT "Wishlist_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Notification" ADD CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Dispute" ADD CONSTRAINT "Dispute_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Dispute" ADD CONSTRAINT "Dispute_buyerId_fkey" FOREIGN KEY ("buyerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ShopReview" ADD CONSTRAINT "ShopReview_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ShopReview" ADD CONSTRAINT "ShopReview_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "PlanUpgradeRequest" ADD CONSTRAINT "PlanUpgradeRequest_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "PlanUpgradeRequest" ADD CONSTRAINT "PlanUpgradeRequest_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "CommercialNote" ADD CONSTRAINT "CommercialNote_shopId_fkey" FOREIGN KEY ("shopId") REFERENCES "Shop"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "CommercialNote" ADD CONSTRAINT "CommercialNote_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "CommercialNote" ADD CONSTRAINT "CommercialNote_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AccountingPermission" ADD CONSTRAINT "AccountingPermission_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "FinancialTransaction" ADD CONSTRAINT "FinancialTransaction_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "TreasuryAccount"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "PaymentOrder" ADD CONSTRAINT "PaymentOrder_remunerationId_fkey" FOREIGN KEY ("remunerationId") REFERENCES "Remuneration"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Payment" ADD CONSTRAINT "Payment_paymentOrderId_fkey" FOREIGN KEY ("paymentOrderId") REFERENCES "PaymentOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 

@@ -384,10 +384,61 @@ model Product {
   reviews    Review[]
   wishlist   Wishlist[]
   history    ProductHistory[]
+  stockPosition StockPosition?
 
   @@index([shopId])
   @@index([active])
   @@index([saleType])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STOCK ENGINE — LOT 1 : modèles fondation (audit du 2026-09-05).
+// Product.stock (champ historique ci-dessus) reste en place comme cache
+// affiché par le reste de l'app ; StockPosition.quantity devient la source de
+// vérité à partir du LOT 3, synchronisée vers Product.stock à chaque
+// mouvement (double écriture transitoire, cf. plan de migration de l'audit).
+// Ne JAMAIS écrire StockPosition.quantity directement — toujours passer par
+// le Stock Engine (services/stockEngine.js, LOT 2) qui produit le
+// StockMovement correspondant dans la même transaction.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model StockPosition {
+  id        Int      @id @default(autoincrement())
+  productId Int      @unique
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movements StockMovement[]
+
+  @@index([productId])
+}
+
+// Journal append-only — jamais modifié ni supprimé après création (même
+// convention de traçabilité que FinancialTransaction/AdminLog). sourceType/
+// sourceId reprend le pattern polymorphe déjà utilisé par FinancialTransaction/
+// Debt/AccountingDocument plutôt que des clés étrangères dédiées par origine.
+model StockMovement {
+  id              Int           @id @default(autoincrement())
+  stockPositionId Int
+  stockPosition   StockPosition @relation(fields: [stockPositionId], references: [id], onDelete: Cascade)
+  productId       Int // dénormalisé — évite une jointure pour toute requête "mouvements de ce produit"
+  type            String // INITIAL_STOCK|RECEPTION|SALE|RESTOCK|ADJUSTMENT|LOSS|INVENTORY_ADJUSTMENT
+  quantity        Int // signé : positif = entrée, négatif = sortie
+  quantityBefore  Int
+  quantityAfter   Int
+  sourceType      String? // ORDER|MANUAL|MIGRATION|INVENTORY|DISPUTE
+  sourceId        Int?
+  reason          String?
+  actorId         Int? // utilisateur à l'origine — Int simple sans relation formelle, comme OrderStatusHistory.actorId/AdminLog.adminId (null pour un mouvement système, ex. MIGRATION)
+  createdAt       DateTime      @default(now())
+
+  @@index([stockPositionId])
+  @@index([productId])
+  @@index([type])
+  @@index([sourceType, sourceId])
+  @@index([createdAt])
 }
 
 model ProductHistory {

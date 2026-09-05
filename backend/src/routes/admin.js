@@ -1538,4 +1538,77 @@ router.get('/logistics/dashboard', ...guard, async (req, res) => {
   }
 })
 
+// ─── Logistique — LOT 15 : intelligence logistique ─────────────────────────
+// L'historique GPS (DriverLocationHistory, LOT9) n'avait encore JAMAIS eu de
+// consommateur — collecté avec une politique de rétention définie, mais
+// jamais interrogé nulle part. Premier usage réel : reconstituer le trajet
+// réel d'une livraison, pour instruire un litige ou un échec signalé
+// (le livreur est-il vraiment passé par l'adresse indiquée ? combien de
+// temps a-t-il stationné avant d'échouer ?).
+router.get('/logistics/shipments/:id/gps-trail', ...guard, async (req, res) => {
+  try {
+    const shipment = await prisma.shipment.findUnique({ where: { id: Number(req.params.id) } })
+    if (!shipment) return res.status(404).json({ error: 'Livraison introuvable' })
+    if (!shipment.driverId) return res.json({ trail: [] })
+
+    const from = shipment.pickedUpAt || shipment.createdAt
+    const to = shipment.deliveredAt || new Date()
+
+    const trail = await prisma.driverLocationHistory.findMany({
+      where: { driverId: shipment.driverId, createdAt: { gte: from, lte: to } },
+      orderBy: { createdAt: 'asc' },
+      select: { lat: true, lng: true, accuracy: true, createdAt: true },
+    })
+    res.json({ trail, from, to })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Signal d'anomalie simple : livreurs dont le taux d'échec récent (30
+// derniers jours) dépasse un seuil — pas un modèle prédictif, juste un
+// dénombrement qui donne à un ops de quoi prioriser son attention plutôt
+// que de parcourir chaque commande escaladée une à une.
+router.get('/logistics/risk-signals', ...guard, async (req, res) => {
+  try {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    const shipments = await prisma.shipment.findMany({
+      where: { driverId: { not: null }, updatedAt: { gte: since }, status: { in: ['DELIVERED', 'FAILED'] } },
+      select: { driverId: true, status: true },
+    })
+
+    const byDriver = {}
+    for (const s of shipments) {
+      const entry = (byDriver[s.driverId] ||= { total: 0, failed: 0 })
+      entry.total += 1
+      if (s.status === 'FAILED') entry.failed += 1
+    }
+
+    const MIN_SAMPLE = 3 // en dessous, un seul échec fausserait le taux
+    const FAILURE_RATE_THRESHOLD = 0.3
+    const flaggedDriverIds = Object.entries(byDriver)
+      .filter(([, v]) => v.total >= MIN_SAMPLE && v.failed / v.total >= FAILURE_RATE_THRESHOLD)
+      .map(([driverId]) => Number(driverId))
+
+    if (!flaggedDriverIds.length) return res.json({ flaggedDrivers: [] })
+
+    const drivers = await prisma.driver.findMany({
+      where: { id: { in: flaggedDriverIds } },
+      select: { id: true, user: { select: { name: true } } },
+    })
+
+    const flaggedDrivers = drivers.map(d => ({
+      driverId: d.id,
+      driverName: d.user.name,
+      totalDeliveries30d: byDriver[d.id].total,
+      failedDeliveries30d: byDriver[d.id].failed,
+      failureRate: Math.round((byDriver[d.id].failed / byDriver[d.id].total) * 100) / 100,
+    })).sort((a, b) => b.failureRate - a.failureRate)
+
+    res.json({ flaggedDrivers })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 module.exports = router

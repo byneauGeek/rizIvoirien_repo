@@ -297,7 +297,7 @@ router.get('/active-delivery', authenticate, requireRole('DRIVER'), async (req, 
 // — point d'entrée unique désormais partagé avec le chemin admin (voir
 // orders.js), plus de logique de rémunération dupliquée ici.
 router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), async (req, res) => {
-  const { status, note } = req.body
+  const { status, note, otp } = req.body
   const ALLOWED = ['IN_TRANSIT', 'DELIVERED']
   if (!ALLOWED.includes(status)) return res.status(400).json({ error: 'Statut invalide' })
 
@@ -317,8 +317,8 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
     // (premier point de collecte — pas d'étape distincte aujourd'hui).
     const shipmentStatus = status === 'IN_TRANSIT' ? 'PICKED_UP' : 'DELIVERED'
 
-    await deliveryLifecycle.advanceShipment(prisma, {
-      orderId: order.id, status: shipmentStatus, actorId: req.user.id, note: note || autoNote[status] || null,
+    const { shipment } = await deliveryLifecycle.advanceShipment(prisma, {
+      orderId: order.id, status: shipmentStatus, actorId: req.user.id, note: note || autoNote[status] || null, otp,
     })
 
     const { notify } = require('../services/notifications')
@@ -328,6 +328,16 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
         `Le livreur a récupéré votre commande #${order.id} et est en route.`,
         { orderId: order.id }
       ))
+      // LOT 9 : preuve de livraison — le code n'est JAMAIS renvoyé au livreur
+      // (voir la réponse plus bas, qui n'inclut pas `shipment`), seulement
+      // envoyé à l'acheteur par e-mail.
+      setImmediate(async () => {
+        const buyerUser = await prisma.user.findUnique({ where: { id: order.buyerId }, select: { name: true, email: true } })
+        if (buyerUser?.email) {
+          const { sendMail } = require('../services/mailer')
+          sendMail(buyerUser.email, 'deliveryCode', { name: buyerUser.name, orderId: order.id, code: shipment.deliveryCode })
+        }
+      })
     } else {
       await notify(order.buyerId, 'DELIVERED', 'Commande livrée !', `Votre commande #${order.id} a été livrée. Merci !`, { orderId: order.id })
       // Email de confirmation — avant le LOT 3, ce template n'était déclenché
@@ -343,6 +353,7 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
 
     res.json({ success: true })
   } catch (e) {
+    if (e.code === 'INVALID_OTP') return res.status(400).json({ error: e.message })
     res.status(500).json({ error: e.message })
   }
 })
@@ -542,11 +553,25 @@ router.get('/events', authenticateSSE, requireRole('DRIVER'), (req, res) => {
 
 // ── GPS : position du livreur ──────────────────────────────────────────────────
 // POST /api/drivers/location
-// LOT 1 (Logistique, arbitrage Décision 4) : persistée en base (dernière
-// position uniquement) plutôt que dans le Map en mémoire de services/sse.js,
-// qui ne survivait pas à un redémarrage serveur. Pas d'historique de trajet
-// ici — repoussé au LOT 9 (preuve de livraison) avec une politique de
-// rétention à définir avant toute collecte d'historique GPS.
+// LOT 1 (Logistique, arbitrage Décision 4) : dernière position persistée en
+// base plutôt que dans le Map en mémoire de services/sse.js, qui ne
+// survivait pas à un redémarrage serveur.
+// LOT 9 : historique ajouté (DriverLocationHistory, append-only) — politique
+// de rétention définie ici plutôt que reportée indéfiniment : POUR CE
+// LIVREUR SEULEMENT, ses propres entrées plus vieilles que
+// PlatformSettings.gpsHistoryRetentionDays sont purgées. Pas de job planifié
+// séparé — la purge suit naturellement l'activité (un livreur inactif n'a
+// simplement plus de nouvelles positions à purger, ce qui est sans risque
+// puisque son historique ne grossit plus non plus).
+// Limitée à une fois par heure et par livreur (`lastPruneAt`) plutôt qu'à
+// chaque envoi de position (toutes les ~30s en usage réel) : sinon chaque
+// ping déclenche une requête settings + un DELETE, ce qui, multiplié par
+// tous les livreurs actifs, crée une pression d'écriture SQLite inutile
+// (constaté en conditions de charge : un test complet est passé de ~90s à
+// plus de 3h sous contention).
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000
+const lastPruneAt = new Map()
+
 router.post('/location', authenticate, requireRole('DRIVER'), async (req, res) => {
   const { lat, lng, accuracy, orderId } = req.body
   if (lat == null || lng == null) return res.status(400).json({ error: 'lat et lng requis' })
@@ -556,15 +581,32 @@ router.post('/location', authenticate, requireRole('DRIVER'), async (req, res) =
     const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } })
     if (!driver) return res.status(404).json({ error: 'Profil introuvable' })
 
-    await prisma.driverCurrentLocation.upsert({
-      where: { driverId: driver.id },
-      update: { lat: Number(lat), lng: Number(lng), accuracy: accuracy != null ? Number(accuracy) : null, orderId: orderId ? Number(orderId) : null },
-      create: { driverId: driver.id, lat: Number(lat), lng: Number(lng), accuracy: accuracy != null ? Number(accuracy) : null, orderId: orderId ? Number(orderId) : null },
-    })
+    const data = { lat: Number(lat), lng: Number(lng), accuracy: accuracy != null ? Number(accuracy) : null, orderId: orderId ? Number(orderId) : null }
+    await Promise.all([
+      prisma.driverCurrentLocation.upsert({ where: { driverId: driver.id }, update: data, create: { driverId: driver.id, ...data } }),
+      prisma.driverLocationHistory.create({ data: { driverId: driver.id, ...data } }),
+    ])
+
+    const last = lastPruneAt.get(driver.id) || 0
+    if (Date.now() - last > PRUNE_INTERVAL_MS) {
+      lastPruneAt.set(driver.id, Date.now())
+      setImmediate(() => pruneDriverLocationHistory(driver.id))
+    }
 
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
+
+async function pruneDriverLocationHistory(driverId) {
+  try {
+    const settings = await getSettings()
+    const retentionDays = settings?.gpsHistoryRetentionDays ?? 30
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
+    await prisma.driverLocationHistory.deleteMany({ where: { driverId, createdAt: { lt: cutoff } } })
+  } catch {
+    // best-effort : ne jamais faire échouer l'envoi de position pour une purge
+  }
+}
 
 // ── GET /api/drivers/contract
 router.get('/contract', authenticate, requireRole('DRIVER'), async (req, res) => {

@@ -170,6 +170,24 @@ const templates = {
     }
   },
 
+  // LOT 9 (Logistique) : code de preuve de livraison — envoyé au moment où le
+  // livreur récupère le colis (Shipment PICKED_UP), pas à la création de la
+  // commande, pour que le code reste valable le moins longtemps possible
+  // avant d'être utilisé.
+  deliveryCode({ name, orderId, code }) {
+    return {
+      subject: `🔐 Votre code de livraison — Commande #${orderId}`,
+      html: layout('Code de livraison', `
+        <h2>Votre livreur arrive !</h2>
+        <p>Bonjour <strong>${esc(name)}</strong>, communiquez ce code à votre livreur au moment de la remise de votre commande <strong>#${orderId}</strong> pour confirmer que vous l'avez bien reçue :</p>
+        <div style="text-align:center;margin:24px 0">
+          <span style="display:inline-block;font-size:32px;font-weight:bold;letter-spacing:8px;background:#F7F3E9;border:2px dashed #E8A217;border-radius:12px;padding:16px 24px;color:#1B4332">${esc(code)}</span>
+        </div>
+        <p style="color:#4A5568;font-size:13px">Ne communiquez ce code qu'au livreur, en personne, au moment de la remise du colis.</p>
+      `),
+    }
+  },
+
   // Commande annulée (acheteur)
   orderCancelled({ name, orderId }) {
     return {

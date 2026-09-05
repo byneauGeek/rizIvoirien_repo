@@ -57,6 +57,8 @@ export default function DeliveryTab({ onDelivered }) {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [advanceError, setAdvanceError] = useState(null)
+  const [showOtpInput, setShowOtpInput] = useState(false)
+  const [otp, setOtp] = useState('')
   const [gpsActive, setGpsActive] = useState(false)
   const [gpsDenied, setGpsDenied] = useState(false)
   const gpsRef = useRef(null)
@@ -106,15 +108,30 @@ export default function DeliveryTab({ onDelivered }) {
     return () => { if (gpsRef.current) { clearInterval(gpsRef.current); gpsRef.current = null }; setGpsActive(false) }
   }, [order?.id, order?.status])
 
+  // LOT 9 : passer à DELIVERED exige désormais le code communiqué par
+  // l'acheteur (preuve de livraison) — l'appel n'est déclenché qu'après
+  // saisie, via handleConfirmDelivery ci-dessous.
   const advance = async () => {
     if (!order) return
     const next = order.status === 'PRET' || order.status === 'CONFIRMED' ? 'IN_TRANSIT' : 'DELIVERED'
+    if (next === 'DELIVERED') { setShowOtpInput(true); setAdvanceError(null); return }
     setUpdating(true); setAdvanceError(null)
     try {
       await api.put(`/drivers/delivery/${order.id}/status`, { status: next })
-      if (next === 'DELIVERED' && onDelivered) onDelivered()
       load()
     } catch (err) { setAdvanceError(err.message || 'Erreur lors de la mise à jour') }
+    finally { setUpdating(false) }
+  }
+
+  const confirmDelivery = async () => {
+    if (!order || otp.trim().length !== 4) return
+    setUpdating(true); setAdvanceError(null)
+    try {
+      await api.put(`/drivers/delivery/${order.id}/status`, { status: 'DELIVERED', otp: otp.trim() })
+      setShowOtpInput(false); setOtp('')
+      if (onDelivered) onDelivered()
+      load()
+    } catch (err) { setAdvanceError(err.message || 'Code incorrect') }
     finally { setUpdating(false) }
   }
 
@@ -306,9 +323,44 @@ export default function DeliveryTab({ onDelivered }) {
         </div>
       )}
 
-      {/* ── CTA principal ── */}
-      <AnimatePresence mode="wait">
-        {!isDelivered && canAdvance && (
+      {/* ── CTA principal ──
+          Pas de mode="wait" ici : sur cette bascule bouton/formulaire OTP, une
+          transition qui attendrait la fin de l'animation de sortie avant de
+          monter la suivante peut rester bloquée si l'onglet est mis en arrière-
+          plan (le livreur qui bascule sur ses SMS pour lire le code, cas
+          fréquent) — les navigateurs mobiles limitent alors requestAnimationFrame
+          et l'animation de sortie ne se termine jamais, empêchant le formulaire
+          d'apparaître. Les 3 branches restent mutuellement exclusives (mêmes
+          conditions), un fondu concurrent suffit. */}
+      <AnimatePresence>
+        {!isDelivered && canAdvance && showOtpInput && (
+          <motion.div key="otp"
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="bg-white rounded-3xl shadow-card p-5 space-y-3">
+            <p className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50">Code de livraison</p>
+            <p className="font-dm text-sm text-charcoal/60">Demandez au client le code à 4 chiffres reçu par e-mail.</p>
+            <input
+              type="text" inputMode="numeric" maxLength={4} value={otp}
+              onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
+              placeholder="0000"
+              className="w-full text-center font-syne text-3xl font-bold tracking-[0.5em] py-3 rounded-2xl border-2 border-charcoal/10 focus:border-forest outline-none"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => { setShowOtpInput(false); setOtp(''); setAdvanceError(null) }}
+                className="flex-1 font-syne font-bold text-sm py-3 rounded-2xl border-2 border-charcoal/10 text-charcoal/60 hover:bg-charcoal/5 transition-colors">
+                Annuler
+              </button>
+              <button onClick={confirmDelivery} disabled={updating || otp.length !== 4}
+                className="flex-[2] flex items-center justify-center gap-2 font-syne font-bold text-sm py-3 rounded-2xl bg-green-500 text-cream hover:bg-green-600 disabled:opacity-50 transition-colors">
+                {updating
+                  ? <div className="w-4 h-4 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
+                  : <><CheckCircle2 size={16} /> Confirmer</>}
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {!isDelivered && canAdvance && !showOtpInput && (
           <motion.button key="cta"
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             onClick={advance} disabled={updating}

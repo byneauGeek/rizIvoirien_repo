@@ -37,14 +37,14 @@ const DISPUTE_STATUS = {
 // LOT 8 (Logistique) : conserve désormais toute la réponse (eta, destination
 // géocodée pour la carte), pas seulement la position du livreur.
 function useTracking(orderId, active) {
-  const [state, setState] = useState({ tracking: null, eta: null, destination: null })
+  const [state, setState] = useState({ tracking: null, eta: null, destination: null, deliveryCode: null })
 
   useEffect(() => {
-    if (!active || !orderId) { setState({ tracking: null, eta: null, destination: null }); return }
+    if (!active || !orderId) { setState({ tracking: null, eta: null, destination: null, deliveryCode: null }); return }
 
     const poll = () => {
       api.get(`/orders/${orderId}/track`)
-        .then(data => setState({ tracking: data.tracking || null, eta: data.eta || null, destination: data.destination || null }))
+        .then(data => setState({ tracking: data.tracking || null, eta: data.eta || null, destination: data.destination || null, deliveryCode: data.deliveryCode || null }))
         .catch(() => {})
     }
     poll()
@@ -55,13 +55,28 @@ function useTracking(orderId, active) {
   return state
 }
 
+// LOT 9 : code de preuve de livraison à communiquer au livreur — affiché quel
+// que soit l'état du GPS (le code est indépendant de la position).
+function DeliveryCodeBadge({ code }) {
+  if (!code) return null
+  return (
+    <div className="mt-2 flex items-center justify-between gap-2 bg-safran/10 border border-safran/30 rounded-xl px-3 py-2">
+      <p className="font-dm text-xs text-charcoal/70">Code à communiquer au livreur à la remise :</p>
+      <span className="font-syne text-lg font-bold tracking-[0.3em] text-charcoal">{code}</span>
+    </div>
+  )
+}
+
 function TrackingBanner({ orderId }) {
-  const { tracking, eta, destination } = useTracking(orderId, true)
+  const { tracking, eta, destination, deliveryCode } = useTracking(orderId, true)
 
   if (!tracking) return (
-    <div className="mt-3 flex items-center gap-2 p-3 bg-blue-50 border border-blue-100 rounded-2xl">
-      <Truck size={14} className="text-blue-500 shrink-0" />
-      <p className="font-dm text-xs text-blue-700">Votre livreur est en route — position en cours de récupération…</p>
+    <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-2xl">
+      <div className="flex items-center gap-2">
+        <Truck size={14} className="text-blue-500 shrink-0" />
+        <p className="font-dm text-xs text-blue-700">Votre livreur est en route — position en cours de récupération…</p>
+      </div>
+      <DeliveryCodeBadge code={deliveryCode} />
     </div>
   )
 
@@ -90,6 +105,7 @@ function TrackingBanner({ orderId }) {
         </div>
       </div>
       <DeliveryMap driverPosition={{ lat: tracking.lat, lng: tracking.lng }} destination={destination} />
+      <DeliveryCodeBadge code={deliveryCode} />
     </div>
   )
 }

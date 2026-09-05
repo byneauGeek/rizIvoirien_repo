@@ -379,8 +379,24 @@ CREATE TABLE "Shipment" (
     "failureReason" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "deliveryCode" TEXT,
+    "deliveryCodeAttempts" INTEGER NOT NULL DEFAULT 0,
+    "deliveryProofDistanceKm" DOUBLE PRECISION,
 
     CONSTRAINT "Shipment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DriverLocationHistory" (
+    "id" SERIAL NOT NULL,
+    "driverId" INTEGER NOT NULL,
+    "orderId" INTEGER,
+    "lat" DOUBLE PRECISION NOT NULL,
+    "lng" DOUBLE PRECISION NOT NULL,
+    "accuracy" DOUBLE PRECISION,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DriverLocationHistory_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -551,6 +567,7 @@ CREATE TABLE "PlatformSettings" (
     "deliveryLeadDays" INTEGER NOT NULL DEFAULT 1,
     "additionalPickupFee" DOUBLE PRECISION NOT NULL DEFAULT 500,
     "deliveryAvgSpeedKmh" DOUBLE PRECISION NOT NULL DEFAULT 20,
+    "gpsHistoryRetentionDays" INTEGER NOT NULL DEFAULT 30,
     "basicPlanPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "certifiedPlanPrice" DOUBLE PRECISION NOT NULL DEFAULT 15000,
     "certifiedMonthlyPrice" DOUBLE PRECISION NOT NULL DEFAULT 1500,
@@ -1171,6 +1188,12 @@ CREATE INDEX "Shipment_driverId_idx" ON "Shipment"("driverId");
 CREATE INDEX "Shipment_status_idx" ON "Shipment"("status");
 
 -- CreateIndex
+CREATE INDEX "DriverLocationHistory_driverId_createdAt_idx" ON "DriverLocationHistory"("driverId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "DriverLocationHistory_orderId_idx" ON "DriverLocationHistory"("orderId");
+
+-- CreateIndex
 CREATE INDEX "ShipmentEvent_shipmentId_idx" ON "ShipmentEvent"("shipmentId");
 
 -- CreateIndex
@@ -1454,6 +1477,9 @@ ALTER TABLE "Shipment" ADD CONSTRAINT "Shipment_orderId_fkey" FOREIGN KEY ("orde
 
 -- AddForeignKey
 ALTER TABLE "Shipment" ADD CONSTRAINT "Shipment_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DriverLocationHistory" ADD CONSTRAINT "DriverLocationHistory_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ShipmentEvent" ADD CONSTRAINT "ShipmentEvent_shipmentId_fkey" FOREIGN KEY ("shipmentId") REFERENCES "Shipment"("id") ON DELETE CASCADE ON UPDATE CASCADE;

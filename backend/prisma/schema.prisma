@@ -554,10 +554,41 @@ model Shipment {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  // LOT 9 : preuve de livraison — était totalement ABSENTE avant ce lot
+  // (n'importe qui avec le compte du livreur pouvait marquer DELIVERED sans
+  // aucune vérification). Code à 4 chiffres généré au passage PICKED_UP,
+  // envoyé à l'acheteur par e-mail, exigé du livreur pour passer DELIVERED.
+  // deliveryCodeAttempts limite le brute-force (verrouillage après 5 essais).
+  // deliveryProofDistanceKm est un signal ADDITIONNEL, informatif seulement
+  // (utile en cas de litige) — jamais bloquant, car la destination n'est pas
+  // toujours géocodée (LOT8, best-effort) au moment de la livraison.
+  deliveryCode           String?
+  deliveryCodeAttempts   Int       @default(0)
+  deliveryProofDistanceKm Float?
+
   events ShipmentEvent[]
 
   @@index([driverId])
   @@index([status])
+}
+
+// LOT 9 (arbitrage Décision 4) : historique GPS, absent jusqu'ici (seule la
+// DERNIÈRE position était conservée, DriverCurrentLocation). Politique de
+// rétention définie ici : purge opportuniste à chaque nouvelle position
+// envoyée (voir drivers.js POST /location), pas de tâche planifiée séparée —
+// PlatformSettings.gpsHistoryRetentionDays fixe la durée (30 jours par défaut).
+model DriverLocationHistory {
+  id        Int      @id @default(autoincrement())
+  driverId  Int
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  orderId   Int?
+  lat       Float
+  lng       Float
+  accuracy  Float?
+  createdAt DateTime @default(now())
+
+  @@index([driverId, createdAt])
+  @@index([orderId])
 }
 
 model ShipmentEvent {
@@ -670,6 +701,7 @@ model Driver {
   planUpgradeRequests PlanUpgradeRequest[]
   commercialNotes     CommercialNote[]
   currentLocation     DriverCurrentLocation?
+  locationHistory     DriverLocationHistory[]
   shipments           Shipment[]
 }
 
@@ -768,6 +800,9 @@ model PlatformSettings {
   // trajet réel (route) pas vol d'oiseau, d'où une valeur prudente en zone
   // urbaine plutôt qu'une vitesse de pointe.
   deliveryAvgSpeedKmh     Float    @default(20)
+  // LOT 9 : durée de rétention de l'historique GPS livreur (jours) — purge
+  // opportuniste, voir DriverLocationHistory.
+  gpsHistoryRetentionDays Int      @default(30)
   // ── Plans ─────────────────────────────────────────
   basicPlanPrice          Float    @default(0)
   certifiedPlanPrice      Float    @default(15000)

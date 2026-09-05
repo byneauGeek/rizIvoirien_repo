@@ -578,7 +578,7 @@ router.get('/:id/track', authenticate, async (req, res) => {
 
     const [location, shipment] = await Promise.all([
       prisma.driverCurrentLocation.findFirst({ where: { driverId: order.driverId, orderId: order.id } }),
-      prisma.shipment.findUnique({ where: { orderId: order.id }, select: { id: true, dropoffAddress: true, dropoffLat: true, dropoffLng: true } }),
+      prisma.shipment.findUnique({ where: { orderId: order.id }, select: { id: true, dropoffAddress: true, dropoffLat: true, dropoffLng: true, deliveryCode: true } }),
     ])
     const fresh = isFreshLocation(location?.updatedAt)
     const tracking = fresh ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy, orderId: order.id, ts: new Date(location.updatedAt).getTime() } : null
@@ -602,7 +602,10 @@ router.get('/:id/track', authenticate, async (req, res) => {
       }
     }
 
-    res.json({ tracking, status: order.status, eta, destination })
+    // LOT 9 : code de preuve de livraison — déjà envoyé par e-mail à la
+    // récupération du colis (PICKED_UP), aussi exposé ici pour l'acheteur qui
+    // aurait perdu l'e-mail. Jamais renvoyé au livreur (voir drivers.js).
+    res.json({ tracking, status: order.status, eta, destination, deliveryCode: shipment?.deliveryCode || null })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

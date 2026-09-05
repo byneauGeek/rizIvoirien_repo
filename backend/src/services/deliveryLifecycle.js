@@ -14,8 +14,24 @@
 const prisma = require('../lib/prisma')
 const { getSettings, driverRate } = require('../lib/settings')
 const { geocodeAddress } = require('./deliveryService')
+const { isFreshLocation, haversineKm } = require('../lib/gps')
 
 const SHIPMENT_STATUSES = ['PENDING_PICKUP', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'FAILED', 'CANCELLED']
+
+// LOT 9 : preuve de livraison — était totalement absente avant ce lot (aucune
+// vérification à DELIVERED). Code à 4 chiffres, verrouillé après quelques
+// essais incorrects pour limiter le brute-force (4 chiffres = 10 000
+// combinaisons, mais un livreur malveillant n'a que quelques essais avant
+// blocage — nécessite alors une intervention support, volontairement : mieux
+// vaut une friction rare qu'un code qui se devine).
+const MAX_OTP_ATTEMPTS = 5
+const generateDeliveryCode = () => String(Math.floor(1000 + Math.random() * 9000))
+
+function invalidOtpError(message) {
+  const err = new Error(message)
+  err.code = 'INVALID_OTP'
+  return err
+}
 
 // LOT 8 : géocodage paresseux de l'adresse de dépose, déclenché par la
 // première requête de suivi client (orders.js GET /:id/track) plutôt qu'à la
@@ -66,6 +82,34 @@ function createShipmentForOrder(client, { orderId, driverId, dropoffAddress, pic
   })
 }
 
+// Vérifie le code de livraison AVANT d'ouvrir la transaction d'état, avec le
+// client de base (pas un `tx`) : un incrément de tentative sur code erroné
+// doit être PERSISTÉ même si la transition échoue — s'il était fait à
+// l'intérieur de la transaction qui échoue ensuite (throw), Prisma annule
+// tout, y compris l'incrément, et le compteur anti-brute-force ne compterait
+// jamais rien. D'où cette étape séparée, en écriture directe.
+async function checkDeliveryOtp(client, { shipmentId, orderId, otp = null, bypassOtp = false }) {
+  const shipment = shipmentId
+    ? await client.shipment.findUnique({ where: { id: shipmentId } })
+    : await client.shipment.findUnique({ where: { orderId } })
+  if (!shipment) throw new Error('Livraison introuvable')
+
+  // shipment.deliveryCode est null uniquement pour une livraison qui n'est
+  // jamais passée par PICKED_UP via ce service (aucun cas connu aujourd'hui
+  // — createShipmentForOrder démarre toujours à PENDING_PICKUP) : dans ce cas
+  // on ne peut rien exiger, on ne bloque pas une livraison légitime sur une
+  // preuve qui n'a jamais pu être générée.
+  if (!shipment.deliveryCode || bypassOtp) return
+
+  if (shipment.deliveryCodeAttempts >= MAX_OTP_ATTEMPTS) {
+    throw invalidOtpError('Code de livraison verrouillé après plusieurs tentatives incorrectes — contactez le support')
+  }
+  if (!otp || String(otp).trim() !== shipment.deliveryCode) {
+    await client.shipment.update({ where: { id: shipment.id }, data: { deliveryCodeAttempts: { increment: 1 } } })
+    throw invalidOtpError('Code de livraison incorrect')
+  }
+}
+
 // `client` : `prisma` (ouvre sa propre transaction) ou un `tx` déjà ouvert
 // (composition dans la transaction d'un appelant) — même contrat que
 // stockEngine.applyMovement.
@@ -77,8 +121,12 @@ async function advanceShipment(client, params) {
   // transaction et on les propage, plutôt que de les lire depuis `tx`.
   const settings = await getSettings()
   if (typeof client.$transaction === 'function') {
+    if (params.status === 'DELIVERED') await checkDeliveryOtp(client, params)
     return client.$transaction((tx) => advanceShipmentInTransaction(tx, params, settings))
   }
+  // `client` est déjà un tx ouvert par l'appelant : la vérification fait
+  // partie de son tout-ou-rien, cohérent avec le contrat de composition.
+  if (params.status === 'DELIVERED') await checkDeliveryOtp(client, params)
   return advanceShipmentInTransaction(client, params, settings)
 }
 
@@ -91,8 +139,29 @@ async function advanceShipmentInTransaction(tx, { shipmentId, orderId, status, a
   if (!shipment) throw new Error('Livraison introuvable')
 
   const data = { status }
-  if (status === 'PICKED_UP') data.pickedUpAt = new Date()
-  if (status === 'DELIVERED') data.deliveredAt = new Date()
+  if (status === 'PICKED_UP') {
+    data.pickedUpAt = new Date()
+    // Généré à la prise en charge — c'est le moment où une preuve de
+    // livraison devient nécessaire, pas avant (PENDING_PICKUP peut encore
+    // être réassigné à un autre livreur, LOT3 upsert).
+    data.deliveryCode = generateDeliveryCode()
+    data.deliveryCodeAttempts = 0
+  }
+  if (status === 'DELIVERED') {
+    // Le code a déjà été vérifié par checkDeliveryOtp() avant l'ouverture de
+    // cette transaction — ici on ne fait plus qu'enregistrer la livraison.
+    data.deliveredAt = new Date()
+
+    // Signal de proximité GPS — purement informatif (utile en cas de litige),
+    // jamais bloquant : la destination n'est pas toujours géocodée (LOT8) et
+    // la position GPS n'est pas toujours fraîche.
+    if (shipment.dropoffLat != null && shipment.dropoffLng != null && shipment.driverId) {
+      const location = await tx.driverCurrentLocation.findUnique({ where: { driverId: shipment.driverId } })
+      if (location && isFreshLocation(location.updatedAt)) {
+        data.deliveryProofDistanceKm = Math.round(haversineKm(location.lat, location.lng, shipment.dropoffLat, shipment.dropoffLng) * 100) / 100
+      }
+    }
+  }
 
   const updated = await tx.shipment.update({ where: { id: shipment.id }, data })
   await tx.shipmentEvent.create({ data: { shipmentId: shipment.id, status, note, actorId } })

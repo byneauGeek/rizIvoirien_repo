@@ -73,9 +73,11 @@ describe('LOT 3 — deliveryLifecycle, point d\'entrée unique', () => {
     const { driverUser, driver, order, offer } = await setupReadyOrder()
     await request(app).post(`/api/drivers/offers/${offer.id}/accept`).set('Authorization', `Bearer ${signToken(driverUser)}`)
     await request(app).put(`/api/drivers/delivery/${order.id}/status`).set('Authorization', `Bearer ${signToken(driverUser)}`).send({ status: 'IN_TRANSIT' })
+    // LOT 9 : IN_TRANSIT génère un code de preuve de livraison, requis pour DELIVERED.
+    const { deliveryCode } = await prisma.shipment.findUnique({ where: { orderId: order.id } })
 
     const res = await request(app).put(`/api/drivers/delivery/${order.id}/status`)
-      .set('Authorization', `Bearer ${signToken(driverUser)}`).send({ status: 'DELIVERED' })
+      .set('Authorization', `Bearer ${signToken(driverUser)}`).send({ status: 'DELIVERED', otp: deliveryCode })
     expect(res.status).toBe(200)
 
     const shipment = await prisma.shipment.findUnique({ where: { orderId: order.id } })
@@ -99,7 +101,8 @@ describe('LOT 3 — deliveryLifecycle, point d\'entrée unique', () => {
     await prisma.driver.update({ where: { id: driver.id }, data: { monthlyEarnings: 99999, earningsMonth: 1, earningsYear: 2000 } })
     await request(app).post(`/api/drivers/offers/${offer.id}/accept`).set('Authorization', `Bearer ${signToken(driverUser)}`)
     await request(app).put(`/api/drivers/delivery/${order.id}/status`).set('Authorization', `Bearer ${signToken(driverUser)}`).send({ status: 'IN_TRANSIT' })
-    await request(app).put(`/api/drivers/delivery/${order.id}/status`).set('Authorization', `Bearer ${signToken(driverUser)}`).send({ status: 'DELIVERED' })
+    const { deliveryCode } = await prisma.shipment.findUnique({ where: { orderId: order.id } })
+    await request(app).put(`/api/drivers/delivery/${order.id}/status`).set('Authorization', `Bearer ${signToken(driverUser)}`).send({ status: 'DELIVERED', otp: deliveryCode })
 
     const refreshedDriver = await prisma.driver.findUnique({ where: { id: driver.id } })
     expect(refreshedDriver.monthlyEarnings).toBe(Math.round(1000 * 0.15)) // pas 99999 + gain
@@ -134,7 +137,8 @@ describe('LOT 3 — bout-en-bout : les consommateurs existants de Order.status c
     const { buyer, driverUser, order, offer } = await setupReadyOrder()
     await request(app).post(`/api/drivers/offers/${offer.id}/accept`).set('Authorization', `Bearer ${signToken(driverUser)}`)
     await request(app).put(`/api/drivers/delivery/${order.id}/status`).set('Authorization', `Bearer ${signToken(driverUser)}`).send({ status: 'IN_TRANSIT' })
-    await request(app).put(`/api/drivers/delivery/${order.id}/status`).set('Authorization', `Bearer ${signToken(driverUser)}`).send({ status: 'DELIVERED' })
+    const { deliveryCode } = await prisma.shipment.findUnique({ where: { orderId: order.id } })
+    await request(app).put(`/api/drivers/delivery/${order.id}/status`).set('Authorization', `Bearer ${signToken(driverUser)}`).send({ status: 'DELIVERED', otp: deliveryCode })
 
     const res = await request(app).post('/api/disputes')
       .set('Authorization', `Bearer ${signToken(buyer)}`)

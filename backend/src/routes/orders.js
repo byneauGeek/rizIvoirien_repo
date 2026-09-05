@@ -584,13 +584,18 @@ router.post('/:id/rate-driver', authenticate, requireRole('BUYER'), async (req, 
 
 
 // ── GET /api/orders/:id/track — position GPS du livreur (acheteur) ────────────
+// LOT 1 (Logistique) : lit désormais DriverCurrentLocation (persistée en base,
+// survit à un redémarrage serveur) au lieu du Map en mémoire de sse.js.
+// Une position vieille de plus de 10 min est traitée comme absente — même
+// seuil que l'ancienne purge automatique de sse.js, appliqué ici à la lecture
+// plutôt que par un job de nettoyage périodique.
+const GPS_STALE_MS = 10 * 60 * 1000
+
 router.get('/:id/track', authenticate, async (req, res) => {
   try {
     const order = await prisma.order.findUnique({
       where: { id: Number(req.params.id) },
-      select: { id: true, buyerId: true, driverId: true, status: true,
-        driver: { select: { id: true } },
-      },
+      select: { id: true, buyerId: true, driverId: true, status: true },
     })
     if (!order) return res.status(404).json({ error: 'Commande introuvable' })
     if (order.buyerId !== req.user.id && req.user.role !== 'ADMIN')
@@ -599,9 +604,13 @@ router.get('/:id/track', authenticate, async (req, res) => {
     if (order.status !== 'IN_TRANSIT' || !order.driverId)
       return res.json({ tracking: null, status: order.status })
 
-    const { getLocationForOrder } = require('../services/sse')
-    const pos = getLocationForOrder(order.id)
-    res.json({ tracking: pos, status: order.status })
+    const location = await prisma.driverCurrentLocation.findFirst({
+      where: { driverId: order.driverId, orderId: order.id },
+    })
+    const fresh = location && (Date.now() - new Date(location.updatedAt).getTime()) < GPS_STALE_MS
+    const tracking = fresh ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy, orderId: order.id, ts: new Date(location.updatedAt).getTime() } : null
+
+    res.json({ tracking, status: order.status })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

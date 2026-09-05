@@ -394,6 +394,19 @@ CREATE TABLE "Driver" (
 );
 
 -- CreateTable
+CREATE TABLE "DriverCurrentLocation" (
+    "id" SERIAL NOT NULL,
+    "driverId" INTEGER NOT NULL,
+    "orderId" INTEGER,
+    "lat" DOUBLE PRECISION NOT NULL,
+    "lng" DOUBLE PRECISION NOT NULL,
+    "accuracy" DOUBLE PRECISION,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "DriverCurrentLocation_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "DriverOffer" (
     "id" SERIAL NOT NULL,
     "orderId" INTEGER NOT NULL,
@@ -1066,6 +1079,12 @@ CREATE UNIQUE INDEX "Driver_userId_key" ON "Driver"("userId");
 CREATE UNIQUE INDEX "Driver_inviteCode_key" ON "Driver"("inviteCode");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "DriverCurrentLocation_driverId_key" ON "DriverCurrentLocation"("driverId");
+
+-- CreateIndex
+CREATE INDEX "DriverCurrentLocation_orderId_idx" ON "DriverCurrentLocation"("orderId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "DriverOffer_orderId_key" ON "DriverOffer"("orderId");
 
 -- CreateIndex
@@ -1319,6 +1338,9 @@ ALTER TABLE "OrderStatusHistory" ADD CONSTRAINT "OrderStatusHistory_orderId_fkey
 
 -- AddForeignKey
 ALTER TABLE "Driver" ADD CONSTRAINT "Driver_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DriverCurrentLocation" ADD CONSTRAINT "DriverCurrentLocation_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DriverOffer" ADD CONSTRAINT "DriverOffer_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;

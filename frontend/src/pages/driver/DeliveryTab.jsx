@@ -91,7 +91,7 @@ export default function DeliveryTab({ onDelivered }) {
         (pos) => {
           setGpsDenied(false)
           api.post('/drivers/location', {
-            lat: pos.coords.latitude, lng: pos.coords.longitude, orderId: order.id,
+            lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, orderId: order.id,
           }).then(() => setGpsActive(true)).catch(() => setGpsActive(false))
         },
         (err) => {

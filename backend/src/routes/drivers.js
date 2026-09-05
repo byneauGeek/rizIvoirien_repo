@@ -527,8 +527,13 @@ router.get('/events', authenticateSSE, requireRole('DRIVER'), (req, res) => {
 
 // ── GPS : position du livreur ──────────────────────────────────────────────────
 // POST /api/drivers/location
+// LOT 1 (Logistique, arbitrage Décision 4) : persistée en base (dernière
+// position uniquement) plutôt que dans le Map en mémoire de services/sse.js,
+// qui ne survivait pas à un redémarrage serveur. Pas d'historique de trajet
+// ici — repoussé au LOT 9 (preuve de livraison) avec une politique de
+// rétention à définir avant toute collecte d'historique GPS.
 router.post('/location', authenticate, requireRole('DRIVER'), async (req, res) => {
-  const { lat, lng, orderId } = req.body
+  const { lat, lng, accuracy, orderId } = req.body
   if (lat == null || lng == null) return res.status(400).json({ error: 'lat et lng requis' })
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return res.status(400).json({ error: 'Coordonnées invalides' })
 
@@ -536,8 +541,11 @@ router.post('/location', authenticate, requireRole('DRIVER'), async (req, res) =
     const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } })
     if (!driver) return res.status(404).json({ error: 'Profil introuvable' })
 
-    const { setDriverLocation } = require('../services/sse')
-    setDriverLocation(driver.id, req.user.id, { lat: Number(lat), lng: Number(lng), orderId: orderId ? Number(orderId) : null })
+    await prisma.driverCurrentLocation.upsert({
+      where: { driverId: driver.id },
+      update: { lat: Number(lat), lng: Number(lng), accuracy: accuracy != null ? Number(accuracy) : null, orderId: orderId ? Number(orderId) : null },
+      create: { driverId: driver.id, lat: Number(lat), lng: Number(lng), accuracy: accuracy != null ? Number(accuracy) : null, orderId: orderId ? Number(orderId) : null },
+    })
 
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }

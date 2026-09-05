@@ -382,6 +382,18 @@ CREATE TABLE "Driver" (
 );
 
 -- CreateTable
+CREATE TABLE "DriverCurrentLocation" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "driverId" INTEGER NOT NULL,
+    "orderId" INTEGER,
+    "lat" REAL NOT NULL,
+    "lng" REAL NOT NULL,
+    "accuracy" REAL,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "DriverCurrentLocation_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
 CREATE TABLE "DriverOffer" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "orderId" INTEGER NOT NULL,
@@ -1019,6 +1031,12 @@ CREATE UNIQUE INDEX "Driver_userId_key" ON "Driver"("userId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Driver_inviteCode_key" ON "Driver"("inviteCode");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "DriverCurrentLocation_driverId_key" ON "DriverCurrentLocation"("driverId");
+
+-- CreateIndex
+CREATE INDEX "DriverCurrentLocation_orderId_idx" ON "DriverCurrentLocation"("orderId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "DriverOffer_orderId_key" ON "DriverOffer"("orderId");

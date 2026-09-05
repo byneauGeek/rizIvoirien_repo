@@ -547,6 +547,27 @@ model Driver {
   metrics             DriverMetric[]
   planUpgradeRequests PlanUpgradeRequest[]
   commercialNotes     CommercialNote[]
+  currentLocation     DriverCurrentLocation?
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOGISTIQUE — LOT 1 : modèle cible (arbitrage du 2026-09-05, Décision 4).
+// Remplace le Map en mémoire de services/sse.js (perdu à chaque redémarrage
+// serveur) — seule la DERNIÈRE position est persistée ici, jamais un
+// historique de trajet (repoussé au LOT 9, ProofOfDelivery, avec une
+// politique de rétention à définir avant toute collecte d'historique GPS).
+// ═══════════════════════════════════════════════════════════════════════════
+model DriverCurrentLocation {
+  id        Int      @id @default(autoincrement())
+  driverId  Int      @unique
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  orderId   Int? // commande en cours au moment du dernier point GPS reçu
+  lat       Float
+  lng       Float
+  accuracy  Float? // précision en mètres (navigator.geolocation), jamais collectée avant ce lot
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
 }
 
 model DriverOffer {

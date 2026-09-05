@@ -13,8 +13,36 @@
 // Shipment ne les remplace pas, il devient l'unique écrivain.
 const prisma = require('../lib/prisma')
 const { getSettings, driverRate } = require('../lib/settings')
+const { geocodeAddress } = require('./deliveryService')
 
 const SHIPMENT_STATUSES = ['PENDING_PICKUP', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'FAILED', 'CANCELLED']
+
+// LOT 8 : géocodage paresseux de l'adresse de dépose, déclenché par la
+// première requête de suivi client (orders.js GET /:id/track) plutôt qu'à la
+// création du Shipment — la création tourne dans une transaction DB
+// (drivers.js/admin.js), où un appel réseau externe serait une mauvaise
+// pratique (même défaut que le bug corrigé au LOT3 : payDriverForDelivery).
+// `geocodingInFlight` évite les appels concurrents pendant qu'une requête est
+// déjà en cours pour un même shipment (l'acheteur poll toutes les 10s). En
+// environnement de test, on ne fait JAMAIS de vrai appel réseau vers
+// Nominatim — l'ETA reste simplement absente, aucun test n'en dépend.
+const geocodingInFlight = new Set()
+
+async function ensureShipmentDropoffCoords(shipmentId, dropoffAddress) {
+  if (process.env.NODE_ENV === 'test') return
+  if (geocodingInFlight.has(shipmentId)) return
+  geocodingInFlight.add(shipmentId)
+  try {
+    const coords = await geocodeAddress(dropoffAddress)
+    if (coords) {
+      await prisma.shipment.update({ where: { id: shipmentId }, data: { dropoffLat: coords.lat, dropoffLng: coords.lng } })
+    }
+  } catch {
+    // best-effort : une ETA absente n'est jamais une erreur pour l'acheteur
+  } finally {
+    geocodingInFlight.delete(shipmentId)
+  }
+}
 
 const ORDER_STATUS_MIRROR = {
   PICKED_UP: 'IN_TRANSIT', // le vocabulaire Order n'a pas d'étape "récupéré" distincte
@@ -113,4 +141,4 @@ async function payDriverForDelivery(tx, { driverId, order, settings }) {
   })
 }
 
-module.exports = { SHIPMENT_STATUSES, createShipmentForOrder, advanceShipment }
+module.exports = { SHIPMENT_STATUSES, createShipmentForOrder, advanceShipment, ensureShipmentDropoffCoords }

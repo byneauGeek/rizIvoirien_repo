@@ -119,4 +119,4 @@ async function estimateDelivery({ items, products, shopCoords, deliveryAddress, 
   }
 }
 
-module.exports = { parseWeightKg, haversineKm, geocodeAddress, calcDeliveryFee, estimateDelivery }
+module.exports = { parseWeightKg, haversineKm, geocodeAddress, calcDeliveryFee, estimateDelivery, ROAD_FACTOR }

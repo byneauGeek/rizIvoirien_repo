@@ -4,7 +4,7 @@ const { authenticate, requireRole } = require('../middleware/auth')
 const { assignOrder } = require('../services/assignmentEngine')
 const { notify } = require('../services/notifications')
 const { sendMail } = require('../services/mailer')
-const { parseWeightKg, geocodeAddress, calcDeliveryFee, estimateDelivery } = require('../services/deliveryService')
+const { parseWeightKg, geocodeAddress, calcDeliveryFee, estimateDelivery, haversineKm, ROAD_FACTOR } = require('../services/deliveryService')
 const { randomUUID } = require('crypto')
 const stockEngine = require('../services/stockEngine')
 
@@ -561,6 +561,7 @@ router.post('/:id/rate-driver', authenticate, requireRole('BUYER'), async (req, 
 // plutôt que par un job de nettoyage périodique. Seuil partagé avec le
 // moteur d'affectation (LOT5) via lib/gps.js.
 const { isFreshLocation } = require('../lib/gps')
+const deliveryLifecycle = require('../services/deliveryLifecycle')
 
 router.get('/:id/track', authenticate, async (req, res) => {
   try {
@@ -575,13 +576,33 @@ router.get('/:id/track', authenticate, async (req, res) => {
     if (order.status !== 'IN_TRANSIT' || !order.driverId)
       return res.json({ tracking: null, status: order.status })
 
-    const location = await prisma.driverCurrentLocation.findFirst({
-      where: { driverId: order.driverId, orderId: order.id },
-    })
+    const [location, shipment] = await Promise.all([
+      prisma.driverCurrentLocation.findFirst({ where: { driverId: order.driverId, orderId: order.id } }),
+      prisma.shipment.findUnique({ where: { orderId: order.id }, select: { id: true, dropoffAddress: true, dropoffLat: true, dropoffLng: true } }),
+    ])
     const fresh = isFreshLocation(location?.updatedAt)
     const tracking = fresh ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy, orderId: order.id, ts: new Date(location.updatedAt).getTime() } : null
 
-    res.json({ tracking, status: order.status })
+    // LOT 8 : ETA réelle (position actuelle → destination géocodée), pas une
+    // estimation forfaitaire. Le géocodage de la destination est paresseux —
+    // s'il n'a pas encore eu lieu, on le déclenche en arrière-plan et cette
+    // réponse-ci n'a simplement pas d'ETA (le prochain poll, 10s plus tard,
+    // en aura une si le géocodage a réussi).
+    let eta = null
+    let destination = null
+    if (shipment && shipment.dropoffLat == null) {
+      setImmediate(() => deliveryLifecycle.ensureShipmentDropoffCoords(shipment.id, shipment.dropoffAddress))
+    } else if (shipment?.dropoffLat != null && shipment?.dropoffLng != null) {
+      destination = { lat: shipment.dropoffLat, lng: shipment.dropoffLng }
+      if (fresh) {
+        const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
+        const speedKmh = settings?.deliveryAvgSpeedKmh ?? 20
+        const remainingKm = haversineKm(location.lat, location.lng, shipment.dropoffLat, shipment.dropoffLng) * ROAD_FACTOR
+        eta = { minutes: Math.max(1, Math.round(remainingKm / speedKmh * 60)), distanceKm: Math.round(remainingKm * 10) / 10 }
+      }
+    }
+
+    res.json({ tracking, status: order.status, eta, destination })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

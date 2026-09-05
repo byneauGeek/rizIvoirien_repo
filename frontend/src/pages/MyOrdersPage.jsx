@@ -8,6 +8,7 @@ import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { STATUS_LABELS, STATUS_COLORS, STATUS_DOT, fmt, fmtDate, fmtOrderId } from '../utils/status'
 import { usePageTitle } from '../hooks/usePageTitle'
+import DeliveryMap from '../components/orders/DeliveryMap'
 
 const STEPS = ['CONFIRMED', 'EN_PREPARATION', 'PRET', 'IN_TRANSIT', 'DELIVERED']
 const STEP_LABELS = {
@@ -33,15 +34,17 @@ const DISPUTE_STATUS = {
 }
 
 // ── Tracking livreur (IN_TRANSIT) ────────────────────────────────────────────
+// LOT 8 (Logistique) : conserve désormais toute la réponse (eta, destination
+// géocodée pour la carte), pas seulement la position du livreur.
 function useTracking(orderId, active) {
-  const [tracking, setTracking] = useState(null)
+  const [state, setState] = useState({ tracking: null, eta: null, destination: null })
 
   useEffect(() => {
-    if (!active || !orderId) { setTracking(null); return }
+    if (!active || !orderId) { setState({ tracking: null, eta: null, destination: null }); return }
 
     const poll = () => {
       api.get(`/orders/${orderId}/track`)
-        .then(data => setTracking(data.tracking || null))
+        .then(data => setState({ tracking: data.tracking || null, eta: data.eta || null, destination: data.destination || null }))
         .catch(() => {})
     }
     poll()
@@ -49,11 +52,11 @@ function useTracking(orderId, active) {
     return () => clearInterval(iv)
   }, [orderId, active])
 
-  return tracking
+  return state
 }
 
 function TrackingBanner({ orderId }) {
-  const tracking = useTracking(orderId, true)
+  const { tracking, eta, destination } = useTracking(orderId, true)
 
   if (!tracking) return (
     <div className="mt-3 flex items-center gap-2 p-3 bg-blue-50 border border-blue-100 rounded-2xl">
@@ -68,17 +71,25 @@ function TrackingBanner({ orderId }) {
 
   return (
     <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-2xl">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
           <p className="font-syne text-xs font-bold text-blue-700">Livreur en route</p>
           <span className="font-dm text-[10px] text-blue-500">(mis à jour {agoStr})</span>
         </div>
-        <a href={mapsUrl} target="_blank" rel="noreferrer"
-          className="flex items-center gap-1 font-syne text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
-          <Navigation size={11} /> Voir sur Maps
-        </a>
+        <div className="flex items-center gap-3">
+          {eta && (
+            <span className="font-syne text-xs font-bold text-blue-700">
+              ≈ {eta.minutes} min ({eta.distanceKm} km)
+            </span>
+          )}
+          <a href={mapsUrl} target="_blank" rel="noreferrer"
+            className="flex items-center gap-1 font-syne text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
+            <Navigation size={11} /> Voir sur Maps
+          </a>
+        </div>
       </div>
+      <DeliveryMap driverPosition={{ lat: tracking.lat, lng: tracking.lng }} destination={destination} />
     </div>
   )
 }

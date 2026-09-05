@@ -540,6 +540,12 @@ model Shipment {
   // PENDING_PICKUP | PICKED_UP | IN_TRANSIT | DELIVERED | FAILED | CANCELLED
   pickupAddress  String?
   dropoffAddress String
+  // LOT 8 : géocodage paresseux (1re requête de suivi client, pas à la
+  // création — voir orders.js GET /:id/track) pour calculer une ETA réelle.
+  // null tant que non géocodé ou si le géocodage échoue — l'ETA est alors
+  // simplement absente, jamais une erreur.
+  dropoffLat     Float?
+  dropoffLng     Float?
   weightKg       Float?
   distanceKm     Float?
   pickedUpAt     DateTime?
@@ -758,6 +764,10 @@ model PlatformSettings {
   deliveryFreeAbove       Float    @default(0)
   deliveryLeadDays        Int      @default(1)
   additionalPickupFee     Float    @default(500)
+  // LOT 8 (logistique) : vitesse moyenne utilisée pour l'ETA du suivi client —
+  // trajet réel (route) pas vol d'oiseau, d'où une valeur prudente en zone
+  // urbaine plutôt qu'une vitesse de pointe.
+  deliveryAvgSpeedKmh     Float    @default(20)
   // ── Plans ─────────────────────────────────────────
   basicPlanPrice          Float    @default(0)
   certifiedPlanPrice      Float    @default(15000)

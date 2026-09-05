@@ -265,6 +265,49 @@ router.post('/register-b2b', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// POST /api/auth/capabilities — LOT 2 (Arbitrage XXX RIZ) : active une
+// capacité secondaire (ex. TRADER) sur un compte DÉJÀ existant, sans changer
+// son rôle principal ni créer un nouveau compte — à la différence de
+// /register-b2b (nouveau compte uniquement, rejette un email déjà utilisé).
+// Réutilise exactement B2B_PROFILES : même validation, mêmes champs, pas de
+// logique dupliquée. Idempotent : réactiver une capacité déjà accordée ne
+// recrée rien, renvoie simplement l'état actuel.
+router.post('/capabilities', authenticate, async (req, res) => {
+  const { profileType, profile } = req.body
+  const spec = B2B_PROFILES[profileType]
+  if (!spec) return res.status(400).json({ error: 'Type de capacité invalide' })
+  if (req.user.role === spec.role) {
+    return res.status(400).json({ error: 'Ce compte a déjà ce rôle comme rôle principal' })
+  }
+
+  const missing = spec.required.filter((f) => !profile?.[f])
+  if (missing.length) return res.status(400).json({ error: `Champs requis manquants : ${missing.join(', ')}` })
+
+  try {
+    const existingProfile = await prisma[spec.relation].findUnique({ where: { userId: req.user.id } })
+    if (existingProfile) {
+      await prisma.userCapability.upsert({
+        where: { userId_role: { userId: req.user.id, role: spec.role } },
+        update: {}, create: { userId: req.user.id, role: spec.role },
+      })
+      return res.json({ profile: existingProfile, capabilities: [...new Set([...(req.user.capabilities || []), spec.role])] })
+    }
+
+    const profileData = {}
+    for (const field of spec.fields) {
+      if (profile?.[field] === undefined || profile[field] === '') continue
+      profileData[field] = spec.numeric.includes(field) ? Number(profile[field]) : profile[field]
+    }
+
+    const [createdProfile] = await prisma.$transaction([
+      prisma[spec.relation].create({ data: { userId: req.user.id, ...profileData } }),
+      prisma.userCapability.create({ data: { userId: req.user.id, role: spec.role } }),
+    ])
+
+    res.status(201).json({ profile: createdProfile, capabilities: [...new Set([...(req.user.capabilities || []), spec.role])] })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ─── Login ────────────────────────────────────────────────────────────────────
 
 router.post('/login', async (req, res) => {

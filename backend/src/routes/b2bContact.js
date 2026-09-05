@@ -228,10 +228,48 @@ router.get('/transactions', authenticate, async (req, res) => {
       include: {
         buyer: { select: { id: true, name: true } },
         seller: { select: { id: true, name: true } },
+        // LOT 2 (Arbitrage XXX RIZ) : "suivre ses shipments" — pas un
+        // endpoint séparé, la liste de transactions existante suffit une
+        // fois le Shipment joint.
+        shipment: { select: { id: true, status: true, driverId: true, pickedUpAt: true, deliveredAt: true, failureReason: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
     res.json({ transactions })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// PUT /api/b2b/transactions/:id/request-logistics — LOT 2 : le TRADER (ou
+// tout acheteur B2B) demande une livraison pour une transaction déclarée.
+// Seul l'ACHETEUR peut la demander : c'est lui le destinataire de la
+// livraison ("être destinataire d'une livraison" — arbitrage §2). Ne crée
+// PAS le Shipment ici — l'assignation d'un livreur (admin, voir
+// admin.js POST /logistics/b2b/:id/assign) est ce qui crée réellement le
+// Shipment, exactement comme pour une commande B2C prête (PRET) qui n'a pas
+// encore de livreur.
+router.put('/transactions/:id/request-logistics', authenticate, async (req, res) => {
+  const { deliveryAddress, deliveryFee } = req.body
+  if (!deliveryAddress?.trim()) return res.status(400).json({ error: 'deliveryAddress requis' })
+
+  try {
+    const tx = await prisma.b2BTransaction.findFirst({
+      where: { id: Number(req.params.id), status: 'DECLARED', buyerUserId: req.user.id },
+    })
+    if (!tx) return res.status(404).json({ error: 'Transaction introuvable, déjà traitée, ou vous n\'en êtes pas l\'acheteur' })
+
+    const updated = await prisma.b2BTransaction.update({
+      where: { id: tx.id },
+      data: {
+        needsLogistics: true,
+        deliveryAddress: deliveryAddress.trim(),
+        deliveryFee: deliveryFee != null && deliveryFee !== '' ? Number(deliveryFee) : null,
+      },
+    })
+    setImmediate(() => notify(
+      tx.sellerUserId, 'B2B_LOGISTICS_REQUESTED', 'Livraison demandée',
+      `${req.user.name} a demandé une livraison pour la transaction #${tx.id}.`, { transactionId: tx.id }
+    ))
+    res.json(updated)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

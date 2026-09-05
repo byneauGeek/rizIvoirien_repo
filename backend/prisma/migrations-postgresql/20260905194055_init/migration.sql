@@ -18,6 +18,16 @@ CREATE TABLE "User" (
 );
 
 -- CreateTable
+CREATE TABLE "UserCapability" (
+    "id" SERIAL NOT NULL,
+    "userId" INTEGER NOT NULL,
+    "role" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "UserCapability_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Producer" (
     "id" SERIAL NOT NULL,
     "userId" INTEGER NOT NULL,
@@ -173,6 +183,9 @@ CREATE TABLE "B2BTransaction" (
     "status" TEXT NOT NULL DEFAULT 'DECLARED',
     "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "needsLogistics" BOOLEAN NOT NULL DEFAULT false,
+    "deliveryAddress" TEXT,
+    "deliveryFee" DOUBLE PRECISION,
 
     CONSTRAINT "B2BTransaction_pkey" PRIMARY KEY ("id")
 );
@@ -365,7 +378,8 @@ CREATE TABLE "OrderStatusHistory" (
 -- CreateTable
 CREATE TABLE "Shipment" (
     "id" SERIAL NOT NULL,
-    "orderId" INTEGER NOT NULL,
+    "orderId" INTEGER,
+    "b2bTransactionId" INTEGER,
     "driverId" INTEGER,
     "status" TEXT NOT NULL DEFAULT 'PENDING_PICKUP',
     "pickupAddress" TEXT,
@@ -1014,6 +1028,12 @@ CREATE TABLE "AccountingSequence" (
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
+CREATE INDEX "UserCapability_userId_idx" ON "UserCapability"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserCapability_userId_role_key" ON "UserCapability"("userId", "role");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Producer_userId_key" ON "Producer"("userId");
 
 -- CreateIndex
@@ -1180,6 +1200,9 @@ CREATE UNIQUE INDEX "Order_buyerId_idempotencyKey_key" ON "Order"("buyerId", "id
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Shipment_orderId_key" ON "Shipment"("orderId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Shipment_b2bTransactionId_key" ON "Shipment"("b2bTransactionId");
 
 -- CreateIndex
 CREATE INDEX "Shipment_driverId_idx" ON "Shipment"("driverId");
@@ -1380,6 +1403,9 @@ CREATE INDEX "Expense_category_idx" ON "Expense"("category");
 CREATE INDEX "AccountingDocument_targetType_targetId_idx" ON "AccountingDocument"("targetType", "targetId");
 
 -- AddForeignKey
+ALTER TABLE "UserCapability" ADD CONSTRAINT "UserCapability_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Producer" ADD CONSTRAINT "Producer_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -1477,6 +1503,9 @@ ALTER TABLE "OrderStatusHistory" ADD CONSTRAINT "OrderStatusHistory_orderId_fkey
 
 -- AddForeignKey
 ALTER TABLE "Shipment" ADD CONSTRAINT "Shipment_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Shipment" ADD CONSTRAINT "Shipment_b2bTransactionId_fkey" FOREIGN KEY ("b2bTransactionId") REFERENCES "B2BTransaction"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Shipment" ADD CONSTRAINT "Shipment_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE SET NULL ON UPDATE CASCADE;

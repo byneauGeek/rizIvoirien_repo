@@ -1,10 +1,19 @@
 const jwt = require('jsonwebtoken')
 const prisma = require('../lib/prisma')
 
+// LOT 2 (Arbitrage XXX RIZ) : les capacités secondaires (UserCapability) sont
+// chargées ICI, à chaque requête authentifiée, plutôt qu'embarquées dans le
+// JWT — un compte qui active une capacité (ex. BUYER → TRADER) en bénéficie
+// dès sa prochaine requête, sans réémission de token ni reconnexion. Un seul
+// aller-retour DB (include), pas une requête séparée.
 const verifyAndLoadUser = async (rawToken) => {
   const payload = jwt.verify(rawToken, process.env.JWT_SECRET)
-  const user = await prisma.user.findUnique({ where: { id: payload.id } })
+  const user = await prisma.user.findUnique({
+    where: { id: payload.id },
+    include: { capabilities: { select: { role: true } } },
+  })
   if (!user) throw new Error('Utilisateur introuvable')
+  user.capabilities = user.capabilities.map((c) => c.role)
   return user
 }
 
@@ -43,8 +52,14 @@ const authenticateSSE = async (req, res, next) => {
   }
 }
 
+// LOT 2 : vérifie le rôle PRINCIPAL (comportement inchangé, 100% des comptes
+// existants) OU une capacité secondaire activée (UserCapability) — un compte
+// BUYER ayant activé TRADER passe requireRole('TRADER') sans jamais changer
+// son rôle principal ni son tableau de bord par défaut.
 const requireRole = (...roles) => (req, res, next) => {
-  if (!roles.includes(req.user?.role)) {
+  const hasRole = roles.includes(req.user?.role)
+  const hasCapability = req.user?.capabilities?.some((c) => roles.includes(c))
+  if (!hasRole && !hasCapability) {
     return res.status(403).json({ error: 'Accès refusé' })
   }
   next()

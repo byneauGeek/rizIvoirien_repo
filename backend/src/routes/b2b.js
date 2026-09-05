@@ -38,13 +38,27 @@ const B2B_ROLES = Object.keys(PROFILE_MODEL)
 const requireB2BRole = requireRole(...B2B_ROLES)
 
 // Retourne { model, actorId } pour l'utilisateur courant, ou null si aucun profil.
+// LOT 2 (Arbitrage XXX RIZ) : ne se limite plus au rôle PRINCIPAL — un compte
+// dont le rôle principal n'est pas un rôle B2B (ex. BUYER) peut avoir activé
+// une capacité B2B secondaire (UserCapability, ex. TRADER). On résout alors
+// sur la première capacité qui correspond à un profil B2B connu. Limitation
+// connue et acceptée pour ce lot : si un compte cumulait un jour DEUX
+// capacités B2B différentes en même temps, ce choix serait ambigu (le
+// premier match l'emporte) — non pertinent pour BUYER+TRADER (un seul côté
+// est un rôle B2B), à revisiter si un cumul B2B×B2B est demandé plus tard.
+const roleForActor = (req) => {
+  if (PROFILE_MODEL[req.user.role]) return req.user.role
+  return (req.user.capabilities || []).find((c) => PROFILE_MODEL[c]) || null
+}
+
 async function myActor(req) {
-  const modelName = PROFILE_MODEL[req.user.role]
+  const actingRole = roleForActor(req)
+  const modelName = PROFILE_MODEL[actingRole]
   if (!modelName) return null
   const row = await prisma.user.findUnique({ where: { id: req.user.id }, include: { [modelName]: true } })
   const profile = row?.[modelName]
   if (!profile) return null
-  return { modelName, profile }
+  return { modelName, profile, actingRole }
 }
 
 router.get('/my-profile', authenticate, requireB2BRole, async (req, res) => {
@@ -60,7 +74,7 @@ router.put('/my-profile', authenticate, requireB2BRole, async (req, res) => {
     const actor = await myActor(req)
     if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
 
-    const allowed = EDITABLE_FIELDS[req.user.role]
+    const allowed = EDITABLE_FIELDS[actor.actingRole]
     const data = {}
     for (const field of allowed) {
       if (!(field in req.body)) continue

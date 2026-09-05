@@ -50,6 +50,29 @@ model User {
 
   // ── Comptabilité ─────────────────────────────────────────────────────────
   accountingPermissions AccountingPermission[]
+
+  // ── Capacités additives (programme "Arbitrage XXX RIZ", LOT 2) ─────────────
+  capabilities UserCapability[]
+}
+
+// Un compte a un rôle PRINCIPAL unique (User.role, inchangé — détermine la
+// redirection post-connexion et reste le comportement par défaut pour 100%
+// des comptes existants). Ce modèle ajoute des capacités SECONDAIRES,
+// cumulables, sans jamais toucher au rôle principal ni exiger un nouveau
+// compte — ex. un BUYER qui active la capacité TRADER garde son compte, son
+// historique de commandes B2C, et gagne l'accès aux routes B2B réservées à
+// TRADER. Vérifié par requireRole() dans middleware/auth.js, chargé à chaque
+// requête (pas embarqué dans le JWT) : une capacité activée est effective dès
+// la requête suivante, sans réémission de token ni reconnexion.
+model UserCapability {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String // même vocabulaire que User.role (ex. "TRADER")
+  createdAt DateTime @default(now())
+
+  @@unique([userId, role])
+  @@index([userId])
 }
 
 // ─── B2B : profils ──────────────────────────────────────────────────────────
@@ -253,9 +276,25 @@ model B2BTransaction {
   unit         String
   region       String
   amount       Float?
-  status       String          @default("DECLARED") // DECLARED|CANCELLED
+  // LOT 2 (Arbitrage XXX RIZ) : DECLARED restait un simple enregistrement
+  // déclaratif — IN_TRANSIT/DELIVERED/ESCALATED ajoutés pour permettre le même
+  // miroir de statut que Order (voir deliveryLifecycle.js), une fois qu'un
+  // Shipment est rattaché via needsLogistics. Une transaction SANS logistique
+  // (needsLogistics=false) reste DECLARED|CANCELLED comme avant — aucun
+  // changement de comportement pour l'usage B2B existant.
+  status       String          @default("DECLARED") // DECLARED|CANCELLED|IN_TRANSIT|DELIVERED|ESCALATED
   notes        String?
   createdAt    DateTime        @default(now())
+
+  // Logistique B2B (LOT 2) — renseignés uniquement si needsLogistics=true.
+  // deliveryFee est saisi manuellement (comme les rémunérations COOPERATIVE/
+  // EMPLOYEE en comptabilité) tant que la tarification par zone/volume
+  // (lot ultérieur) n'est pas branchée : jamais un montant inventé par le
+  // système, toujours une décision explicite de qui organise la livraison.
+  needsLogistics  Boolean   @default(false)
+  deliveryAddress String?
+  deliveryFee     Float?
+  shipment        Shipment?
 
   @@index([buyerUserId])
   @@index([sellerUserId])
@@ -530,29 +569,46 @@ model OrderStatusHistory {
 // (disputes, avis, analytics, rémunération...) qui lisent Order.status
 // directement continuent de fonctionner sans modification.
 // ═══════════════════════════════════════════════════════════════════════════
+// LOT 2 (Arbitrage XXX RIZ) : orderId devient optionnel — un Shipment peut
+// désormais naître d'une Order B2C (comme avant, `orderId` renseigné) OU
+// d'un B2BTransaction (`b2bTransactionId` renseigné) — EXACTEMENT L'UN DES
+// DEUX, jamais les deux ni aucun (contrainte vérifiée en application, Prisma/
+// SQLite ne portant pas de CHECK constraint multi-colonnes ici). Choix
+// délibéré de deux FK nullables plutôt qu'un couple générique
+// sourceType/sourceId (patron déjà utilisé par StockMovement) : Shipment a
+// besoin de vraies relations Prisma navigables (order.items, b2bTransaction),
+// pas seulement d'un identifiant brut pour l'audit.
+// TOUTE la logique de branchement B2C/B2B reste confinée à
+// services/deliveryLifecycle.js (point d'entrée unique déjà établi au LOT3) —
+// vérifié par grep : aucun autre fichier ne lit shipment.order directement,
+// sauf orders.js GET /:id/track (suivi acheteur, intrinsèquement B2C,
+// continue de fonctionner sans changement puisque orderId reste peuplé pour
+// tout Shipment B2C existant ou nouveau).
 model Shipment {
-  id             Int       @id @default(autoincrement())
-  orderId        Int       @unique
-  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  driverId       Int?
-  driver         Driver?   @relation(fields: [driverId], references: [id])
-  status         String    @default("PENDING_PICKUP")
+  id               Int             @id @default(autoincrement())
+  orderId          Int?            @unique
+  order            Order?          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  b2bTransactionId Int?            @unique
+  b2bTransaction   B2BTransaction? @relation(fields: [b2bTransactionId], references: [id], onDelete: Cascade)
+  driverId         Int?
+  driver           Driver?         @relation(fields: [driverId], references: [id])
+  status           String          @default("PENDING_PICKUP")
   // PENDING_PICKUP | PICKED_UP | IN_TRANSIT | DELIVERED | FAILED | CANCELLED
-  pickupAddress  String?
-  dropoffAddress String
+  pickupAddress    String?
+  dropoffAddress   String
   // LOT 8 : géocodage paresseux (1re requête de suivi client, pas à la
   // création — voir orders.js GET /:id/track) pour calculer une ETA réelle.
   // null tant que non géocodé ou si le géocodage échoue — l'ETA est alors
   // simplement absente, jamais une erreur.
-  dropoffLat     Float?
-  dropoffLng     Float?
-  weightKg       Float?
-  distanceKm     Float?
-  pickedUpAt     DateTime?
-  deliveredAt    DateTime?
-  failureReason  String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  dropoffLat       Float?
+  dropoffLng       Float?
+  weightKg         Float?
+  distanceKm       Float?
+  pickedUpAt       DateTime?
+  deliveredAt      DateTime?
+  failureReason    String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   // LOT 9 : preuve de livraison — était totalement ABSENTE avant ce lot
   // (n'importe qui avec le compte du livreur pouvait marquer DELIVERED sans
@@ -562,8 +618,8 @@ model Shipment {
   // deliveryProofDistanceKm est un signal ADDITIONNEL, informatif seulement
   // (utile en cas de litige) — jamais bloquant, car la destination n'est pas
   // toujours géocodée (LOT8, best-effort) au moment de la livraison.
-  deliveryCode           String?
-  deliveryCodeAttempts   Int       @default(0)
+  deliveryCode            String?
+  deliveryCodeAttempts    Int     @default(0)
   deliveryProofDistanceKm Float?
 
   events ShipmentEvent[]
@@ -625,17 +681,17 @@ model ShipmentEvent {
 // profil livreur, génération de contrat) ; le rapprochement des deux se
 // fera par convention de code au moment de l'usage réel en LOT6.
 model VehicleType {
-  id         Int      @id @default(autoincrement())
-  code       String   @unique
-  label      String
-  capacityKg Float
+  id             Int      @id @default(autoincrement())
+  code           String   @unique
+  label          String
+  capacityKg     Float
   // LOT 6 : plafond de frais de livraison propre à cette catégorie. Optionnel
   // pour rester rétro-compatible — quand absent, calcDeliveryFee() retombe sur
   // PlatformSettings.deliveryMaxPrice (comportement d'avant ce lot).
   maxDeliveryFee Float?
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Zone {

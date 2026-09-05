@@ -1538,6 +1538,55 @@ router.get('/logistics/dashboard', ...guard, async (req, res) => {
   }
 })
 
+// ─── Logistique — LOT 2 (Arbitrage XXX RIZ) : pont B2B → Shipment ──────────
+// Assignation manuelle uniquement (pas de moteur d'auto-affectation pour le
+// B2B dans ce MVP — les volumes/négociations B2B sont par nature plus
+// ponctuels que les commandes B2C ; réutiliser assignmentEngine.js, conçu
+// autour de DriverOffer/Order, serait une refonte hors périmètre de ce lot).
+// Même structure que POST /orders/:id/assign, sans DriverOffer (table
+// propre à Order, non réutilisable ici).
+router.post('/logistics/b2b/:transactionId/assign', ...guard, async (req, res) => {
+  const { driverId } = req.body
+  if (!driverId) return res.status(400).json({ error: 'driverId requis' })
+  const transactionId = Number(req.params.transactionId)
+
+  try {
+    const [b2bTx, driver] = await Promise.all([
+      prisma.b2BTransaction.findUnique({ where: { id: transactionId } }),
+      prisma.driver.findUnique({ where: { id: Number(driverId) }, include: { user: { select: { id: true, name: true } } } }),
+    ])
+
+    if (!b2bTx) return res.status(404).json({ error: 'Transaction B2B introuvable' })
+    if (!driver) return res.status(404).json({ error: 'Livreur introuvable' })
+    if (!b2bTx.needsLogistics) return res.status(400).json({ error: 'Cette transaction n\'a pas demandé de livraison' })
+    if (!['DECLARED', 'ESCALATED'].includes(b2bTx.status)) {
+      return res.status(400).json({ error: `Assignation impossible depuis le statut ${b2bTx.status}` })
+    }
+    if (!b2bTx.deliveryAddress) return res.status(400).json({ error: 'Adresse de livraison manquante' })
+
+    const updated = await prisma.b2BTransaction.update({
+      where: { id: transactionId },
+      data: { status: b2bTx.status === 'ESCALATED' ? 'DECLARED' : b2bTx.status },
+    })
+    await deliveryLifecycle.createShipmentForB2BTransaction(prisma, {
+      b2bTransactionId: transactionId, driverId: Number(driverId), dropoffAddress: b2bTx.deliveryAddress,
+    })
+
+    setImmediate(() => {
+      if (driver.user?.id) {
+        notify(driver.user.id, 'MANUAL_ASSIGNMENT', 'Livraison B2B assignée',
+          `La transaction B2B #${transactionId} vous a été assignée manuellement.`, { transactionId }).catch(() => {})
+      }
+    })
+    setImmediate(() => logAction(req.user.id, 'MANUAL_ASSIGN_B2B', 'B2BTransaction', transactionId,
+      { driverId: Number(driverId), previousStatus: b2bTx.status }))
+
+    res.json(updated)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ─── Logistique — LOT 15 : intelligence logistique ─────────────────────────
 // L'historique GPS (DriverLocationHistory, LOT9) n'avait encore JAMAIS eu de
 // consommateur — collecté avec une politique de rétention définie, mais

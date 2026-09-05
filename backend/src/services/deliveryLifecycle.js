@@ -103,16 +103,38 @@ function createShipmentForOrder(client, { orderId, driverId, dropoffAddress, pic
   })
 }
 
+// LOT 2 (Arbitrage XXX RIZ) : pendant B2B de createShipmentForOrder — même
+// logique (upsert idempotent, reset des champs propres à une tentative),
+// juste rattachée à un B2BTransaction plutôt qu'un Order. Fonction séparée
+// plutôt qu'un paramètre optionnel sur createShipmentForOrder : aucun des 3
+// appelants existants (drivers.js, admin.js x2) n'a besoin de changer.
+function createShipmentForB2BTransaction(client, { b2bTransactionId, driverId, dropoffAddress, pickupAddress = null }) {
+  const resetForNewAttempt = {
+    deliveryCode: null, deliveryCodeAttempts: 0, deliveryProofDistanceKm: null,
+    failureReason: null, pickedUpAt: null, deliveredAt: null,
+  }
+  return client.shipment.upsert({
+    where: { b2bTransactionId },
+    update: { driverId, status: 'PENDING_PICKUP', ...resetForNewAttempt },
+    create: { b2bTransactionId, driverId, dropoffAddress, pickupAddress, status: 'PENDING_PICKUP' },
+  })
+}
+
 // Vérifie le code de livraison AVANT d'ouvrir la transaction d'état, avec le
 // client de base (pas un `tx`) : un incrément de tentative sur code erroné
 // doit être PERSISTÉ même si la transition échoue — s'il était fait à
 // l'intérieur de la transaction qui échoue ensuite (throw), Prisma annule
 // tout, y compris l'incrément, et le compteur anti-brute-force ne compterait
 // jamais rien. D'où cette étape séparée, en écriture directe.
-async function checkDeliveryOtp(client, { shipmentId, orderId, otp = null, bypassOtp = false }) {
-  const shipment = shipmentId
-    ? await client.shipment.findUnique({ where: { id: shipmentId } })
-    : await client.shipment.findUnique({ where: { orderId } })
+function findShipmentWhere({ shipmentId, orderId, b2bTransactionId }) {
+  if (shipmentId) return { id: shipmentId }
+  if (b2bTransactionId) return { b2bTransactionId }
+  return { orderId }
+}
+
+async function checkDeliveryOtp(client, params) {
+  const { otp = null, bypassOtp = false } = params
+  const shipment = await client.shipment.findUnique({ where: findShipmentWhere(params) })
   if (!shipment) throw new Error('Livraison introuvable')
 
   // shipment.deliveryCode est null uniquement pour une livraison qui n'est
@@ -151,16 +173,21 @@ async function advanceShipment(client, params) {
   return advanceShipmentInTransaction(client, params, settings)
 }
 
-async function advanceShipmentInTransaction(tx, { shipmentId, orderId, status, actorId = null, note = null, failureReason = null }, settings) {
+async function advanceShipmentInTransaction(tx, params, settings) {
+  const { status, actorId = null, note = null, failureReason = null } = params
   if (!SHIPMENT_STATUSES.includes(status)) throw new Error(`Statut de livraison invalide : ${status}`)
   if (status === 'FAILED' && (!failureReason || !failureReason.trim())) {
     throw new Error('Un motif est requis pour signaler un échec de livraison')
   }
 
-  const shipment = shipmentId
-    ? await tx.shipment.findUnique({ where: { id: shipmentId }, include: { order: { include: { items: true } } } })
-    : await tx.shipment.findUnique({ where: { orderId }, include: { order: { include: { items: true } } } })
+  const shipment = await tx.shipment.findUnique({
+    where: findShipmentWhere(params),
+    include: { order: { include: { items: true } }, b2bTransaction: true },
+  })
   if (!shipment) throw new Error('Livraison introuvable')
+  // LOT 2 : un Shipment naît d'exactement une source — vérifié en
+  // application (Prisma/SQLite ne portent pas de CHECK inter-colonnes ici).
+  const isB2B = shipment.b2bTransactionId != null
 
   // LOT 10 : garde-fou introduit en ajoutant FAILED — sans lui, un double
   // appel (retry réseau, double-tap) sur une livraison déjà FAILED
@@ -200,20 +227,32 @@ async function advanceShipmentInTransaction(tx, { shipmentId, orderId, status, a
   const updated = await tx.shipment.update({ where: { id: shipment.id }, data })
   await tx.shipmentEvent.create({ data: { shipmentId: shipment.id, status, note, actorId } })
 
-  const orderStatus = ORDER_STATUS_MIRROR[status]
-  if (orderStatus) {
-    // FAILED : Order.driverId doit être libéré, pas seulement le statut mis
-    // à ESCALATED — sinon admin.js POST /orders/:id/assign refuse la
-    // réassignation avec "cette commande a déjà un livreur assigné" (son
-    // garde-fou pré-existant contre l'écrasement d'une assignation active,
-    // qui devient un faux positif une fois la livraison en échec).
-    const orderData = status === 'FAILED' ? { status: orderStatus, driverId: null } : { status: orderStatus }
-    await tx.order.update({ where: { id: shipment.orderId }, data: orderData })
-    await tx.orderStatusHistory.create({ data: { orderId: shipment.orderId, status: orderStatus, note, actorId } })
+  // LOT 2 : le mirroring s'applique désormais à Order (B2C, inchangé) OU à
+  // B2BTransaction (même statuts, ajoutés au LOT 2 : IN_TRANSIT/DELIVERED/
+  // ESCALATED — voir schema.prisma). B2BTransaction n'a pas de `driverId`
+  // propre (uniquement porté par Shipment) : pas de garde-fou de libération
+  // équivalent à celui d'Order à reproduire ici. Pas d'OrderStatusHistory
+  // pour le B2B non plus — ShipmentEvent (déjà créé juste au-dessus, source-
+  // agnostique) fait déjà foi d'audit pour les deux sources.
+  const mirrorStatus = ORDER_STATUS_MIRROR[status]
+  if (mirrorStatus) {
+    if (isB2B) {
+      await tx.b2BTransaction.update({ where: { id: shipment.b2bTransactionId }, data: { status: mirrorStatus } })
+    } else {
+      // FAILED : Order.driverId doit être libéré, pas seulement le statut mis
+      // à ESCALATED — sinon admin.js POST /orders/:id/assign refuse la
+      // réassignation avec "cette commande a déjà un livreur assigné" (son
+      // garde-fou pré-existant contre l'écrasement d'une assignation active,
+      // qui devient un faux positif une fois la livraison en échec).
+      const orderData = status === 'FAILED' ? { status: mirrorStatus, driverId: null } : { status: mirrorStatus }
+      await tx.order.update({ where: { id: shipment.orderId }, data: orderData })
+      await tx.orderStatusHistory.create({ data: { orderId: shipment.orderId, status: mirrorStatus, note, actorId } })
+    }
   }
 
   if (status === 'DELIVERED' && shipment.driverId) {
-    await payDriverForDelivery(tx, { driverId: shipment.driverId, order: shipment.order, settings })
+    const deliveryFee = isB2B ? (shipment.b2bTransaction.deliveryFee || 0) : shipment.order.deliveryFee
+    await payDriverForDelivery(tx, { driverId: shipment.driverId, deliveryFee, settings })
   }
 
   // LOT 10 (intégration Stock ↔ Livraison) : un échec de livraison ramène
@@ -223,12 +262,18 @@ async function advanceShipmentInTransaction(tx, { shipmentId, orderId, status, a
   // fausser durablement l'inventaire de la boutique. Même mécanisme que
   // l'annulation (restockFromCancellation, sourceType=ORDER), pas une
   // fonction séparée : c'est exactement le même fait physique.
+  // LOT 2 : le B2B ne touche JAMAIS StockPosition/Product (confirmé à
+  // l'audit — RiceOffer/PurchaseRequest n'ont aucune relation vers le stock
+  // boutique) : aucun restock à faire pour un Shipment B2B, ce n'est pas un
+  // oubli.
   if (status === 'FAILED') {
-    for (const item of shipment.order.items) {
-      await stockEngine.restockFromCancellation(tx, {
-        productId: item.productId, quantity: item.quantity, orderId: shipment.orderId,
-        actorId, reason: `Échec de livraison : ${failureReason.trim()}`,
-      })
+    if (!isB2B) {
+      for (const item of shipment.order.items) {
+        await stockEngine.restockFromCancellation(tx, {
+          productId: item.productId, quantity: item.quantity, orderId: shipment.orderId,
+          actorId, reason: `Échec de livraison : ${failureReason.trim()}`,
+        })
+      }
     }
     // Le livreur redevient disponible pour une nouvelle offre — même effet
     // de bord que la fin d'une livraison réussie (payDriverForDelivery).
@@ -237,17 +282,17 @@ async function advanceShipmentInTransaction(tx, { shipmentId, orderId, status, a
     }
   }
 
-  return { shipment: updated, order: shipment.order }
+  return { shipment: updated, order: shipment.order, b2bTransaction: shipment.b2bTransaction }
 }
 
 // Logique de rémunération UNIQUE — reprend la version correcte (reset propre
 // au changement de mois), celle qui manquait dans l'ancien chemin
 // orders.js supprimé par ce lot.
-async function payDriverForDelivery(tx, { driverId, order, settings }) {
+async function payDriverForDelivery(tx, { driverId, deliveryFee, settings }) {
   const driver = await tx.driver.findUnique({ where: { id: driverId }, select: { plan: true, earningsMonth: true, earningsYear: true } })
   if (!driver) return
 
-  const gain = Math.round(order.deliveryFee * driverRate(settings, driver.plan))
+  const gain = Math.round((deliveryFee || 0) * driverRate(settings, driver.plan))
   const now = new Date()
   const curMonth = now.getMonth() + 1
   const curYear = now.getFullYear()
@@ -271,4 +316,7 @@ async function payDriverForDelivery(tx, { driverId, order, settings }) {
   })
 }
 
-module.exports = { SHIPMENT_STATUSES, createShipmentForOrder, advanceShipment, ensureShipmentDropoffCoords }
+module.exports = {
+  SHIPMENT_STATUSES, createShipmentForOrder, createShipmentForB2BTransaction,
+  advanceShipment, ensureShipmentDropoffCoords,
+}

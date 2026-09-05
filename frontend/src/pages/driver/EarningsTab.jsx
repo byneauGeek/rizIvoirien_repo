@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import { fmt, fmtDate, fmtOrderId } from '../../utils/status'
 import { forecastMonth } from '../../utils/analytics'
-import { TrendingUp, Crown } from 'lucide-react'
+import { TrendingUp, Crown, ShieldCheck } from 'lucide-react'
 import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
@@ -22,12 +22,26 @@ function CustomTooltip({ active, payload, label }) {
   )
 }
 
+const REMUNERATION_STATUS_LABELS = {
+  DRAFT: 'Brouillon', CALCULATED: 'Calculée', PENDING_VALIDATION: 'En attente de validation',
+  VALIDATED: 'Validée', PAYMENT_PENDING: 'Paiement en cours', PAYMENT_PROCESSING: 'Paiement en cours',
+  PAID: 'Payée', REJECTED: 'Rejetée', CANCELLED: 'Annulée', PAYMENT_FAILED: 'Échec de paiement',
+  // Statuts PaymentOrder (vocabulaire différent de Remuneration)
+  PENDING_CONTROL: 'En contrôle', ON_HOLD: 'En attente', PROCESSING: 'En cours de paiement', FAILED: 'Échec',
+}
+
 export default function EarningsTab() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  // LOT 12 (Espace livreur) : le LOT 7 avait ajouté cette lecture côté API
+  // mais aucune page ne l'affichait encore — le livreur n'avait toujours
+  // aucun moyen de voir ses rémunérations OFFICIELLES (comptabilité),
+  // seulement ce cumul temps réel non officiel.
+  const [remunerations, setRemunerations] = useState([])
 
   useEffect(() => {
     api.get('/drivers/earnings').then(setData).catch(() => {}).finally(() => setLoading(false))
+    api.get('/drivers/me/remunerations').then(({ remunerations }) => setRemunerations(remunerations || [])).catch(() => {})
   }, [])
 
   if (loading) return (
@@ -74,7 +88,41 @@ export default function EarningsTab() {
           )}
         </div>
         <p className="font-dm text-sm text-cream/50 mt-1">FCFA · {earnings.length} livraisons affichées</p>
+        <p className="font-dm text-[11px] text-cream/40 mt-2">
+          Estimation temps réel, non officielle — voir « Rémunérations officielles » ci-dessous pour les montants validés par la comptabilité.
+        </p>
       </div>
+
+      {/* LOT 12 : rémunérations officielles (comptabilité) — le cumul ci-dessus
+          est une estimation temps réel jamais validée par personne ; ceci est
+          la source officielle (arbitrage Décision 2, réconciliée au LOT 11). */}
+      {remunerations.length > 0 && (
+        <div className="bg-white rounded-3xl shadow-card overflow-hidden">
+          <div className="px-5 py-4 border-b border-charcoal/6 flex items-center gap-2">
+            <ShieldCheck size={14} className="text-forest" />
+            <p className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40">Rémunérations officielles (comptabilité)</p>
+          </div>
+          <div className="divide-y divide-charcoal/5">
+            {remunerations.map(r => (
+              <div key={r.id} className="flex items-center justify-between px-5 py-4">
+                <div>
+                  <p className="font-syne text-sm font-bold text-charcoal">{r.id}</p>
+                  <p className="font-dm text-xs text-charcoal/40">
+                    {fmtDate(r.periodStart)} → {fmtDate(r.periodEnd)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-playfair text-lg font-bold text-forest">{fmt(r.netAmount)} F</p>
+                  <p className="font-dm text-xs text-charcoal/40">
+                    {REMUNERATION_STATUS_LABELS[r.status] || r.status}
+                    {r.paymentOrder && ` · ${REMUNERATION_STATUS_LABELS[r.paymentOrder.status] || r.paymentOrder.status}`}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Prévision + Premium ROI */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -3,6 +3,7 @@ const prisma = require('../lib/prisma')
 const { authenticate, authenticateSSE, requireRole } = require('../middleware/auth')
 const { getSettings, driverRate } = require('../lib/settings')
 const deliveryLifecycle = require('../services/deliveryLifecycle')
+const { ensureDefaultVehicleTypes } = require('../lib/vehicleTypes')
 
 const BADGES = [
   { id: 'debutant', label: 'Débutant', icon: '🌱', minDeliveries: 0, minRate: 0 },
@@ -192,6 +193,23 @@ router.get('/me', authenticate, requireRole('DRIVER'), async (req, res) => {
     })
     if (!driver) return res.status(404).json({ error: 'Profil introuvable' })
     res.json(driver)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/drivers/vehicle-types — LOT 12 (Espace livreur) : ProfileTab.jsx
+// affichait une liste de catégories CODÉE EN DUR côté frontend
+// (MOTO/VOITURE/TRICYCLE/CAMIONNETTE), totalement déconnectée du catalogue
+// VehicleType administré depuis le LOT 4 — un admin ajoutant VELO ou
+// renommant une catégorie n'aurait jamais été reflété ici. Lecture seule,
+// pas de permission admin requise (juste authentifié + livreur), à la
+// différence de GET /api/admin/logistics/vehicle-types.
+router.get('/vehicle-types', authenticate, requireRole('DRIVER'), async (req, res) => {
+  try {
+    await ensureDefaultVehicleTypes()
+    const vehicleTypes = await prisma.vehicleType.findMany({
+      where: { active: true }, orderBy: { capacityKg: 'asc' }, select: { code: true, label: true },
+    })
+    res.json({ vehicleTypes })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

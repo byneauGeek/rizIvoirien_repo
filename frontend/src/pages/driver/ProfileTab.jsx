@@ -7,12 +7,14 @@ import {
 } from 'lucide-react'
 import ImageDropZone from '../../components/ui/ImageDropZone'
 
-const VEHICLE_TYPES = ['MOTO', 'VOITURE', 'TRICYCLE', 'CAMIONNETTE']
-
 export default function ProfileTab() {
   const { user } = useAuth()
   const [driver, setDriver] = useState(null)
   const [loading, setLoading] = useState(true)
+  // LOT 12 (Espace livreur) : catégories chargées depuis le catalogue
+  // VehicleType administré (LOT4) — avant ce lot, une liste codée en dur ici
+  // ne reflétait jamais ce qu'un admin ajoutait ou renommait.
+  const [vehicleTypes, setVehicleTypes] = useState([])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState(null)
@@ -39,6 +41,7 @@ export default function ProfileTab() {
   })
 
   useEffect(() => {
+    api.get('/drivers/vehicle-types').then(({ vehicleTypes }) => setVehicleTypes(vehicleTypes || [])).catch(() => {})
     api.get('/drivers/me').then(d => {
       setDriver(d)
       const f = buildForm(d)
@@ -202,7 +205,13 @@ export default function ProfileTab() {
             <select value={form.vehicleType} onChange={e => setForm(p => ({ ...p, vehicleType: e.target.value }))}
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 font-dm text-sm focus:outline-none focus:border-forest bg-white">
               <option value="">Sélectionner…</option>
-              {VEHICLE_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+              {/* Valeur existante conservée même si elle ne correspond plus à
+                  une catégorie active (catégorie désactivée depuis, ancienne
+                  saisie libre) — jamais silencieusement effacée. */}
+              {form.vehicleType && !vehicleTypes.some(v => v.code === form.vehicleType) && (
+                <option value={form.vehicleType}>{form.vehicleType}</option>
+              )}
+              {vehicleTypes.map(v => <option key={v.code} value={v.code}>{v.label}</option>)}
             </select>
           </div>
           <LabelInput label="Plaque d'immatriculation" {...f('vehiclePlate')} placeholder="AB-1234-CI" />

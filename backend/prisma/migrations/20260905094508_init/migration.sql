@@ -351,6 +351,36 @@ CREATE TABLE "OrderStatusHistory" (
 );
 
 -- CreateTable
+CREATE TABLE "Shipment" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "orderId" INTEGER NOT NULL,
+    "driverId" INTEGER,
+    "status" TEXT NOT NULL DEFAULT 'PENDING_PICKUP',
+    "pickupAddress" TEXT,
+    "dropoffAddress" TEXT NOT NULL,
+    "weightKg" REAL,
+    "distanceKm" REAL,
+    "pickedUpAt" DATETIME,
+    "deliveredAt" DATETIME,
+    "failureReason" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Shipment_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "Shipment_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "ShipmentEvent" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "shipmentId" INTEGER NOT NULL,
+    "status" TEXT NOT NULL,
+    "note" TEXT,
+    "actorId" INTEGER,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ShipmentEvent_shipmentId_fkey" FOREIGN KEY ("shipmentId") REFERENCES "Shipment" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
 CREATE TABLE "Driver" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "userId" INTEGER NOT NULL,
@@ -1025,6 +1055,18 @@ CREATE INDEX "Order_groupId_idx" ON "Order"("groupId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Order_buyerId_idempotencyKey_key" ON "Order"("buyerId", "idempotencyKey");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Shipment_orderId_key" ON "Shipment"("orderId");
+
+-- CreateIndex
+CREATE INDEX "Shipment_driverId_idx" ON "Shipment"("driverId");
+
+-- CreateIndex
+CREATE INDEX "Shipment_status_idx" ON "Shipment"("status");
+
+-- CreateIndex
+CREATE INDEX "ShipmentEvent_shipmentId_idx" ON "ShipmentEvent"("shipmentId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Driver_userId_key" ON "Driver"("userId");

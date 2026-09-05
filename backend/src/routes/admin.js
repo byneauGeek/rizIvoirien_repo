@@ -6,6 +6,7 @@ const { notify } = require('../services/notifications')
 const { pushToUser } = require('../services/sse')
 const { computeScore } = require('../services/assignmentEngine')
 const { getSettings, driverRate } = require('../lib/settings')
+const deliveryLifecycle = require('../services/deliveryLifecycle')
 
 const guard           = [authenticate, requireRole('ADMIN')]
 const commercialGuard = [authenticate, requireRole('ADMIN', 'COMMERCIAL')]
@@ -248,6 +249,13 @@ router.post('/orders/assign-group', ...guard, async (req, res) => {
         create: { orderId: o.id, driverId: Number(driverId), status: 'ACCEPTED', attempt: 1, expiresAt: new Date() },
       }).catch(() => {})
     ))
+    // LOT 3 (Logistique) : sans Shipment, le livreur ne pourrait plus mettre
+    // à jour le statut de livraison via PUT /drivers/delivery/:orderId/status.
+    await Promise.all(orders.map(o =>
+      deliveryLifecycle.createShipmentForOrder(prisma, {
+        orderId: o.id, driverId: Number(driverId), dropoffAddress: o.address, pickupAddress: o.shop?.location || null,
+      })
+    ))
 
     setImmediate(() => {
       for (const o of orders) {
@@ -309,6 +317,9 @@ router.post('/orders/:id/assign', ...guard, async (req, res) => {
           actorId: req.user.id,
         }},
       },
+    })
+    await deliveryLifecycle.createShipmentForOrder(prisma, {
+      orderId, driverId: Number(driverId), dropoffAddress: order.address, pickupAddress: order.shop?.location || null,
     })
 
     setImmediate(() => {

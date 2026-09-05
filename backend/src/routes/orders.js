@@ -6,15 +6,19 @@ const { notify } = require('../services/notifications')
 const { sendMail } = require('../services/mailer')
 const { parseWeightKg, geocodeAddress, calcDeliveryFee, estimateDelivery } = require('../services/deliveryService')
 const { randomUUID } = require('crypto')
-const { getSettings, driverRate } = require('../lib/settings')
 const stockEngine = require('../services/stockEngine')
 
 const fmt = (n) => Number(n).toLocaleString('fr-FR')
 
+// LOT 3 (Logistique, arbitrage Décision 3) : le livreur ne passe plus par
+// cette route générique — PRET→IN_TRANSIT→DELIVERED est désormais géré par
+// deliveryLifecycle.advanceShipment (PUT /api/drivers/delivery/:orderId/status),
+// seul point d'entrée, qui tient aussi le Shipment à jour. L'ancienne entrée
+// DRIVER ici était déjà inatteignable par l'UI et divergente (pas de reset
+// mensuel des gains) — supprimée plutôt que corrigée deux fois.
 const ORDER_STATUS_FLOW = {
   BUYER:  [],
   SELLER: { CONFIRMED: 'EN_PREPARATION', EN_PREPARATION: 'PRET' },
-  DRIVER: { PRET: 'IN_TRANSIT', IN_TRANSIT: 'DELIVERED' },
   ADMIN:  null, // tous les transitions
 }
 
@@ -398,9 +402,12 @@ router.get('/:id', authenticate, async (req, res) => {
 // avant ce lot, un ADMIN pouvait poser n'importe quelle valeur ici sans
 // validation, et passer par 'CANCELLED' via cette route ne restockait
 // jamais rien (gap identifié par l'audit du Stock Engine, LOT 0 §0.4).
-const VALID_ORDER_STATUSES = ['PENDING_VALIDATION', 'PENDING', 'CONFIRMED', 'EN_PREPARATION', 'PRET', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED', 'ESCALATED']
+// 'DELIVERED' retiré de cette liste au LOT 3 (Logistique) : cette transition
+// passe désormais exclusivement par deliveryLifecycle.advanceShipment, pour
+// que Shipment et Order.status ne puissent jamais diverger.
+const VALID_ORDER_STATUSES = ['PENDING_VALIDATION', 'PENDING', 'CONFIRMED', 'EN_PREPARATION', 'PRET', 'IN_TRANSIT', 'CANCELLED', 'ESCALATED']
 
-// PUT /api/orders/:id/status — vendeur / livreur avancent le statut
+// PUT /api/orders/:id/status — vendeur avance le statut, admin annule
 router.put('/:id/status', authenticate, async (req, res) => {
   const { note } = req.body
   try {
@@ -414,10 +421,6 @@ router.put('/:id/status', authenticate, async (req, res) => {
       const shop = await prisma.shop.findUnique({ where: { userId } })
       if (shop?.id !== order.shopId) return res.status(403).json({ error: 'Accès refusé' })
       nextStatus = ORDER_STATUS_FLOW.SELLER[order.status]
-    } else if (role === 'DRIVER') {
-      const driver = await prisma.driver.findUnique({ where: { userId } })
-      if (driver?.id !== order.driverId) return res.status(403).json({ error: 'Accès refusé' })
-      nextStatus = ORDER_STATUS_FLOW.DRIVER[order.status]
     } else if (role === 'ADMIN') {
       nextStatus = req.body.status
       if (!VALID_ORDER_STATUSES.includes(nextStatus)) {
@@ -461,41 +464,6 @@ router.put('/:id/status', authenticate, async (req, res) => {
     // Déclencher l'assignation automatique quand la commande est prête
     if (nextStatus === 'PRET') {
       setImmediate(() => assignOrder(order.id))
-    }
-
-    // Email de livraison confirmée
-    if (nextStatus === 'DELIVERED') {
-      const buyerUser = await prisma.user.findUnique({ where: { id: order.buyerId }, select: { name: true, email: true } })
-      const shopInfo  = await prisma.shop.findUnique({ where: { id: order.shopId }, select: { name: true } })
-      setImmediate(() => sendMail(buyerUser?.email, 'orderDelivered', { name: buyerUser?.name || '', orderId: order.id, shopName: shopInfo?.name || '' }))
-    }
-
-    // Si livré, mettre à jour les stats du livreur
-    if (nextStatus === 'DELIVERED' && order.driverId) {
-      const [settings, driver] = await Promise.all([
-        getSettings(),
-        prisma.driver.findUnique({ where: { id: order.driverId }, select: { plan: true } }),
-      ])
-      const gain = Math.round(order.deliveryFee * driverRate(settings, driver?.plan))
-
-      await prisma.driver.update({
-        where: { id: order.driverId },
-        data: { totalDeliveries: { increment: 1 }, monthlyEarnings: { increment: gain } },
-      })
-
-      // Mettre à jour les métriques mensuelles
-      const now = new Date()
-      await prisma.driverMetric.upsert({
-        where: { driverId_month_year: { driverId: order.driverId, month: now.getMonth() + 1, year: now.getFullYear() } },
-        update: { deliveries: { increment: 1 }, earnings: { increment: gain } },
-        create: {
-          driverId: order.driverId,
-          month: now.getMonth() + 1,
-          year: now.getFullYear(),
-          deliveries: 1,
-          earnings: gain,
-        },
-      })
     }
 
     res.json(updated)

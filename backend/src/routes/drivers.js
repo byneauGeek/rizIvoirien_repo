@@ -2,6 +2,7 @@ const router = require('express').Router()
 const prisma = require('../lib/prisma')
 const { authenticate, authenticateSSE, requireRole } = require('../middleware/auth')
 const { getSettings, driverRate } = require('../lib/settings')
+const deliveryLifecycle = require('../services/deliveryLifecycle')
 
 const BADGES = [
   { id: 'debutant', label: 'Débutant', icon: '🌱', minDeliveries: 0, minRate: 0 },
@@ -65,7 +66,7 @@ router.post('/offers/:id/accept', authenticate, requireRole('DRIVER'), async (re
       where: { id: offer.orderId },
       include: {
         buyer: { select: { id: true, name: true, email: true } },
-        shop:  { select: { name: true } },
+        shop:  { select: { name: true, location: true } },
         items: { select: { quantity: true, name: true, price: true } },
       },
     })
@@ -75,6 +76,8 @@ router.post('/offers/:id/accept', authenticate, requireRole('DRIVER'), async (re
     // ré-assignée/expirée entre-temps par le moteur d'affectation (course concurrente).
     // Le statut de la commande reste PRET — le livreur a accepté mais n'a pas encore
     // pris en charge la livraison. La transition vers IN_TRANSIT se fait au démarrage du trajet.
+    // LOT 3 (Logistique) : c'est ici que le Shipment naît — le moment où une
+    // livraison commence réellement à exister comme opération logistique.
     const claimed = await prisma.$transaction(async (tx) => {
       const { count } = await tx.driverOffer.updateMany({
         where: { id: offerId, driverId: driver.id, status: 'PENDING' },
@@ -92,6 +95,10 @@ router.post('/offers/:id/accept', authenticate, requireRole('DRIVER'), async (re
       })
       await tx.orderStatusHistory.create({
         data: { orderId: offer.orderId, status: 'PRET', note: 'Livreur assigné — en route pour la collecte', actorId: req.user.id },
+      })
+      await deliveryLifecycle.createShipmentForOrder(tx, {
+        orderId: offer.orderId, driverId: driver.id,
+        dropoffAddress: order.address, pickupAddress: order.shop?.location || null,
       })
       return true
     })
@@ -261,6 +268,9 @@ router.get('/active-delivery', authenticate, requireRole('DRIVER'), async (req, 
 })
 
 // PUT /api/drivers/delivery/:orderId/status — livreur met à jour statut
+// LOT 3 (Logistique) : délègue entièrement à deliveryLifecycle.advanceShipment
+// — point d'entrée unique désormais partagé avec le chemin admin (voir
+// orders.js), plus de logique de rémunération dupliquée ici.
 router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), async (req, res) => {
   const { status, note } = req.body
   const ALLOWED = ['IN_TRANSIT', 'DELIVERED']
@@ -277,53 +287,33 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
       IN_TRANSIT: 'Colis récupéré par le livreur — en route pour la livraison',
       DELIVERED:  'Colis remis au client',
     }
+    // 'IN_TRANSIT' côté API (vocabulaire Order, inchangé pour ne pas casser
+    // le contrat avec DeliveryTab.jsx) correspond à 'PICKED_UP' côté Shipment
+    // (premier point de collecte — pas d'étape distincte aujourd'hui).
+    const shipmentStatus = status === 'IN_TRANSIT' ? 'PICKED_UP' : 'DELIVERED'
 
-    await prisma.order.update({ where: { id: order.id }, data: { status } })
-    await prisma.orderStatusHistory.create({
-      data: { orderId: order.id, status, note: note || autoNote[status] || null, actorId: req.user.id },
+    await deliveryLifecycle.advanceShipment(prisma, {
+      orderId: order.id, status: shipmentStatus, actorId: req.user.id, note: note || autoNote[status] || null,
     })
 
-    // Notifier l'acheteur du passage en route
+    const { notify } = require('../services/notifications')
     if (status === 'IN_TRANSIT') {
-      const { notify } = require('../services/notifications')
       setImmediate(() => notify(
         order.buyerId, 'IN_TRANSIT', 'Votre colis est en route !',
         `Le livreur a récupéré votre commande #${order.id} et est en route.`,
         { orderId: order.id }
       ))
-    }
-
-    if (status === 'DELIVERED') {
-      const settings = await getSettings()
-      const gain = Math.round(order.deliveryFee * driverRate(settings, driver.plan))
-      const now = new Date()
-      const curMonth = now.getMonth() + 1
-      const curYear  = now.getFullYear()
-      // Réinitialiser si on est dans un nouveau mois
-      const freshDriver = await prisma.driver.findUnique({ where: { id: driver.id }, select: { earningsMonth: true, earningsYear: true } })
-      const monthChanged = freshDriver.earningsMonth !== curMonth || freshDriver.earningsYear !== curYear
-      await prisma.driver.update({
-        where: { id: driver.id },
-        data: {
-          totalDeliveries: { increment: 1 },
-          monthlyEarnings: monthChanged ? gain : { increment: gain },
-          earningsMonth: curMonth,
-          earningsYear: curYear,
-          available: true,
-        },
-      })
-      // Upsert monthly metric
-      const month = now.getMonth() + 1
-      const year = now.getFullYear()
-      const existing = await prisma.driverMetric.findFirst({ where: { driverId: driver.id, month, year } })
-      if (existing) {
-        await prisma.driverMetric.update({ where: { id: existing.id }, data: { deliveries: { increment: 1 }, earnings: { increment: gain } } })
-      } else {
-        await prisma.driverMetric.create({ data: { driverId: driver.id, month, year, deliveries: 1, earnings: gain } })
-      }
-
-      const { notify } = require('../services/notifications')
+    } else {
       await notify(order.buyerId, 'DELIVERED', 'Commande livrée !', `Votre commande #${order.id} a été livrée. Merci !`, { orderId: order.id })
+      // Email de confirmation — avant le LOT 3, ce template n'était déclenché
+      // que par le chemin orders.js désormais supprimé, jamais atteint par
+      // l'app réelle : aucun acheteur ne le recevait en pratique.
+      const [buyerUser, shopInfo] = await Promise.all([
+        prisma.user.findUnique({ where: { id: order.buyerId }, select: { name: true, email: true } }),
+        prisma.shop.findUnique({ where: { id: order.shopId }, select: { name: true } }),
+      ])
+      const { sendMail } = require('../services/mailer')
+      setImmediate(() => sendMail(buyerUser?.email, 'orderDelivered', { name: buyerUser?.name || '', orderId: order.id, shopName: shopInfo?.name || '' }))
     }
 
     res.json({ success: true })

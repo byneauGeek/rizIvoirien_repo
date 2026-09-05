@@ -477,6 +477,7 @@ model Order {
   statusHistory OrderStatusHistory[]
   driverOffer   DriverOffer?
   dispute       Dispute?
+  shipment      Shipment?
 
   @@unique([buyerId, idempotencyKey])
   @@index([buyerId])
@@ -505,6 +506,57 @@ model OrderStatusHistory {
   note      String?
   actorId   Int?
   createdAt DateTime @default(now())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOGISTIQUE — LOT 3 : Fulfillment + Shipments (arbitrage Décision 3, Option C).
+// Décorrèle l'EXÉCUTION logistique (Shipment) de l'objet commercial (Order),
+// même principe déjà appliqué à StockMovement (Product) et Payment (Order) —
+// pas une architecture nouvelle, la continuation du même patron.
+//
+// 1:1 avec Order pour l'instant (une commande = une livraison) — le passage
+// à un modèle 1:N (plusieurs colis par commande) n'exigerait alors qu'un
+// retrait de `@unique` sur orderId, pas une refonte.
+//
+// Order.status continue d'être mis à jour en miroir à chaque transition
+// (services/deliveryLifecycle.js) : les 9 consommateurs existants
+// (disputes, avis, analytics, rémunération...) qui lisent Order.status
+// directement continuent de fonctionner sans modification.
+// ═══════════════════════════════════════════════════════════════════════════
+model Shipment {
+  id             Int       @id @default(autoincrement())
+  orderId        Int       @unique
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  driverId       Int?
+  driver         Driver?   @relation(fields: [driverId], references: [id])
+  status         String    @default("PENDING_PICKUP")
+  // PENDING_PICKUP | PICKED_UP | IN_TRANSIT | DELIVERED | FAILED | CANCELLED
+  pickupAddress  String?
+  dropoffAddress String
+  weightKg       Float?
+  distanceKm     Float?
+  pickedUpAt     DateTime?
+  deliveredAt    DateTime?
+  failureReason  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  events ShipmentEvent[]
+
+  @@index([driverId])
+  @@index([status])
+}
+
+model ShipmentEvent {
+  id         Int      @id @default(autoincrement())
+  shipmentId Int
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  status     String
+  note       String?
+  actorId    Int?
+  createdAt  DateTime @default(now())
+
+  @@index([shipmentId])
 }
 
 model Driver {
@@ -548,6 +600,7 @@ model Driver {
   planUpgradeRequests PlanUpgradeRequest[]
   commercialNotes     CommercialNote[]
   currentLocation     DriverCurrentLocation?
+  shipments           Shipment[]
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

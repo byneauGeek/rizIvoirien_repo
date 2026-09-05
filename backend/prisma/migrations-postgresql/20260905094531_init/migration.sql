@@ -362,6 +362,37 @@ CREATE TABLE "OrderStatusHistory" (
 );
 
 -- CreateTable
+CREATE TABLE "Shipment" (
+    "id" SERIAL NOT NULL,
+    "orderId" INTEGER NOT NULL,
+    "driverId" INTEGER,
+    "status" TEXT NOT NULL DEFAULT 'PENDING_PICKUP',
+    "pickupAddress" TEXT,
+    "dropoffAddress" TEXT NOT NULL,
+    "weightKg" DOUBLE PRECISION,
+    "distanceKm" DOUBLE PRECISION,
+    "pickedUpAt" TIMESTAMP(3),
+    "deliveredAt" TIMESTAMP(3),
+    "failureReason" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Shipment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ShipmentEvent" (
+    "id" SERIAL NOT NULL,
+    "shipmentId" INTEGER NOT NULL,
+    "status" TEXT NOT NULL,
+    "note" TEXT,
+    "actorId" INTEGER,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ShipmentEvent_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Driver" (
     "id" SERIAL NOT NULL,
     "userId" INTEGER NOT NULL,
@@ -1073,6 +1104,18 @@ CREATE INDEX "Order_groupId_idx" ON "Order"("groupId");
 CREATE UNIQUE INDEX "Order_buyerId_idempotencyKey_key" ON "Order"("buyerId", "idempotencyKey");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Shipment_orderId_key" ON "Shipment"("orderId");
+
+-- CreateIndex
+CREATE INDEX "Shipment_driverId_idx" ON "Shipment"("driverId");
+
+-- CreateIndex
+CREATE INDEX "Shipment_status_idx" ON "Shipment"("status");
+
+-- CreateIndex
+CREATE INDEX "ShipmentEvent_shipmentId_idx" ON "ShipmentEvent"("shipmentId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Driver_userId_key" ON "Driver"("userId");
 
 -- CreateIndex
@@ -1335,6 +1378,15 @@ ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_productId_fkey" FOREIGN KEY ("
 
 -- AddForeignKey
 ALTER TABLE "OrderStatusHistory" ADD CONSTRAINT "OrderStatusHistory_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Shipment" ADD CONSTRAINT "Shipment_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Shipment" ADD CONSTRAINT "Shipment_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ShipmentEvent" ADD CONSTRAINT "ShipmentEvent_shipmentId_fkey" FOREIGN KEY ("shipmentId") REFERENCES "Shipment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Driver" ADD CONSTRAINT "Driver_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

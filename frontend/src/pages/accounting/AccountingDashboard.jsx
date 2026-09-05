@@ -142,7 +142,7 @@ export default function AccountingDashboard() {
             )}
             {activeTab === 'overview'       && <OverviewTab onNavigate={navigateIfAllowed} />}
             {activeTab === 'transactions'   && <TransactionsTab />}
-            {activeTab === 'payment-orders' && <PaymentOrdersTab />}
+            {activeTab === 'payment-orders' && <PaymentOrdersTab permissions={access.permissions} />}
             {activeTab === 'debts'          && <DebtsReceivablesTab permissions={access.permissions} />}
             {activeTab === 'treasury'       && <TreasuryTab permissions={access.permissions} />}
             {activeTab === 'remunerations'  && <RemunerationsTab permissions={access.permissions} />}

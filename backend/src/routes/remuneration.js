@@ -244,27 +244,49 @@ router.post('/:id/create-payment-order', authenticate, requirePermission('accoun
     if (!remuneration) return res.status(404).json({ error: 'Rémunération introuvable ou non validée' })
 
     const existingOrder = await prisma.paymentOrder.findUnique({ where: { remunerationId: remuneration.id } })
-    if (existingOrder) return res.status(409).json({ error: `Un ordre de paiement existe déjà (${existingOrder.reference})` })
+    if (existingOrder && !['REJECTED', 'CANCELLED'].includes(existingOrder.status)) {
+      return res.status(409).json({ error: `Un ordre de paiement existe déjà (${existingOrder.reference})` })
+    }
 
     const beneficiary = await prisma.user.findUnique({ where: { id: remuneration.beneficiaryUserId }, select: { name: true } })
-    const reference = await nextReference('ORD')
+    const reason = `Rémunération ${remuneration.reference} (${remuneration.beneficiaryType})`
 
-    const [order] = await prisma.$transaction([
-      prisma.paymentOrder.create({
-        data: {
-          reference,
-          beneficiaryUserId: remuneration.beneficiaryUserId,
-          beneficiaryName: beneficiary?.name || null,
-          amount: remuneration.netAmount,
-          reason: `Rémunération ${remuneration.reference} (${remuneration.beneficiaryType})`,
-          sourceType: 'REMUNERATION',
-          sourceId: remuneration.id,
-          remunerationId: remuneration.id,
-          createdBy: req.user.id,
-        },
-      }),
-      prisma.remuneration.update({ where: { id: remuneration.id }, data: { status: 'PAYMENT_PENDING' } }),
-    ])
+    let order
+    if (existingOrder) {
+      // remunerationId est unique (une seule ligne PaymentOrder par
+      // rémunération) : un ordre rejeté/annulé est réinitialisé plutôt que
+      // dupliqué. L'historique de la décision précédente reste consultable
+      // via les AdminLog (PAYMENT_ORDER_REJECT/CANCEL) horodatés.
+      order = await prisma.$transaction(async (tx) => {
+        const reset = await tx.paymentOrder.update({
+          where: { id: existingOrder.id },
+          data: {
+            status: 'PENDING_CONTROL', rejectedReason: null, holdReason: null,
+            accountId: null, paymentMethod: null, amount: remuneration.netAmount, reason,
+          },
+        })
+        await tx.remuneration.update({ where: { id: remuneration.id }, data: { status: 'PAYMENT_PENDING' } })
+        return reset
+      })
+    } else {
+      const reference = await nextReference('ORD')
+      ;[order] = await prisma.$transaction([
+        prisma.paymentOrder.create({
+          data: {
+            reference,
+            beneficiaryUserId: remuneration.beneficiaryUserId,
+            beneficiaryName: beneficiary?.name || null,
+            amount: remuneration.netAmount,
+            reason,
+            sourceType: 'REMUNERATION',
+            sourceId: remuneration.id,
+            remunerationId: remuneration.id,
+            createdBy: req.user.id,
+          },
+        }),
+        prisma.remuneration.update({ where: { id: remuneration.id }, data: { status: 'PAYMENT_PENDING' } }),
+      ])
+    }
 
     setImmediate(() => logAction(req.user.id, 'PAYMENT_ORDER_CREATE', 'PaymentOrder', order.id, { remunerationId: remuneration.id, amount: order.amount }))
     res.status(201).json(order)

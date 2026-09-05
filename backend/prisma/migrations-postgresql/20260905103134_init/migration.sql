@@ -399,6 +399,7 @@ CREATE TABLE "VehicleType" (
     "code" TEXT NOT NULL,
     "label" TEXT NOT NULL,
     "capacityKg" DOUBLE PRECISION NOT NULL,
+    "maxDeliveryFee" DOUBLE PRECISION,
     "active" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,

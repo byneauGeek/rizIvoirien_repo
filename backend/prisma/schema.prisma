@@ -587,6 +587,10 @@ model VehicleType {
   code       String   @unique
   label      String
   capacityKg Float
+  // LOT 6 : plafond de frais de livraison propre à cette catégorie. Optionnel
+  // pour rester rétro-compatible — quand absent, calcDeliveryFee() retombe sur
+  // PlatformSettings.deliveryMaxPrice (comportement d'avant ce lot).
+  maxDeliveryFee Float?
   active     Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

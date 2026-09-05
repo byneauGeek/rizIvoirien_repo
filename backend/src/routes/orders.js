@@ -35,6 +35,7 @@ router.post('/estimate-delivery', authenticate, async (req, res) => {
     })
 
     const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
+    const vehicleTypes = await prisma.vehicleType.findMany({ where: { active: true } })
 
     // Grouper par boutique pour compter les collectes additionnelles
     const shopMap = {}
@@ -53,7 +54,7 @@ router.post('/estimate-delivery', authenticate, async (req, res) => {
       shopCoords = await geocodeAddress(shop.location)
     }
 
-    const result = await estimateDelivery({ items, products, shopCoords, deliveryAddress: address, settings, additionalShops })
+    const result = await estimateDelivery({ items, products, shopCoords, deliveryAddress: address, settings, additionalShops, vehicleTypes })
     res.json({
       ...result,
       leadDays: settings?.deliveryLeadDays ?? 1,
@@ -126,6 +127,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
     }
 
     const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
+    const vehicleTypes = await prisma.vehicleType.findMany({ where: { active: true } })
     const autoValidate = settings?.autoValidateOrders ?? true
     const additionalPickupFee = settings?.additionalPickupFee ?? 500
 
@@ -147,7 +149,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
           let shopCoords = null
           if (geo?.latitude && geo?.longitude) shopCoords = { lat: geo.latitude, lng: geo.longitude }
           else if (geo?.location) shopCoords = await geocodeAddress(geo.location)
-          const est = await estimateDelivery({ items: groups[0].items, products: groups[0].products, shopCoords, deliveryAddress: address, settings, additionalShops })
+          const est = await estimateDelivery({ items: groups[0].items, products: groups[0].products, shopCoords, deliveryAddress: address, settings, additionalShops, vehicleTypes })
           shopFees.push(est.deliveryFee)
         } else {
           shopFees.push(Math.round(additionalPickupFee))

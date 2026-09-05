@@ -1222,12 +1222,16 @@ router.get('/shops/:id/payslip', ...commercialGuard, async (req, res) => {
 // par le moteur d'affectation ni la tarification à ce lot — posent le
 // schéma pour les lots suivants (LOT5/LOT6).
 
+// maxDeliveryFee (LOT6) : plafond de frais propre à chaque catégorie — MOTO
+// reprend le plafond global historique (8000) pour ne rien changer au cas
+// majoritaire ; les catégories plus grandes ont un plafond plus haut pour
+// que le poids reste significatif au-delà de ~300 kg (constat de l'audit).
 const DEFAULT_VEHICLE_TYPES = [
-  { code: 'VELO',        label: 'Vélo',        capacityKg: 20 },
-  { code: 'MOTO',        label: 'Moto',        capacityKg: 50 },
-  { code: 'TRICYCLE',    label: 'Tricycle',    capacityKg: 300 },
-  { code: 'VOITURE',     label: 'Voiture',     capacityKg: 400 },
-  { code: 'CAMIONNETTE', label: 'Camionnette', capacityKg: 1500 },
+  { code: 'VELO',        label: 'Vélo',        capacityKg: 20,   maxDeliveryFee: 3000 },
+  { code: 'MOTO',        label: 'Moto',        capacityKg: 50,   maxDeliveryFee: 8000 },
+  { code: 'TRICYCLE',    label: 'Tricycle',    capacityKg: 300,  maxDeliveryFee: 15000 },
+  { code: 'VOITURE',     label: 'Voiture',     capacityKg: 400,  maxDeliveryFee: 20000 },
+  { code: 'CAMIONNETTE', label: 'Camionnette', capacityKg: 1500, maxDeliveryFee: 50000 },
 ]
 
 // Même logique que getSettings() (lib/settings.js) : jamais de valeur codée
@@ -1254,15 +1258,18 @@ router.get('/logistics/vehicle-types', ...guard, async (req, res) => {
 })
 
 router.post('/logistics/vehicle-types', ...guard, async (req, res) => {
-  const { code, label, capacityKg } = req.body
+  const { code, label, capacityKg, maxDeliveryFee } = req.body
   if (!code || !label || !(capacityKg > 0)) {
     return res.status(400).json({ error: 'code, label et capacityKg (> 0) sont requis' })
   }
   try {
     const vehicleType = await prisma.vehicleType.create({
-      data: { code: String(code).toUpperCase().trim(), label, capacityKg: Number(capacityKg) },
+      data: {
+        code: String(code).toUpperCase().trim(), label, capacityKg: Number(capacityKg),
+        maxDeliveryFee: maxDeliveryFee != null ? Number(maxDeliveryFee) : null,
+      },
     })
-    setImmediate(() => logAction(req.user.id, 'VEHICLE_TYPE_CREATE', 'VehicleType', vehicleType.id, { code, label, capacityKg }))
+    setImmediate(() => logAction(req.user.id, 'VEHICLE_TYPE_CREATE', 'VehicleType', vehicleType.id, { code, label, capacityKg, maxDeliveryFee }))
     res.status(201).json({ vehicleType })
   } catch (e) {
     if (e.code === 'P2002') return res.status(409).json({ error: 'Ce code existe déjà' })
@@ -1271,7 +1278,7 @@ router.post('/logistics/vehicle-types', ...guard, async (req, res) => {
 })
 
 router.put('/logistics/vehicle-types/:id', ...guard, async (req, res) => {
-  const { label, capacityKg, active } = req.body
+  const { label, capacityKg, active, maxDeliveryFee } = req.body
   try {
     const vehicleType = await prisma.vehicleType.update({
       where: { id: Number(req.params.id) },
@@ -1279,6 +1286,7 @@ router.put('/logistics/vehicle-types/:id', ...guard, async (req, res) => {
         ...(label !== undefined && { label }),
         ...(capacityKg !== undefined && { capacityKg: Number(capacityKg) }),
         ...(active !== undefined && { active: Boolean(active) }),
+        ...(maxDeliveryFee !== undefined && { maxDeliveryFee: maxDeliveryFee === null ? null : Number(maxDeliveryFee) }),
       },
     })
     setImmediate(() => logAction(req.user.id, 'VEHICLE_TYPE_UPDATE', 'VehicleType', vehicleType.id, req.body))

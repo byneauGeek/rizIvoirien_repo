@@ -1,4 +1,5 @@
 const https = require('https')
+const { haversineKm } = require('../lib/gps')
 
 // Coefficient route / vol-d'oiseau pour villes africaines
 const ROAD_FACTOR = 1.4
@@ -6,16 +7,6 @@ const ROAD_FACTOR = 1.4
 function parseWeightKg(unit) {
   const m = String(unit || '').match(/^(\d+(?:\.\d+)?)\s*kg$/i)
   return m ? parseFloat(m[1]) : 1
-}
-
-function haversineKm(lat1, lng1, lat2, lng2) {
-  const R = 6371
-  const toRad = d => d * Math.PI / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLng = toRad(lng2 - lng1)
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
 function geocodeAddress(address) {
@@ -42,12 +33,35 @@ function geocodeAddress(address) {
   })
 }
 
-function calcDeliveryFee(weightKg, distanceKm, orderTotal, settings, additionalShops = 0) {
+// LOT 6 (arbitrage Décision 5) : le plafond n'est plus un forfait unique.
+// L'audit avait constaté qu'un plafond fixe (8000 FCFA par défaut) rendait le
+// poids non significatif au-delà d'environ 300 kg — toute commande plus
+// lourde payait le même prix qu'une commande de 300 kg, alors qu'elle
+// nécessite un véhicule plus grand pour de vrai. On choisit désormais le
+// plus PETIT VehicleType actif capable de porter le poids (LOT4) et on
+// applique SON plafond — une camionnette a un plafond bien plus haut qu'une
+// moto. Rétro-compatible : si aucun VehicleType actif n'a de maxDeliveryFee
+// configuré (catégories non encore renseignées, ou table vide), on retombe
+// sur PlatformSettings.deliveryMaxPrice, comportement identique à avant.
+function resolveMaxFee(weightKg, settings, vehicleTypes) {
+  const eligible = (vehicleTypes || [])
+    .filter(vt => vt.active && vt.maxDeliveryFee != null)
+    .sort((a, b) => a.capacityKg - b.capacityKg)
+
+  if (!eligible.length) return settings?.deliveryMaxPrice ?? 8000
+
+  const fitting = eligible.find(vt => vt.capacityKg >= weightKg)
+  // Commande plus lourde que le plus gros véhicule connu : on applique quand
+  // même un plafond (celui du plus gros véhicule) plutôt que de laisser le
+  // prix grimper sans limite sur une simple erreur de saisie de poids.
+  return (fitting || eligible[eligible.length - 1]).maxDeliveryFee
+}
+
+function calcDeliveryFee(weightKg, distanceKm, orderTotal, settings, additionalShops = 0, vehicleTypes = []) {
   const s = settings || {}
   const base       = s.deliveryBasePrice    ?? 500
   const perKg      = s.deliveryPricePerKg   ?? 25
   const perKm      = s.deliveryPricePerKm   ?? 100
-  const maxFee     = s.deliveryMaxPrice     ?? 8000
   const freeAbove  = s.deliveryFreeAbove    ?? 0
   const pickupFee  = s.additionalPickupFee  ?? 500
 
@@ -58,11 +72,12 @@ function calcDeliveryFee(weightKg, distanceKm, orderTotal, settings, additionalS
   const pickupCost   = Math.round(additionalShops * pickupFee)
   let fee = base + weightCost + distanceCost + pickupCost
 
+  const maxFee = resolveMaxFee(weightKg, s, vehicleTypes)
   if (maxFee > 0) fee = Math.min(fee, maxFee)
   return Math.round(fee)
 }
 
-async function estimateDelivery({ items, products, shopCoords, deliveryAddress, settings, additionalShops = 0 }) {
+async function estimateDelivery({ items, products, shopCoords, deliveryAddress, settings, additionalShops = 0, vehicleTypes = [] }) {
   const weightKg = items.reduce((sum, item) => {
     const p = products.find(pr => pr.id === item.productId)
     return sum + parseWeightKg(p?.unit) * item.quantity
@@ -95,7 +110,7 @@ async function estimateDelivery({ items, products, shopCoords, deliveryAddress, 
   const pickupCost   = Math.round(additionalShops * pickupFee)
 
   return {
-    deliveryFee: calcDeliveryFee(weightKg, distanceKm, orderTotal, settings, additionalShops),
+    deliveryFee: calcDeliveryFee(weightKg, distanceKm, orderTotal, settings, additionalShops, vehicleTypes),
     weightKg:    Math.round(weightKg * 10) / 10,
     distanceKm,
     geocoded,

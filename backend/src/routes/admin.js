@@ -1467,4 +1467,75 @@ router.get('/logistics/earnings-reconciliation', ...guard, async (req, res) => {
   }
 })
 
+// ─── Logistique — LOT 14 : centre admin logistique ─────────────────────────
+// Les LOT3/8/9/10 ont enrichi Shipment (motif d'échec, code de livraison,
+// preuve de proximité GPS, horodatages de prise en charge/livraison) sans
+// qu'aucune vue admin n'y donne accès — GET /orders liste les Order, jamais
+// leur Shipment. Un ops ne pouvait investiguer un échec ou suivre les
+// livraisons en cours qu'en interrogeant la base directement.
+
+router.get('/logistics/shipments', ...guard, async (req, res) => {
+  const { status, driverId, orderId, limit = '50', offset = '0' } = req.query
+  try {
+    const where = {}
+    if (status) where.status = status
+    if (driverId) where.driverId = Number(driverId)
+    if (orderId) where.orderId = Number(orderId)
+
+    const [shipments, total] = await Promise.all([
+      prisma.shipment.findMany({
+        where,
+        include: {
+          order: { select: { id: true, total: true, deliveryFee: true, buyer: { select: { name: true, phone: true } } } },
+          driver: { select: { id: true, user: { select: { name: true, phone: true } } } },
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: Math.min(Number(limit) || 50, 200),
+        skip: Number(offset) || 0,
+      }),
+      prisma.shipment.count({ where }),
+    ])
+    res.json({ shipments, total })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Compteurs du jour — le tableau de bord d'un centre d'opérations logistique :
+// combien de livraisons en cours, combien ont échoué aujourd'hui, combien de
+// commandes escaladées attendent une réassignation, temps moyen de livraison
+// (prise en charge → remise) aujourd'hui.
+router.get('/logistics/dashboard', ...guard, async (req, res) => {
+  try {
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+
+    const [byStatus, failedToday, deliveredToday, escalatedCount] = await Promise.all([
+      prisma.shipment.groupBy({ by: ['status'], _count: { status: true } }),
+      prisma.shipment.count({ where: { status: 'FAILED', updatedAt: { gte: todayStart } } }),
+      prisma.shipment.findMany({
+        where: { status: 'DELIVERED', deliveredAt: { gte: todayStart } },
+        select: { pickedUpAt: true, deliveredAt: true },
+      }),
+      prisma.order.count({ where: { status: 'ESCALATED' } }),
+    ])
+
+    const durations = deliveredToday
+      .filter(s => s.pickedUpAt && s.deliveredAt)
+      .map(s => (new Date(s.deliveredAt) - new Date(s.pickedUpAt)) / 60000)
+    const avgDeliveryMinutes = durations.length
+      ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+      : null
+
+    res.json({
+      byStatus: Object.fromEntries(byStatus.map(s => [s.status, s._count.status])),
+      failedToday,
+      deliveredToday: deliveredToday.length,
+      avgDeliveryMinutes,
+      escalatedAwaitingReassignment: escalatedCount,
+    })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 module.exports = router

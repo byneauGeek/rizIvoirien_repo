@@ -4,6 +4,7 @@ const { authenticate, authenticateSSE, requireRole } = require('../middleware/au
 const { getSettings, driverRate } = require('../lib/settings')
 const deliveryLifecycle = require('../services/deliveryLifecycle')
 const { ensureDefaultVehicleTypes } = require('../lib/vehicleTypes')
+const { reportBackgroundError } = require('../lib/logger')
 
 const BADGES = [
   { id: 'debutant', label: 'Débutant', icon: '🌱', minDeliveries: 0, minRate: 0 },
@@ -635,8 +636,12 @@ async function pruneDriverLocationHistory(driverId) {
     const retentionDays = settings?.gpsHistoryRetentionDays ?? 30
     const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
     await prisma.driverLocationHistory.deleteMany({ where: { driverId, createdAt: { lt: cutoff } } })
-  } catch {
-    // best-effort : ne jamais faire échouer l'envoi de position pour une purge
+  } catch (err) {
+    // best-effort : ne jamais faire échouer l'envoi de position pour une
+    // purge — mais un échec ici passait totalement inaperçu (LOT16) : la
+    // rétention GPS pouvait silencieusement cesser de fonctionner en
+    // production sans qu'aucun signal n'en sorte jamais.
+    reportBackgroundError(err, { task: 'pruneDriverLocationHistory', driverId })
   }
 }
 

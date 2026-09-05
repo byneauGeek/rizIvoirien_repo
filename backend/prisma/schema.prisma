@@ -570,6 +570,11 @@ model Shipment {
 
   @@index([driverId])
   @@index([status])
+  // LOT 16 : GET /admin/logistics/dashboard et /risk-signals (LOT14/15)
+  // filtrent par statut + fenêtre updatedAt sur potentiellement toute la
+  // table Shipment — sans cet index composite, une table qui grossit force
+  // un scan complet à chaque consultation du tableau de bord.
+  @@index([status, updatedAt])
 }
 
 // LOT 9 (arbitrage Décision 4) : historique GPS, absent jusqu'ici (seule la

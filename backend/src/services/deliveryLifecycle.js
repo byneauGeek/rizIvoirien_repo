@@ -16,6 +16,7 @@ const { getSettings, driverRate } = require('../lib/settings')
 const { geocodeAddress } = require('./deliveryService')
 const { isFreshLocation, haversineKm } = require('../lib/gps')
 const stockEngine = require('./stockEngine')
+const { reportBackgroundError } = require('../lib/logger')
 
 const SHIPMENT_STATUSES = ['PENDING_PICKUP', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'FAILED', 'CANCELLED']
 
@@ -54,8 +55,12 @@ async function ensureShipmentDropoffCoords(shipmentId, dropoffAddress) {
     if (coords) {
       await prisma.shipment.update({ where: { id: shipmentId }, data: { dropoffLat: coords.lat, dropoffLng: coords.lng } })
     }
-  } catch {
-    // best-effort : une ETA absente n'est jamais une erreur pour l'acheteur
+  } catch (err) {
+    // best-effort : une ETA absente n'est jamais une erreur pour l'acheteur —
+    // mais un échec ICI (pas un simple "adresse introuvable", que
+    // geocodeAddress() avale déjà lui-même) reste un vrai bug à ne pas
+    // perdre silencieusement (LOT16).
+    reportBackgroundError(err, { task: 'ensureShipmentDropoffCoords', shipmentId })
   } finally {
     geocodingInFlight.delete(shipmentId)
   }

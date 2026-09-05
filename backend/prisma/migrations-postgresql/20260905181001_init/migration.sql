@@ -1188,6 +1188,9 @@ CREATE INDEX "Shipment_driverId_idx" ON "Shipment"("driverId");
 CREATE INDEX "Shipment_status_idx" ON "Shipment"("status");
 
 -- CreateIndex
+CREATE INDEX "Shipment_status_updatedAt_idx" ON "Shipment"("status", "updatedAt");
+
+-- CreateIndex
 CREATE INDEX "DriverLocationHistory_driverId_createdAt_idx" ON "DriverLocationHistory"("driverId", "createdAt");
 
 -- CreateIndex

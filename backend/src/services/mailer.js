@@ -188,6 +188,24 @@ const templates = {
     }
   },
 
+  // LOT 10 (Logistique) : échec de livraison — absent jusqu'ici (aucun moyen
+  // pour le livreur de signaler un échec, donc jamais aucune communication
+  // à l'acheteur sur le sujet).
+  deliveryFailed({ name, orderId, reason }) {
+    return {
+      subject: `⚠️ Problème avec votre livraison — Commande #${orderId}`,
+      html: layout('Livraison non aboutie', `
+        <h2>Votre livraison n'a pas pu être finalisée</h2>
+        <p>Bonjour <strong>${esc(name)}</strong>, le livreur n'a pas pu vous remettre votre commande <strong>#${orderId}</strong>.</p>
+        <p><strong>Motif :</strong> ${esc(reason)}</p>
+        <p>Notre équipe va vous recontacter pour organiser une nouvelle tentative.</p>
+        <div style="text-align:center">
+          <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/orders" class="btn">Voir ma commande</a>
+        </div>
+      `),
+    }
+  },
+
   // Commande annulée (acheteur)
   orderCancelled({ name, orderId }) {
     return {

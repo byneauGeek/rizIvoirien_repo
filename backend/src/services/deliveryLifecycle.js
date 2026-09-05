@@ -15,6 +15,7 @@ const prisma = require('../lib/prisma')
 const { getSettings, driverRate } = require('../lib/settings')
 const { geocodeAddress } = require('./deliveryService')
 const { isFreshLocation, haversineKm } = require('../lib/gps')
+const stockEngine = require('./stockEngine')
 
 const SHIPMENT_STATUSES = ['PENDING_PICKUP', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'FAILED', 'CANCELLED']
 
@@ -64,6 +65,12 @@ const ORDER_STATUS_MIRROR = {
   PICKED_UP: 'IN_TRANSIT', // le vocabulaire Order n'a pas d'étape "récupéré" distincte
   IN_TRANSIT: 'IN_TRANSIT',
   DELIVERED: 'DELIVERED',
+  // LOT 10 : un échec de livraison renvoie la commande dans la file
+  // ESCALATED — déjà le statut utilisé par assignmentEngine.js pour tout ce
+  // qui nécessite une intervention manuelle, déjà pleinement pris en charge
+  // par admin.js (réassignation manuelle ou groupée, qui repart de PRET).
+  // Pas de nouveau statut Order à introduire pour ce lot.
+  FAILED: 'ESCALATED',
 }
 
 // Crée le Shipment au moment où une livraison est assignée à un livreur
@@ -73,11 +80,20 @@ const ORDER_STATUS_MIRROR = {
 // livreur de la plateforme, ex. retrait en boutique futur).
 // Idempotent (upsert) : plusieurs points d'entrée peuvent y mener
 // (drivers.js à l'acceptation, admin.js à l'assignation manuelle/groupée,
-// y compris la ré-assignation d'une commande ESCALATED).
+// y compris la ré-assignation d'une commande ESCALATED — LOT 10 : après un
+// échec de livraison notamment). Le `update` réinitialise explicitement
+// tout ce qui est propre à UNE tentative (code de livraison, compteur de
+// tentatives, motif d'échec, horodatages, preuve GPS) — sans ça, une
+// réassignation après échec repartirait avec l'ancien code/compteur de la
+// tentative précédente, ou un `deliveredAt` fantôme d'un état antérieur.
 function createShipmentForOrder(client, { orderId, driverId, dropoffAddress, pickupAddress = null }) {
+  const resetForNewAttempt = {
+    deliveryCode: null, deliveryCodeAttempts: 0, deliveryProofDistanceKm: null,
+    failureReason: null, pickedUpAt: null, deliveredAt: null,
+  }
   return client.shipment.upsert({
     where: { orderId },
-    update: { driverId, status: 'PENDING_PICKUP' },
+    update: { driverId, status: 'PENDING_PICKUP', ...resetForNewAttempt },
     create: { orderId, driverId, dropoffAddress, pickupAddress, status: 'PENDING_PICKUP' },
   })
 }
@@ -130,15 +146,28 @@ async function advanceShipment(client, params) {
   return advanceShipmentInTransaction(client, params, settings)
 }
 
-async function advanceShipmentInTransaction(tx, { shipmentId, orderId, status, actorId = null, note = null }, settings) {
+async function advanceShipmentInTransaction(tx, { shipmentId, orderId, status, actorId = null, note = null, failureReason = null }, settings) {
   if (!SHIPMENT_STATUSES.includes(status)) throw new Error(`Statut de livraison invalide : ${status}`)
+  if (status === 'FAILED' && (!failureReason || !failureReason.trim())) {
+    throw new Error('Un motif est requis pour signaler un échec de livraison')
+  }
 
   const shipment = shipmentId
-    ? await tx.shipment.findUnique({ where: { id: shipmentId }, include: { order: true } })
-    : await tx.shipment.findUnique({ where: { orderId }, include: { order: true } })
+    ? await tx.shipment.findUnique({ where: { id: shipmentId }, include: { order: { include: { items: true } } } })
+    : await tx.shipment.findUnique({ where: { orderId }, include: { order: { include: { items: true } } } })
   if (!shipment) throw new Error('Livraison introuvable')
 
+  // LOT 10 : garde-fou introduit en ajoutant FAILED — sans lui, un double
+  // appel (retry réseau, double-tap) sur une livraison déjà FAILED
+  // restockerait deux fois la même commande ; le même risque existait déjà,
+  // non détecté, pour un double DELIVERED (double paiement du livreur).
+  const TERMINAL_STATUSES = ['DELIVERED', 'FAILED', 'CANCELLED']
+  if (TERMINAL_STATUSES.includes(shipment.status)) {
+    throw new Error(`Cette livraison est déjà à un statut final (${shipment.status}) — aucune transition possible`)
+  }
+
   const data = { status }
+  if (status === 'FAILED') data.failureReason = failureReason.trim()
   if (status === 'PICKED_UP') {
     data.pickedUpAt = new Date()
     // Généré à la prise en charge — c'est le moment où une preuve de
@@ -168,12 +197,39 @@ async function advanceShipmentInTransaction(tx, { shipmentId, orderId, status, a
 
   const orderStatus = ORDER_STATUS_MIRROR[status]
   if (orderStatus) {
-    await tx.order.update({ where: { id: shipment.orderId }, data: { status: orderStatus } })
+    // FAILED : Order.driverId doit être libéré, pas seulement le statut mis
+    // à ESCALATED — sinon admin.js POST /orders/:id/assign refuse la
+    // réassignation avec "cette commande a déjà un livreur assigné" (son
+    // garde-fou pré-existant contre l'écrasement d'une assignation active,
+    // qui devient un faux positif une fois la livraison en échec).
+    const orderData = status === 'FAILED' ? { status: orderStatus, driverId: null } : { status: orderStatus }
+    await tx.order.update({ where: { id: shipment.orderId }, data: orderData })
     await tx.orderStatusHistory.create({ data: { orderId: shipment.orderId, status: orderStatus, note, actorId } })
   }
 
   if (status === 'DELIVERED' && shipment.driverId) {
     await payDriverForDelivery(tx, { driverId: shipment.driverId, order: shipment.order, settings })
+  }
+
+  // LOT 10 (intégration Stock ↔ Livraison) : un échec de livraison ramène
+  // physiquement la marchandise au livreur/à la boutique — jamais chez le
+  // client. Sans ça, le stock restait décrémenté (la vente d'origine) pour
+  // un article qui n'a jamais quitté le circuit, ce qui aurait fini par
+  // fausser durablement l'inventaire de la boutique. Même mécanisme que
+  // l'annulation (restockFromCancellation, sourceType=ORDER), pas une
+  // fonction séparée : c'est exactement le même fait physique.
+  if (status === 'FAILED') {
+    for (const item of shipment.order.items) {
+      await stockEngine.restockFromCancellation(tx, {
+        productId: item.productId, quantity: item.quantity, orderId: shipment.orderId,
+        actorId, reason: `Échec de livraison : ${failureReason.trim()}`,
+      })
+    }
+    // Le livreur redevient disponible pour une nouvelle offre — même effet
+    // de bord que la fin d'une livraison réussie (payDriverForDelivery).
+    if (shipment.driverId) {
+      await tx.driver.update({ where: { id: shipment.driverId }, data: { available: true } })
+    }
   }
 
   return { shipment: updated, order: shipment.order }

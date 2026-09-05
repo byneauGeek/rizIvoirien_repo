@@ -59,6 +59,8 @@ export default function DeliveryTab({ onDelivered }) {
   const [advanceError, setAdvanceError] = useState(null)
   const [showOtpInput, setShowOtpInput] = useState(false)
   const [otp, setOtp] = useState('')
+  const [showFailInput, setShowFailInput] = useState(false)
+  const [failReason, setFailReason] = useState('')
   const [gpsActive, setGpsActive] = useState(false)
   const [gpsDenied, setGpsDenied] = useState(false)
   const gpsRef = useRef(null)
@@ -132,6 +134,19 @@ export default function DeliveryTab({ onDelivered }) {
       if (onDelivered) onDelivered()
       load()
     } catch (err) { setAdvanceError(err.message || 'Code incorrect') }
+    finally { setUpdating(false) }
+  }
+
+  // LOT 10 : signaler un échec — absent jusqu'ici, le livreur n'avait aucune
+  // échappatoire face à un client injoignable ou une adresse introuvable.
+  const reportFailure = async () => {
+    if (!order || !failReason.trim()) return
+    setUpdating(true); setAdvanceError(null)
+    try {
+      await api.put(`/drivers/delivery/${order.id}/status`, { status: 'FAILED', failureReason: failReason.trim() })
+      setShowFailInput(false); setFailReason('')
+      load()
+    } catch (err) { setAdvanceError(err.message || 'Erreur lors du signalement') }
     finally { setUpdating(false) }
   }
 
@@ -360,22 +375,53 @@ export default function DeliveryTab({ onDelivered }) {
           </motion.div>
         )}
 
-        {!isDelivered && canAdvance && !showOtpInput && (
-          <motion.button key="cta"
+        {!isDelivered && canAdvance && showFailInput && (
+          <motion.div key="fail"
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            onClick={advance} disabled={updating}
-            className={`w-full flex items-center justify-center gap-2 font-syne font-bold text-base py-4 rounded-2xl transition-all
-              ${nextStatus === 'DELIVERED'
-                ? 'bg-green-500 text-cream hover:bg-green-600'
-                : 'bg-forest text-cream hover:bg-forest-light'
-              } disabled:opacity-60`}>
-            {updating
-              ? <div className="w-5 h-5 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
-              : nextStatus === 'DELIVERED'
-                ? <><CheckCircle2 size={20} /> Confirmer la livraison</>
-                : <><Package size={20} /> Colis récupéré · En route</>
-            }
-          </motion.button>
+            className="bg-white rounded-3xl shadow-card p-5 space-y-3">
+            <p className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50">Signaler un échec de livraison</p>
+            <textarea
+              rows={3} value={failReason} onChange={e => setFailReason(e.target.value)}
+              placeholder="Ex : client injoignable, adresse introuvable, refus de réception…"
+              className="w-full text-sm p-3 rounded-2xl border-2 border-charcoal/10 focus:border-red-400 outline-none resize-none"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => { setShowFailInput(false); setFailReason(''); setAdvanceError(null) }}
+                className="flex-1 font-syne font-bold text-sm py-3 rounded-2xl border-2 border-charcoal/10 text-charcoal/60 hover:bg-charcoal/5 transition-colors">
+                Annuler
+              </button>
+              <button onClick={reportFailure} disabled={updating || !failReason.trim()}
+                className="flex-[2] flex items-center justify-center gap-2 font-syne font-bold text-sm py-3 rounded-2xl bg-red-500 text-cream hover:bg-red-600 disabled:opacity-50 transition-colors">
+                {updating
+                  ? <div className="w-4 h-4 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
+                  : <><AlertCircle size={16} /> Signaler l'échec</>}
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {!isDelivered && canAdvance && !showOtpInput && !showFailInput && (
+          <motion.div key="cta" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-2">
+            <button onClick={advance} disabled={updating}
+              className={`w-full flex items-center justify-center gap-2 font-syne font-bold text-base py-4 rounded-2xl transition-all
+                ${nextStatus === 'DELIVERED'
+                  ? 'bg-green-500 text-cream hover:bg-green-600'
+                  : 'bg-forest text-cream hover:bg-forest-light'
+                } disabled:opacity-60`}>
+              {updating
+                ? <div className="w-5 h-5 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
+                : nextStatus === 'DELIVERED'
+                  ? <><CheckCircle2 size={20} /> Confirmer la livraison</>
+                  : <><Package size={20} /> Colis récupéré · En route</>
+              }
+            </button>
+            {nextStatus === 'DELIVERED' && (
+              <button onClick={() => setShowFailInput(true)}
+                className="w-full text-center font-dm text-xs text-charcoal/40 hover:text-red-500 transition-colors py-1">
+                Signaler un problème avec cette livraison
+              </button>
+            )}
+          </motion.div>
         )}
 
         {isDelivered && (

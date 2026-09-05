@@ -297,9 +297,15 @@ router.get('/active-delivery', authenticate, requireRole('DRIVER'), async (req, 
 // — point d'entrée unique désormais partagé avec le chemin admin (voir
 // orders.js), plus de logique de rémunération dupliquée ici.
 router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), async (req, res) => {
-  const { status, note, otp } = req.body
-  const ALLOWED = ['IN_TRANSIT', 'DELIVERED']
+  const { status, note, otp, failureReason } = req.body
+  // LOT 10 : FAILED — signaler un échec de livraison (client injoignable,
+  // adresse introuvable, refus...) était jusqu'ici totalement impossible :
+  // le livreur n'avait que IN_TRANSIT/DELIVERED, sans échappatoire.
+  const ALLOWED = ['IN_TRANSIT', 'DELIVERED', 'FAILED']
   if (!ALLOWED.includes(status)) return res.status(400).json({ error: 'Statut invalide' })
+  if (status === 'FAILED' && !failureReason?.trim()) {
+    return res.status(400).json({ error: 'Un motif est requis pour signaler un échec de livraison' })
+  }
 
   try {
     const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } })
@@ -311,17 +317,19 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
     const autoNote = {
       IN_TRANSIT: 'Colis récupéré par le livreur — en route pour la livraison',
       DELIVERED:  'Colis remis au client',
+      FAILED:     'Échec de livraison signalé par le livreur',
     }
     // 'IN_TRANSIT' côté API (vocabulaire Order, inchangé pour ne pas casser
     // le contrat avec DeliveryTab.jsx) correspond à 'PICKED_UP' côté Shipment
     // (premier point de collecte — pas d'étape distincte aujourd'hui).
-    const shipmentStatus = status === 'IN_TRANSIT' ? 'PICKED_UP' : 'DELIVERED'
+    const shipmentStatus = status === 'IN_TRANSIT' ? 'PICKED_UP' : status
 
     const { shipment } = await deliveryLifecycle.advanceShipment(prisma, {
-      orderId: order.id, status: shipmentStatus, actorId: req.user.id, note: note || autoNote[status] || null, otp,
+      orderId: order.id, status: shipmentStatus, actorId: req.user.id, note: note || autoNote[status] || null, otp, failureReason,
     })
 
     const { notify } = require('../services/notifications')
+    const { sendMail } = require('../services/mailer')
     if (status === 'IN_TRANSIT') {
       setImmediate(() => notify(
         order.buyerId, 'IN_TRANSIT', 'Votre colis est en route !',
@@ -333,12 +341,9 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
       // envoyé à l'acheteur par e-mail.
       setImmediate(async () => {
         const buyerUser = await prisma.user.findUnique({ where: { id: order.buyerId }, select: { name: true, email: true } })
-        if (buyerUser?.email) {
-          const { sendMail } = require('../services/mailer')
-          sendMail(buyerUser.email, 'deliveryCode', { name: buyerUser.name, orderId: order.id, code: shipment.deliveryCode })
-        }
+        if (buyerUser?.email) sendMail(buyerUser.email, 'deliveryCode', { name: buyerUser.name, orderId: order.id, code: shipment.deliveryCode })
       })
-    } else {
+    } else if (status === 'DELIVERED') {
       await notify(order.buyerId, 'DELIVERED', 'Commande livrée !', `Votre commande #${order.id} a été livrée. Merci !`, { orderId: order.id })
       // Email de confirmation — avant le LOT 3, ce template n'était déclenché
       // que par le chemin orders.js désormais supprimé, jamais atteint par
@@ -347,8 +352,17 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
         prisma.user.findUnique({ where: { id: order.buyerId }, select: { name: true, email: true } }),
         prisma.shop.findUnique({ where: { id: order.shopId }, select: { name: true } }),
       ])
-      const { sendMail } = require('../services/mailer')
       setImmediate(() => sendMail(buyerUser?.email, 'orderDelivered', { name: buyerUser?.name || '', orderId: order.id, shopName: shopInfo?.name || '' }))
+    } else {
+      // FAILED — la commande repasse ESCALATED (deliveryLifecycle), un
+      // commercial/admin la réassigne comme n'importe quelle escalade.
+      await notify(
+        order.buyerId, 'DELIVERY_FAILED', 'Problème avec votre livraison',
+        `La livraison de votre commande #${order.id} n'a pas pu être finalisée (${failureReason.trim()}). Notre équipe va vous recontacter.`,
+        { orderId: order.id }
+      )
+      const buyerUser = await prisma.user.findUnique({ where: { id: order.buyerId }, select: { name: true, email: true } })
+      setImmediate(() => sendMail(buyerUser?.email, 'deliveryFailed', { name: buyerUser?.name || '', orderId: order.id, reason: failureReason.trim() }))
     }
 
     res.json({ success: true })

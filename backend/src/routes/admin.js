@@ -1426,4 +1426,69 @@ router.delete('/logistics/hubs/:id', ...guard, async (req, res) => {
   }
 })
 
+// ─── Logistique — LOT 11 : réconciliation Comptabilité ↔ Logistique ────────
+// (arbitrage Décision 2, Option B) — les deux sources restent distinctes
+// (aucune donnée supprimée), mais deviennent enfin comparables au même
+// endroit : DriverMetric.earnings (cumul temps réel côté logistique,
+// jamais validé par personne) contre Remuneration.netAmount (calculé,
+// validé puis payé par la comptabilité — la source officielle) pour la
+// même période. Ne modifie ni l'un ni l'autre, purement un outil de lecture
+// pour repérer les écarts et les périodes jamais encore traitées côté
+// comptabilité (officialStatus === 'NON_CALCULE').
+router.get('/logistics/earnings-reconciliation', ...guard, async (req, res) => {
+  const now = new Date()
+  const month = Number(req.query.month) || (now.getMonth() + 1)
+  const year = Number(req.query.year) || now.getFullYear()
+  if (month < 1 || month > 12) return res.status(400).json({ error: 'month doit être entre 1 et 12' })
+
+  try {
+    const monthStart = new Date(year, month - 1, 1)
+    const monthEnd = new Date(year, month, 1)
+
+    const [metrics, remunerations] = await Promise.all([
+      prisma.driverMetric.findMany({
+        where: { month, year },
+        include: { driver: { include: { user: { select: { id: true, name: true } } } } },
+        orderBy: { earnings: 'desc' },
+      }),
+      // Chevauchement de période plutôt qu'égalité stricte : periodStart/
+      // periodEnd d'une Remuneration sont choisis librement au calcul (§13
+      // comptabilité), pas forcément calés sur un mois civil.
+      prisma.remuneration.findMany({
+        where: {
+          beneficiaryType: 'DRIVER',
+          periodStart: { lt: monthEnd },
+          periodEnd: { gte: monthStart },
+          status: { notIn: ['REJECTED', 'CANCELLED'] },
+        },
+      }),
+    ])
+
+    const byBeneficiary = {}
+    for (const r of remunerations) {
+      (byBeneficiary[r.beneficiaryUserId] ||= []).push(r)
+    }
+
+    const rows = metrics.map(m => {
+      const records = byBeneficiary[m.driver.user.id] || []
+      const officialAmount = records.reduce((s, r) => s + r.netAmount, 0)
+      const officialPaid = records.filter(r => r.status === 'PAID').reduce((s, r) => s + r.netAmount, 0)
+      return {
+        driverId: m.driverId,
+        driverName: m.driver.user.name,
+        deliveries: m.deliveries,
+        logisticsEstimate: m.earnings,
+        officialAmount,
+        officialPaid,
+        officialStatus: records.length ? [...new Set(records.map(r => r.status))].join(', ') : 'NON_CALCULE',
+        delta: Math.round((m.earnings - officialAmount) * 100) / 100,
+      }
+    })
+
+    res.json({ month, year, rows })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 module.exports = router

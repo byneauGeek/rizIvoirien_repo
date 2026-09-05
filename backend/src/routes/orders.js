@@ -7,6 +7,7 @@ const { sendMail } = require('../services/mailer')
 const { parseWeightKg, geocodeAddress, calcDeliveryFee, estimateDelivery } = require('../services/deliveryService')
 const { randomUUID } = require('crypto')
 const { getSettings, driverRate } = require('../lib/settings')
+const stockEngine = require('../services/stockEngine')
 
 const fmt = (n) => Number(n).toLocaleString('fr-FR')
 
@@ -153,9 +154,13 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
     // UUID partagé pour lier les commandes d'un même panier multi-boutiques
     const groupId = groups.length > 1 ? randomUUID() : null
 
-    // Créer toutes les commandes ET décrémenter le stock dans la même transaction (atomique)
+    // Créer toutes les commandes ET décrémenter le stock dans la même transaction (atomique).
+    // Le décrément passe par le Stock Engine (LOT 3) — chaque vente est ainsi
+    // tracée dans StockMovement avec sourceType=ORDER/sourceId=order.id, alors
+    // que l'ancien code décrémentait sans lien vers la commande d'origine.
     const { createdOrders, stockUpdates } = await prisma.$transaction(async (tx) => {
       const orders = []
+      const updates = []
       for (let i = 0; i < groups.length; i++) {
         const { shop, items: gItems } = groups[i]
         const groupSubtotal = gItems.reduce((sum, item) => {
@@ -196,20 +201,16 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
           include: { items: true, statusHistory: true },
         })
         orders.push(order)
-      }
 
-      // Décrémentation atomique du stock — si un produit passe sous 0, rollback auto
-      const updates = []
-      for (const item of items) {
-        const updated = await tx.product.update({
-          where: { id: item.productId },
-          data: { stock: { decrement: item.quantity } },
-          select: { stock: true, name: true, shopId: true },
-        })
-        if (updated.stock < 0) {
-          throw new Error(`Stock insuffisant pour "${updated.name}" (concurrent). Veuillez actualiser votre panier.`)
+        // Décrémentation atomique du stock, par article de CETTE commande —
+        // si un produit passe sous 0, InsufficientStockError → rollback auto.
+        for (const item of gItems) {
+          const product = products.find(p => p.id === item.productId)
+          const { position } = await stockEngine.recordSale(tx, {
+            productId: item.productId, quantity: item.quantity, orderId: order.id, actorId: req.user.id,
+          })
+          updates.push({ stock: position.quantity, name: product.name, shopId: product.shopId })
         }
-        updates.push(updated)
       }
       return { createdOrders: orders, stockUpdates: updates }
     })
@@ -277,6 +278,9 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
       })
     }
   } catch (e) {
+    if (e instanceof stockEngine.InsufficientStockError) {
+      return res.status(400).json({ error: 'Stock insuffisant (concurrent). Veuillez actualiser votre panier.' })
+    }
     res.status(500).json({ error: e.message })
   }
 })

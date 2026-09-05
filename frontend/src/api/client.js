@@ -60,3 +60,39 @@ export async function uploadCsv(path, file) {
   if (!res.ok) throw new Error(data.error || 'Erreur upload')
   return data
 }
+
+// Pièce comptable (LOT 6) : fichier + métadonnées (targetType/targetId/docType).
+export async function uploadAccountingDocument(fields, file) {
+  const token = localStorage.getItem('rz_token')
+  const form = new FormData()
+  Object.entries(fields).forEach(([k, v]) => form.append(k, v))
+  form.append('file', file)
+  const res = await fetch(`${BASE}/accounting/documents`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Erreur upload document')
+  return data
+}
+
+// Déclenche le téléchargement d'un export (CSV) protégé par token — un
+// simple <a href> ne porterait pas l'en-tête Authorization.
+export async function downloadFile(path, filename) {
+  const token = localStorage.getItem('rz_token')
+  const res = await fetch(`${BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || `Erreur ${res.status}`)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}

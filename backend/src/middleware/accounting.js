@@ -39,25 +39,30 @@ function requireAccountingRole(req, res, next) {
   next()
 }
 
-// requirePermission('accounting.payments.execute') — l'ADMIN passe toujours ;
-// un ACCOUNTANT doit avoir CHACUNE des permissions listées, explicitement
-// attribuée en base (jamais déduite du rôle seul).
+// Vérification brute, réutilisable hors middleware (ex : LOT 6, permission
+// requise qui dépend d'un champ du corps de la requête, connue seulement une
+// fois celle-ci lue — un requirePermission(...) statique ne peut pas ça).
+// L'ADMIN passe toujours ; un ACCOUNTANT doit avoir CHACUNE des permissions
+// listées, explicitement attribuée en base (jamais déduite du rôle seul).
+async function hasPermission(user, ...perms) {
+  if (user?.role === 'ADMIN') return true
+  if (user?.role !== 'ACCOUNTANT') return false
+  const granted = await prisma.accountingPermission.findMany({
+    where: { userId: user.id, permission: { in: perms } },
+    select: { permission: true },
+  })
+  const grantedSet = new Set(granted.map(g => g.permission))
+  return perms.every(p => grantedSet.has(p))
+}
+
 function requirePermission(...perms) {
   return async (req, res, next) => {
-    if (req.user?.role === 'ADMIN') return next()
-    if (req.user?.role !== 'ACCOUNTANT') {
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'ACCOUNTANT') {
       return res.status(403).json({ error: 'Accès réservé à la comptabilité' })
     }
     try {
-      const granted = await prisma.accountingPermission.findMany({
-        where: { userId: req.user.id, permission: { in: perms } },
-        select: { permission: true },
-      })
-      const grantedSet = new Set(granted.map(g => g.permission))
-      const missing = perms.filter(p => !grantedSet.has(p))
-      if (missing.length) {
-        return res.status(403).json({ error: `Permission comptable manquante : ${missing.join(', ')}` })
-      }
+      const ok = await hasPermission(req.user, ...perms)
+      if (!ok) return res.status(403).json({ error: `Permission comptable manquante : ${perms.join(', ')}` })
       next()
     } catch (e) {
       res.status(500).json({ error: e.message })
@@ -65,4 +70,4 @@ function requirePermission(...perms) {
   }
 }
 
-module.exports = { ACCOUNTING_PERMISSIONS, requireAccountingRole, requirePermission }
+module.exports = { ACCOUNTING_PERMISSIONS, requireAccountingRole, requirePermission, hasPermission }

@@ -1,8 +1,82 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, Package, ChevronDown, ChevronUp, Check, X, Pause, Play, Ban } from 'lucide-react'
-import { api } from '../../api/client'
+import { AlertCircle, Package, ChevronDown, ChevronUp, Check, X, Pause, Play, Ban, FileText } from 'lucide-react'
+import { api, uploadAccountingDocument } from '../../api/client'
 import { fmt, fmtDate } from '../../utils/status'
 import { PAYMENT_ORDER_STATUS, PAYMENT_STATUS, badge } from './statusLabels'
+
+function DocumentsSection({ targetType, targetId, permissions }) {
+  const [docs, setDocs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [docType, setDocType] = useState('PROOF_OF_PAYMENT')
+  const [error, setError] = useState(null)
+  const canView = permissions.includes('accounting.documents.view')
+  const canUpload = permissions.includes('accounting.payments.execute')
+
+  const load = async () => {
+    try {
+      const data = await api.get(`/accounting/documents?targetType=${targetType}&targetId=${targetId}`)
+      setDocs(data.documents || [])
+    } catch (err) { setError(err.message) } finally { setLoading(false) }
+  }
+  useEffect(() => { if (canView) load() }, [targetId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setError(null)
+    try {
+      await uploadAccountingDocument({ targetType, targetId, docType }, file)
+      await load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  if (!canView) return null
+  return (
+    <div className="mt-3 pt-3 border-t border-charcoal/10 space-y-2">
+      <p className="font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/30">Pièces justificatives</p>
+      {error && <p className="font-dm text-xs text-red-600">{error}</p>}
+      {loading ? (
+        <p className="font-dm text-xs text-charcoal/30">Chargement…</p>
+      ) : docs.length === 0 ? (
+        <p className="font-dm text-xs text-charcoal/30 italic">Aucune pièce jointe</p>
+      ) : (
+        <div className="space-y-1">
+          {docs.map(d => (
+            <a key={d.id} href={d.url} target="_blank" rel="noreferrer"
+              className="flex items-center gap-2 bg-cream rounded-xl px-3 py-2 hover:bg-charcoal/5">
+              <FileText size={13} className="text-charcoal/40 shrink-0" />
+              <span className="font-dm text-xs text-charcoal flex-1">{d.docType}</span>
+              <span className="font-dm text-[10px] text-charcoal/30">{fmtDate(d.uploadedAt)}</span>
+            </a>
+          ))}
+        </div>
+      )}
+      {canUpload && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <select value={docType} onChange={e => setDocType(e.target.value)}
+            className="bg-white border border-charcoal/10 rounded-lg px-2 py-1.5 font-dm text-xs">
+            <option value="PROOF_OF_PAYMENT">Preuve de paiement</option>
+            <option value="INVOICE">Facture</option>
+            <option value="RECEIPT">Reçu</option>
+            <option value="CONTRACT">Contrat</option>
+            <option value="OTHER">Autre</option>
+          </select>
+          <label className={`font-syne text-xs font-bold px-3 py-1.5 rounded-lg bg-charcoal text-cream cursor-pointer ${uploading ? 'opacity-50' : ''}`}>
+            {uploading ? 'Envoi…' : 'Joindre un fichier'}
+            <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" onChange={handleFile} disabled={uploading} className="hidden" />
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const CONTROLLABLE = ['PENDING_CONTROL', 'ON_HOLD']
 const EXECUTABLE = ['PENDING_PAYMENT', 'FAILED']
@@ -150,6 +224,8 @@ function OrderDetail({ order, permissions, accounts, onAction, busy }) {
         <ReasonPrompt label="Confirmer l'annulation" onCancel={() => setPrompt(null)}
           onConfirm={(reason) => { setPrompt(null); onAction('cancel', { reason }) }} />
       )}
+
+      <DocumentsSection targetType="PAYMENT_ORDER" targetId={order.id} permissions={permissions} />
     </div>
   )
 }

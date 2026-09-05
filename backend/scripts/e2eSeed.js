@@ -50,11 +50,35 @@ async function main() {
     data: { orderId: order.id, driverId: driver.id, status: 'PENDING', attempt: 1, expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
   })
 
+  // LOT 10 (Arbitrage XXX RIZ) : un second livreur + une seconde commande,
+  // dédiés au scénario QR + confirmation active de l'acheteur (LOT3/4) — un
+  // second scénario sur le MÊME livreur/commande serait ambigu (GET
+  // /drivers/active-delivery ne renvoie qu'UNE commande active à la fois).
+  const driverUser2 = await prisma.user.create({
+    data: { email: `e2e-driver2-${ts}@rizivoirien.test`, password: hash, name: 'Livreur E2E 2', role: 'DRIVER', emailVerified: true },
+  })
+  const driver2 = await prisma.driver.create({
+    data: { userId: driverUser2.id, inviteCode: `E2E2-${ts}`, status: 'ACTIVE', online: true, available: true, contractSigned: true },
+  })
+  const order2 = await prisma.order.create({
+    data: {
+      buyerId: buyerUser.id, shopId: shop.id, status: 'PRET', total: 10000, deliveryFee: 1200,
+      address: 'Marcory, Abidjan', paymentMethod: 'CASH_ON_DELIVERY',
+      items: { create: { productId: product.id, quantity: 2, price: 5000, name: product.name } },
+    },
+  })
+  const offer2 = await prisma.driverOffer.create({
+    data: { orderId: order2.id, driverId: driver2.id, status: 'PENDING', attempt: 1, expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
+  })
+
   const fixtures = {
     buyer: { email: buyerUser.email, password: PASSWORD },
     driver: { email: driverUser.email, password: PASSWORD },
     orderId: order.id,
     offerId: offer.id,
+    driver2: { email: driverUser2.email, password: PASSWORD },
+    order2Id: order2.id,
+    offer2Id: offer2.id,
   }
   fs.writeFileSync(path.join(__dirname, '..', '..', 'e2e', '.fixtures.json'), JSON.stringify(fixtures, null, 2))
   console.log('E2E fixtures:', fixtures)

@@ -382,6 +382,28 @@ router.get('/my/plan-upgrade-request', authenticate, requireRole('SELLER'), asyn
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// GET /api/shops/my/remunerations — LOT 7 logistique (arbitrage Décision 2) :
+// même lecture seule que pour les livreurs (drivers.js GET /me/remunerations) —
+// la boutique voit ses Remuneration/PaymentOrder côté comptabilité, distincts
+// de ses propres analytics de vente. Réconciliation complète au LOT 11.
+router.get('/my/remunerations', authenticate, requireRole('SELLER'), async (req, res) => {
+  try {
+    const remunerations = await prisma.remuneration.findMany({
+      where: { beneficiaryUserId: req.user.id, beneficiaryType: 'SELLER' },
+      orderBy: { periodStart: 'desc' },
+      include: { paymentOrder: { select: { reference: true, status: true, amount: true } } },
+    })
+    res.json({
+      remunerations: remunerations.map(r => ({
+        id: r.reference, periodStart: r.periodStart, periodEnd: r.periodEnd,
+        grossAmount: r.grossAmount, netAmount: r.netAmount, status: r.status,
+        bonusAmount: r.bonusAmount, penaltyAmount: r.penaltyAmount, advanceAmount: r.advanceAmount,
+        paymentOrder: r.paymentOrder,
+      })),
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // POST /api/shops/my/plan-upgrade-request — demander la montée en plan CERTIFIED
 router.post('/my/plan-upgrade-request', authenticate, requireRole('SELLER'), async (req, res) => {
   try {

@@ -195,6 +195,31 @@ router.get('/me', authenticate, requireRole('DRIVER'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// GET /api/drivers/me/remunerations — LOT 7 (arbitrage Décision 2) : le livreur
+// n'avait jusqu'ici aucune visibilité sur ses rémunérations CÔTÉ COMPTABILITÉ
+// (Remuneration/PaymentOrder, calculées/validées/payées par un comptable) — il
+// ne voyait que Driver.monthlyEarnings, un cumul temps réel non officiel côté
+// logistique. Les deux sources restent volontairement distinctes à ce lot
+// (réconciliation complète prévue au LOT 11) : ceci n'expose que la lecture,
+// scopée à ses propres enregistrements, sans toucher au calcul ni au workflow.
+router.get('/me/remunerations', authenticate, requireRole('DRIVER'), async (req, res) => {
+  try {
+    const remunerations = await prisma.remuneration.findMany({
+      where: { beneficiaryUserId: req.user.id, beneficiaryType: 'DRIVER' },
+      orderBy: { periodStart: 'desc' },
+      include: { paymentOrder: { select: { reference: true, status: true, amount: true } } },
+    })
+    res.json({
+      remunerations: remunerations.map(r => ({
+        id: r.reference, periodStart: r.periodStart, periodEnd: r.periodEnd,
+        grossAmount: r.grossAmount, netAmount: r.netAmount, status: r.status,
+        bonusAmount: r.bonusAmount, penaltyAmount: r.penaltyAmount, advanceAmount: r.advanceAmount,
+        paymentOrder: r.paymentOrder,
+      })),
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // PUT /api/drivers/profile — mise à jour profil complet
 router.put('/profile', authenticate, requireRole('DRIVER'), async (req, res) => {
   const {

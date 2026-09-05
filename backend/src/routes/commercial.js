@@ -3,6 +3,7 @@ const prisma = require('../lib/prisma')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { logAction } = require('../services/adminLog')
 const { notify } = require('../services/notifications')
+const stockEngine = require('../services/stockEngine')
 
 const guard = [authenticate, requireRole('ADMIN', 'COMMERCIAL')]
 const { sendMail } = require('../services/mailer')
@@ -141,23 +142,25 @@ router.post('/orders/:id/cancel', ...guard, async (req, res) => {
     if (order.status !== 'PENDING_VALIDATION')
       return res.status(400).json({ error: `Impossible d'annuler une commande en statut ${order.status}` })
 
-    await prisma.$transaction([
-      // Restaurer le stock de chaque article
-      ...order.items.map(item =>
-        prisma.product.update({
-          where: { id: item.productId },
-          data:  { stock: { increment: item.quantity } },
-        })
-      ),
-      prisma.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } }),
-      prisma.orderStatusHistory.create({
+    // Interactive transaction (plutôt que le tableau précédent) — nécessaire
+    // pour composer stockEngine.restockFromCancellation dans la même
+    // transaction (LOT 4 : même Stock Engine que les autres chemins d'annulation).
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } })
+      await tx.orderStatusHistory.create({
         data: {
           orderId, status: 'CANCELLED',
           note: reason?.trim() ? `Annulée par le commercial : ${reason.trim()}` : 'Annulée par le commercial',
           actorId: req.user.id,
         },
-      }),
-    ])
+      })
+      for (const item of order.items) {
+        await stockEngine.restockFromCancellation(tx, {
+          productId: item.productId, quantity: item.quantity, orderId, actorId: req.user.id,
+          reason: reason?.trim() || 'Annulée par le commercial',
+        })
+      }
+    })
 
     setImmediate(() => notify(order.buyer.id, 'ORDER_CANCELLED', 'Commande annulée',
       reason?.trim() || 'Votre commande a été annulée par notre équipe commerciale.', { orderId }

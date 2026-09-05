@@ -257,6 +257,10 @@ export default function OrdersAdminTab() {
   const [loading, setLoading]     = useState(true)
   const [expanded, setExpanded]   = useState(null)
   const [assignOrder, setAssignOrder] = useState(null)
+  const [cancelPrompt, setCancelPrompt] = useState(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelling, setCancelling] = useState(false)
+  const [error, setError] = useState(null)
 
   const totalPages = Math.ceil(total / LIMIT)
 
@@ -299,6 +303,23 @@ export default function OrdersAdminTab() {
     setExpanded(null)
   }
 
+  // Annulation admin — restocke via le Stock Engine (LOT 4). Gap comblé :
+  // avant ce lot, aucune UI n'exposait d'annulation admin.
+  const confirmCancel = async (orderId) => {
+    setCancelling(true)
+    setError(null)
+    try {
+      await api.put(`/orders/${orderId}/status`, { status: 'CANCELLED', note: cancelReason.trim() || undefined })
+      setCancelPrompt(null)
+      setCancelReason('')
+      load(filter, page)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setCancelling(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -307,6 +328,14 @@ export default function OrdersAdminTab() {
           Commandes <span className="text-charcoal/25">({total})</span>
         </h1>
       </div>
+
+      {error && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+          <AlertCircle size={14} className="text-red-500 shrink-0" />
+          <p className="font-dm text-sm text-red-600 flex-1">{error}</p>
+          <button onClick={() => setError(null)} className="text-red-600 font-bold text-xs underline">Fermer</button>
+        </div>
+      )}
 
       {/* Filtres */}
       <div className="flex gap-2 flex-wrap">
@@ -383,16 +412,46 @@ export default function OrdersAdminTab() {
                       </td>
                       <td className="px-5 py-4 font-dm text-sm text-charcoal/50">{o.driver?.user?.name || '—'}</td>
                       <td className="px-5 py-4" onClick={e => e.stopPropagation()}>
-                        {['PRET', 'ESCALATED'].includes(o.status) && !o.driverId && (
-                          <button
-                            onClick={() => setAssignOrder(o)}
-                            className="flex items-center gap-1.5 bg-forest text-white font-syne text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-forest-light transition-colors"
-                          >
-                            <Truck size={12} /> Assigner
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {['PRET', 'ESCALATED'].includes(o.status) && !o.driverId && (
+                            <button
+                              onClick={() => setAssignOrder(o)}
+                              className="flex items-center gap-1.5 bg-forest text-white font-syne text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-forest-light transition-colors"
+                            >
+                              <Truck size={12} /> Assigner
+                            </button>
+                          )}
+                          {!['CANCELLED', 'DELIVERED'].includes(o.status) && (
+                            <button
+                              onClick={() => { setCancelPrompt(cancelPrompt === o.id ? null : o.id); setCancelReason('') }}
+                              className="flex items-center gap-1.5 bg-red-50 text-red-600 font-syne text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-red-100 transition-colors"
+                            >
+                              <X size={12} /> Annuler
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
+
+                    {/* Confirmation d'annulation — restocke les articles via le Stock Engine */}
+                    {cancelPrompt === o.id && (
+                      <tr className="bg-red-50/50">
+                        <td colSpan={8} className="px-5 py-4" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-dm text-sm text-charcoal/70">
+                              Annuler {fmtOrderId(o.id, o.createdAt)} et remettre les articles en stock :
+                            </span>
+                            <input value={cancelReason} onChange={e => setCancelReason(e.target.value)} placeholder="Motif (optionnel)"
+                              className="flex-1 min-w-[200px] bg-white border border-gray-200 rounded-xl px-3 py-1.5 font-dm text-sm" />
+                            <button disabled={cancelling} onClick={() => confirmCancel(o.id)}
+                              className="bg-red-600 text-white font-syne text-xs font-bold px-3 py-1.5 rounded-xl disabled:opacity-50">
+                              {cancelling ? 'Annulation…' : 'Confirmer l\'annulation'}
+                            </button>
+                            <button onClick={() => setCancelPrompt(null)} className="font-dm text-xs text-charcoal/40">Fermer</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
 
                     {/* Rangée expandée */}
                     {expanded === o.id && (

@@ -394,11 +394,17 @@ router.get('/:id', authenticate, async (req, res) => {
 })
 
 
+// Statuts valides d'une commande (frontend/src/utils/status.js) — LOT 4 :
+// avant ce lot, un ADMIN pouvait poser n'importe quelle valeur ici sans
+// validation, et passer par 'CANCELLED' via cette route ne restockait
+// jamais rien (gap identifié par l'audit du Stock Engine, LOT 0 §0.4).
+const VALID_ORDER_STATUSES = ['PENDING_VALIDATION', 'PENDING', 'CONFIRMED', 'EN_PREPARATION', 'PRET', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED', 'ESCALATED']
+
 // PUT /api/orders/:id/status — vendeur / livreur avancent le statut
 router.put('/:id/status', authenticate, async (req, res) => {
   const { note } = req.body
   try {
-    const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } })
+    const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { items: true } })
     if (!order) return res.status(404).json({ error: 'Commande introuvable' })
 
     const { role, id: userId } = req.user
@@ -414,20 +420,43 @@ router.put('/:id/status', authenticate, async (req, res) => {
       nextStatus = ORDER_STATUS_FLOW.DRIVER[order.status]
     } else if (role === 'ADMIN') {
       nextStatus = req.body.status
+      if (!VALID_ORDER_STATUSES.includes(nextStatus)) {
+        return res.status(400).json({ error: `status ∈ ${VALID_ORDER_STATUSES.join('|')}` })
+      }
+      if (nextStatus === 'CANCELLED' && ['CANCELLED', 'DELIVERED'].includes(order.status)) {
+        return res.status(400).json({ error: `Impossible d'annuler une commande ${order.status === 'DELIVERED' ? 'déjà livrée (passer par un litige)' : 'déjà annulée'}` })
+      }
     }
 
     if (!nextStatus) return res.status(400).json({ error: `Transition impossible depuis ${order.status}` })
 
-    const updated = await prisma.order.update({
-      where: { id: order.id },
-      data: {
-        status: nextStatus,
-        statusHistory: {
-          create: { status: nextStatus, note: note || null, actorId: userId },
-        },
-      },
-      include: { statusHistory: { orderBy: { createdAt: 'asc' } } },
-    })
+    // Annulation par l'admin (seul acteur pouvant l'atteindre via cette
+    // route générique) : statut + restockage dans la même transaction,
+    // via le même Stock Engine que les autres chemins d'annulation.
+    const updated = nextStatus === 'CANCELLED'
+      ? await prisma.$transaction(async (tx) => {
+          const o = await tx.order.update({
+            where: { id: order.id },
+            data: { status: nextStatus, statusHistory: { create: { status: nextStatus, note: note || null, actorId: userId } } },
+            include: { statusHistory: { orderBy: { createdAt: 'asc' } } },
+          })
+          for (const item of order.items) {
+            await stockEngine.restockFromCancellation(tx, {
+              productId: item.productId, quantity: item.quantity, orderId: order.id, actorId: userId, reason: note || 'Annulée par un administrateur',
+            })
+          }
+          return o
+        })
+      : await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            status: nextStatus,
+            statusHistory: {
+              create: { status: nextStatus, note: note || null, actorId: userId },
+            },
+          },
+          include: { statusHistory: { orderBy: { createdAt: 'asc' } } },
+        })
 
     // Déclencher l'assignation automatique quand la commande est prête
     if (nextStatus === 'PRET') {
@@ -488,21 +517,23 @@ router.delete('/:id', authenticate, requireRole('BUYER'), async (req, res) => {
       return res.status(400).json({ error: 'Cette commande ne peut plus être annulée' })
     }
 
-    await prisma.order.update({
-      where: { id: order.id },
-      data: {
-        status: 'CANCELLED',
-        statusHistory: { create: { status: 'CANCELLED', note: 'Annulée par l\'acheteur', actorId: req.user.id } },
-      },
-    })
-
-    // Remettre le stock
-    for (const item of order.items) {
-      await prisma.product.update({
-        where: { id: item.productId },
-        data: { stock: { increment: item.quantity } },
+    // Statut + restockage dans la même transaction (LOT 4 : ce chemin
+    // n'était pas atomique avant — un crash entre les deux pouvait laisser
+    // une commande CANCELLED avec un restockage partiel).
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: 'CANCELLED',
+          statusHistory: { create: { status: 'CANCELLED', note: 'Annulée par l\'acheteur', actorId: req.user.id } },
+        },
       })
-    }
+      for (const item of order.items) {
+        await stockEngine.restockFromCancellation(tx, {
+          productId: item.productId, quantity: item.quantity, orderId: order.id, actorId: req.user.id, reason: 'Annulée par l\'acheteur',
+        })
+      }
+    })
 
     // Notifier le vendeur + email acheteur
     const shop = await prisma.shop.findUnique({ where: { id: order.shopId }, select: { userId: true } })

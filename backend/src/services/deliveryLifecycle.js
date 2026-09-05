@@ -205,18 +205,21 @@ function confirmationNotReadyError(message) {
 // LOT10) refuse toute transition une fois DELIVERED atteint — une double
 // confirmation ne peut donc jamais déclencher un double paiement, un double
 // mouvement de stock ou une double notification.
-async function confirmDeliveryByBuyer(client, { orderId, actorId, note = null }) {
-  const shipment = await client.shipment.findUnique({ where: { orderId } })
+// LOT 5 : généralisé à orderId OU b2bTransactionId (jusqu'ici B2C
+// uniquement) — même mécanisme de vérification pour les deux sources,
+// comme le reste de deliveryLifecycle.js depuis le LOT2.
+async function confirmDeliveryByBuyer(client, { orderId, b2bTransactionId, actorId, note = null }) {
+  const shipment = await client.shipment.findUnique({ where: orderId ? { orderId } : { b2bTransactionId } })
   if (!shipment) throw new Error('Livraison introuvable')
   if (shipment.status !== 'QR_SCANNED') {
     throw confirmationNotReadyError(
-      shipment.status === 'DELIVERED'
-        ? 'Cette commande a déjà été confirmée comme livrée'
-        : 'Le QR n\'a pas encore été scanné par le livreur — la confirmation n\'est pas encore disponible'
+      shipment.status === 'DELIVERED' ? 'Cette commande a déjà été confirmée comme livrée'
+      : shipment.status === 'FAILED' ? 'Cette livraison a été signalée en échec — contactez le support'
+      : 'Le QR n\'a pas encore été scanné par le livreur — la confirmation n\'est pas encore disponible'
     )
   }
   return advanceShipment(client, {
-    orderId, status: 'DELIVERED', actorId, bypassOtp: true,
+    orderId, b2bTransactionId, status: 'DELIVERED', actorId, bypassOtp: true,
     note: note || 'Réception confirmée par l\'acheteur',
   })
 }

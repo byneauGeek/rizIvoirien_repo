@@ -420,6 +420,54 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
   }
 })
 
+// PUT /api/drivers/delivery/b2b/:transactionId/status — LOT 5 (Arbitrage XXX
+// RIZ, "vérification unifiée B2C/B2B" — limite documentée au LOT2 : le
+// mécanisme existait déjà côté service, testé directement, mais aucune route
+// HTTP ne l'exposait au livreur). Même pipeline ARRIVED/QR_SCANNED/DELIVERED/
+// FAILED que le B2C, sans duplication — délègue au même
+// deliveryLifecycle.advanceShipment(). Volontairement plus sobre côté
+// notifications/e-mails que le B2C (pas de template deliveryCode/
+// orderDelivered dédiés au B2B, seulement des notifications in-app) : le
+// volume B2B est plus faible et plus négocié, proportionné à l'usage réel
+// plutôt qu'un copier-coller intégral du chemin B2C.
+router.put('/delivery/b2b/:transactionId/status', authenticate, requireRole('DRIVER'), async (req, res) => {
+  const { status, note, otp, failureReason, qrToken } = req.body
+  const ALLOWED = ['IN_TRANSIT', 'ARRIVED', 'QR_SCANNED', 'DELIVERED', 'FAILED']
+  if (!ALLOWED.includes(status)) return res.status(400).json({ error: 'Statut invalide' })
+  if (status === 'FAILED' && !failureReason?.trim()) {
+    return res.status(400).json({ error: 'Un motif est requis pour signaler un échec de livraison' })
+  }
+
+  try {
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } })
+    const b2bTransactionId = Number(req.params.transactionId)
+    const shipment = await prisma.shipment.findFirst({ where: { b2bTransactionId, driverId: driver.id } })
+    if (!shipment) return res.status(404).json({ error: 'Livraison introuvable' })
+
+    const shipmentStatus = status === 'IN_TRANSIT' ? 'PICKED_UP' : status
+    await deliveryLifecycle.advanceShipment(prisma, {
+      b2bTransactionId, status: shipmentStatus, actorId: req.user.id, note, otp, failureReason, qrToken,
+    })
+
+    const tx = await prisma.b2BTransaction.findUnique({ where: { id: b2bTransactionId }, select: { buyerUserId: true } })
+    if (tx && ['ARRIVED', 'DELIVERED', 'FAILED'].includes(status)) {
+      const { notify } = require('../services/notifications')
+      const messages = {
+        ARRIVED: ['DRIVER_ARRIVED', 'Votre livreur est arrivé', `Le livreur est arrivé pour la transaction #${b2bTransactionId} — présentez le QR.`],
+        DELIVERED: ['DELIVERED', 'Livraison effectuée', `La transaction #${b2bTransactionId} a été livrée.`],
+        FAILED: ['DELIVERY_FAILED', 'Problème avec votre livraison', `La livraison de la transaction #${b2bTransactionId} a échoué (${failureReason?.trim()}).`],
+      }
+      const [type, title, body] = messages[status]
+      await notify(tx.buyerUserId, type, title, body, { transactionId: b2bTransactionId })
+    }
+
+    res.json({ success: true })
+  } catch (e) {
+    if (e.code === 'INVALID_OTP' || e.code === 'INVALID_QR') return res.status(400).json({ error: e.message })
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // GET /api/drivers/earnings — historique gains
 router.get('/earnings', authenticate, requireRole('DRIVER'), async (req, res) => {
   try {

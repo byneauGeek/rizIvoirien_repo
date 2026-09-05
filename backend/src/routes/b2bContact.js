@@ -273,6 +273,40 @@ router.put('/transactions/:id/request-logistics', authenticate, async (req, res)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// POST /api/b2b/transactions/:id/confirm-receipt — LOT 5 (Arbitrage XXX RIZ,
+// "vérification unifiée B2C/B2B" — limite documentée au LOT2) : équivalent
+// B2B de orders.js POST /:id/confirm-receipt. Même mécanisme, même garde-fou
+// (QR_SCANNED requis, idempotent) — deliveryLifecycle.confirmDeliveryByBuyer
+// est déjà générique aux deux sources depuis ce lot, aucune logique
+// dupliquée ici.
+router.post('/transactions/:id/confirm-receipt', authenticate, async (req, res) => {
+  try {
+    const tx = await prisma.b2BTransaction.findFirst({
+      where: { id: Number(req.params.id), buyerUserId: req.user.id },
+    })
+    if (!tx) return res.status(404).json({ error: 'Transaction introuvable ou vous n\'en êtes pas l\'acheteur' })
+
+    const deliveryLifecycle = require('../services/deliveryLifecycle')
+    await deliveryLifecycle.confirmDeliveryByBuyer(prisma, { b2bTransactionId: tx.id, actorId: req.user.id })
+
+    const shipment = await prisma.shipment.findUnique({ where: { b2bTransactionId: tx.id }, select: { driverId: true } })
+    if (shipment?.driverId) {
+      const driver = await prisma.driver.findUnique({ where: { id: shipment.driverId }, select: { userId: true } })
+      if (driver) {
+        await notify(
+          driver.userId, 'DELIVERY_CONFIRMED', 'Livraison confirmée par le client',
+          `Le client a confirmé la réception de la transaction B2B #${tx.id}.`, { transactionId: tx.id }
+        )
+      }
+    }
+
+    res.json({ success: true })
+  } catch (e) {
+    if (e.code === 'CONFIRMATION_NOT_READY') return res.status(400).json({ error: e.message })
+    res.status(500).json({ error: e.message })
+  }
+})
+
 router.post('/transactions/:id/cancel', authenticate, async (req, res) => {
   try {
     const tx = await prisma.b2BTransaction.findFirst({

@@ -185,6 +185,42 @@ async function checkDeliveryOtp(client, params) {
   }
 }
 
+function confirmationNotReadyError(message) {
+  const err = new Error(message)
+  err.code = 'CONFIRMATION_NOT_READY'
+  return err
+}
+
+// LOT 4 (Arbitrage XXX RIZ) : confirmation active de l'acheteur — jusqu'ici
+// SEUL le livreur pouvait faire passer une livraison à DELIVERED (via l'OTP).
+// L'acheteur dispose maintenant de sa propre action "J'ai reçu mon colis",
+// disponible uniquement une fois le QR scanné et validé par le livreur
+// (QR_SCANNED, LOT3) — pas avant, pas indépendamment du scan. Réutilise
+// entièrement advanceShipment('DELIVERED') pour la transition et TOUS ses
+// effets de bord (paiement livreur, miroir Order/B2BTransaction, audit) —
+// aucune logique dupliquée. `bypassOtp: true` : le QR a DÉJÀ servi de
+// preuve, exiger l'OTP en plus serait une preuve redondante que l'acheteur
+// n'a de toute façon aucune raison de connaître.
+// Idempotence : le garde-fou TERMINAL_STATUSES (déjà en place depuis le
+// LOT10) refuse toute transition une fois DELIVERED atteint — une double
+// confirmation ne peut donc jamais déclencher un double paiement, un double
+// mouvement de stock ou une double notification.
+async function confirmDeliveryByBuyer(client, { orderId, actorId, note = null }) {
+  const shipment = await client.shipment.findUnique({ where: { orderId } })
+  if (!shipment) throw new Error('Livraison introuvable')
+  if (shipment.status !== 'QR_SCANNED') {
+    throw confirmationNotReadyError(
+      shipment.status === 'DELIVERED'
+        ? 'Cette commande a déjà été confirmée comme livrée'
+        : 'Le QR n\'a pas encore été scanné par le livreur — la confirmation n\'est pas encore disponible'
+    )
+  }
+  return advanceShipment(client, {
+    orderId, status: 'DELIVERED', actorId, bypassOtp: true,
+    note: note || 'Réception confirmée par l\'acheteur',
+  })
+}
+
 // `client` : `prisma` (ouvre sa propre transaction) ou un `tx` déjà ouvert
 // (composition dans la transaction d'un appelant) — même contrat que
 // stockEngine.applyMovement.
@@ -367,5 +403,5 @@ async function payDriverForDelivery(tx, { driverId, deliveryFee, settings }) {
 
 module.exports = {
   SHIPMENT_STATUSES, createShipmentForOrder, createShipmentForB2BTransaction,
-  advanceShipment, ensureShipmentDropoffCoords,
+  advanceShipment, ensureShipmentDropoffCoords, confirmDeliveryByBuyer,
 }

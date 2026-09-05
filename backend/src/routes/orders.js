@@ -624,4 +624,58 @@ router.get('/:id/track', authenticate, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// POST /api/orders/:id/confirm-receipt — LOT 4 (Arbitrage XXX RIZ) : action
+// active de l'acheteur, "J'ai reçu mon colis" — jusqu'ici, seul le livreur
+// pouvait clore une livraison (OTP, LOT9). Disponible uniquement une fois le
+// QR scanné et validé par le livreur (QR_SCANNED, LOT3) — deliveryLifecycle
+// refuse la confirmation avant ça. Idempotente par construction (le
+// garde-fou TERMINAL_STATUSES existant, LOT10, refuse toute nouvelle
+// transition une fois DELIVERED atteint) : un double clic ne peut jamais
+// déclencher un double paiement, un double mouvement de stock ou une double
+// notification — tous ces effets restent portés par advanceShipment(), pas
+// dupliqués ici.
+router.post('/:id/confirm-receipt', authenticate, async (req, res) => {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: Number(req.params.id) },
+      select: { id: true, buyerId: true, driverId: true, shopId: true },
+    })
+    if (!order) return res.status(404).json({ error: 'Commande introuvable' })
+    if (order.buyerId !== req.user.id) return res.status(403).json({ error: 'Accès refusé' })
+
+    await deliveryLifecycle.confirmDeliveryByBuyer(prisma, { orderId: order.id, actorId: req.user.id })
+
+    // Même e-mail de confirmation que le chemin livreur (drivers.js) — sans
+    // ça, un acheteur qui confirme via QR n'en recevrait aucun, alors qu'un
+    // acheteur dont le livreur a saisi l'OTP en reçoit un.
+    const [buyerUser, shopInfo] = await Promise.all([
+      prisma.user.findUnique({ where: { id: order.buyerId }, select: { name: true, email: true } }),
+      prisma.shop.findUnique({ where: { id: order.shopId }, select: { name: true } }),
+    ])
+    const { sendMail } = require('../services/mailer')
+    setImmediate(() => sendMail(buyerUser?.email, 'orderDelivered', { name: buyerUser?.name || '', orderId: order.id, shopName: shopInfo?.name || '' }))
+
+    if (order.driverId) {
+      const driver = await prisma.driver.findUnique({ where: { id: order.driverId }, select: { userId: true } })
+      if (driver) {
+        // Notification (pas l'e-mail) attendue directement, comme le fait
+        // déjà drivers.js pour la confirmation DELIVERED côté livreur — un
+        // setImmediate ici ferait une course perdue d'avance avec la réponse
+        // HTTP, jamais garanti terminé quand l'appelant lit la suite.
+        const { notify } = require('../services/notifications')
+        await notify(
+          driver.userId, 'DELIVERY_CONFIRMED', 'Livraison confirmée par le client',
+          `Le client a confirmé la réception de la commande #${order.id}.`,
+          { orderId: order.id }
+        )
+      }
+    }
+
+    res.json({ success: true })
+  } catch (e) {
+    if (e.code === 'CONFIRMATION_NOT_READY') return res.status(400).json({ error: e.message })
+    res.status(500).json({ error: e.message })
+  }
+})
+
 module.exports = router

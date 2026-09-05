@@ -98,6 +98,49 @@ function DeliveryCodeBadge({ code }) {
   )
 }
 
+// LOT 4 (Arbitrage XXX RIZ) : action active de l'acheteur — jusqu'ici,
+// seul le livreur pouvait clore une livraison. Disponible uniquement une
+// fois le QR scanné et validé (shipmentStatus === 'QR_SCANNED').
+function ConfirmReceiptButton({ orderId, shipmentStatus }) {
+  const [state, setState] = useState('idle') // idle | loading | done | error
+  if (shipmentStatus !== 'QR_SCANNED') return null
+
+  const confirm = async () => {
+    setState('loading')
+    try {
+      await api.post(`/orders/${orderId}/confirm-receipt`)
+      setState('done')
+      // Pas de callback de rafraîchissement remonté depuis MyOrdersPage pour
+      // l'instant (OrderCard/TrackingBanner ne reçoivent que orderId) —
+      // rechargement complet après un court délai pour laisser le message
+      // de succès s'afficher, plutôt que de faire remonter un prop à travers
+      // toute la hiérarchie pour une action rare et terminale.
+      setTimeout(() => window.location.reload(), 1500)
+    } catch {
+      setState('error')
+    }
+  }
+
+  if (state === 'done') return (
+    <div className="mt-2 flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
+      <CheckCircle size={14} className="text-green-600 shrink-0" />
+      <p className="font-dm text-xs text-green-700">Merci ! Livraison confirmée.</p>
+    </div>
+  )
+
+  return (
+    <div className="mt-2 space-y-1">
+      <button onClick={confirm} disabled={state === 'loading'}
+        className="w-full flex items-center justify-center gap-2 font-syne text-sm font-bold py-3 rounded-xl bg-green-500 text-cream hover:bg-green-600 disabled:opacity-60 transition-colors">
+        {state === 'loading'
+          ? <div className="w-4 h-4 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
+          : <><CheckCircle size={16} /> J'ai reçu mon colis</>}
+      </button>
+      {state === 'error' && <p className="font-dm text-xs text-red-600 text-center">Erreur — réessayez.</p>}
+    </div>
+  )
+}
+
 function TrackingBanner({ orderId }) {
   const { tracking, eta, destination, deliveryCode, qrToken, shipmentStatus } = useTracking(orderId, true)
 
@@ -109,6 +152,7 @@ function TrackingBanner({ orderId }) {
       </div>
       <QrCodeBadge qrToken={qrToken} shipmentStatus={shipmentStatus} />
       <DeliveryCodeBadge code={deliveryCode} />
+      <ConfirmReceiptButton orderId={orderId} shipmentStatus={shipmentStatus} />
     </div>
   )
 
@@ -139,6 +183,7 @@ function TrackingBanner({ orderId }) {
       <DeliveryMap driverPosition={{ lat: tracking.lat, lng: tracking.lng }} destination={destination} />
       <QrCodeBadge qrToken={qrToken} shipmentStatus={shipmentStatus} />
       <DeliveryCodeBadge code={deliveryCode} />
+      <ConfirmReceiptButton orderId={orderId} shipmentStatus={shipmentStatus} />
     </div>
   )
 }

@@ -17,6 +17,14 @@ const STEP_LABELS = {
 }
 const STEP_ICONS = { CONFIRMED: '✅', EN_PREPARATION: '👨‍🍳', PRET: '📦', IN_TRANSIT: '🚚', DELIVERED: '🎉' }
 
+// LOT 13 (Espace client) : STATUS_LABELS (utils/status.js) est partagé avec
+// les vues admin/commercial/vendeur, où "Escaladée admin" est le bon terme
+// pour une équipe interne — mais depuis le LOT 10 (échec de livraison),
+// N'IMPORTE QUEL acheteur peut désormais atterrir sur ce statut après une
+// tentative ratée, pas seulement un cas rare d'affectation jamais acceptée.
+// Override local, uniquement pour le badge visible par l'acheteur.
+const BUYER_STATUS_LABELS = { ESCALATED: 'Nouvelle tentative en préparation' }
+
 const DISPUTE_REASONS = {
   PRODUCT_NOT_RECEIVED: 'Produit non reçu',
   PRODUCT_DAMAGED:      'Produit endommagé',
@@ -246,6 +254,29 @@ function DisputeBadge({ dispute }) {
 
 function OrderTimeline({ status }) {
   const idx = STEPS.indexOf(status)
+  // LOT 13 : CANCELLED/ESCALATED ne font pas partie de la progression
+  // linéaire (idx = -1) — sans ce garde-fou, `i <= idx` est faux pour
+  // TOUTES les étapes et l'acheteur voit une frise entièrement grisée,
+  // comme si sa commande n'avait jamais même été confirmée. Rare avant le
+  // LOT 10 (seul un cas d'affectation jamais acceptée y menait) ; désormais
+  // atteint par tout échec de livraison, un parcours normal, pas un cas
+  // limite — d'où la nécessité d'un message clair plutôt qu'une frise
+  // trompeuse.
+  if (idx === -1) {
+    const isEscalated = status === 'ESCALATED'
+    return (
+      <div className={`flex items-center gap-2 my-4 px-4 py-3 rounded-2xl border ${
+        isEscalated ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-charcoal/5 border-charcoal/10 text-charcoal/50'
+      }`}>
+        <span className="text-base">{isEscalated ? '⚠️' : '✕'}</span>
+        <p className="font-dm text-sm">
+          {isEscalated
+            ? 'La livraison a rencontré un problème — notre équipe organise une nouvelle tentative.'
+            : 'Cette commande a été annulée.'}
+        </p>
+      </div>
+    )
+  }
   return (
     <div className="flex items-center gap-0 my-4 overflow-x-auto no-scrollbar">
       {STEPS.map((step, i) => (
@@ -312,7 +343,7 @@ function OrderCard({ order, onReview, onCancel, onRateDriver, onRateShop, onDisp
               <span className="font-syne font-bold text-charcoal">Commande {fmtOrderId(order.id, order.createdAt)}</span>
               <span className={`inline-flex items-center gap-1.5 font-syne text-xs font-bold px-3 py-1 rounded-full border ${STATUS_COLORS[order.status] || 'bg-charcoal/10 text-charcoal border-charcoal/20'}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[order.status] || 'bg-charcoal/40'}`} />
-                {STATUS_LABELS[order.status] || order.status}
+                {BUYER_STATUS_LABELS[order.status] || STATUS_LABELS[order.status] || order.status}
               </span>
             </div>
             <p className="font-dm text-sm text-charcoal/50">{fmtDate(order.createdAt)} · {order.shop?.name}</p>

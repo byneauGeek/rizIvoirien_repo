@@ -41,15 +41,25 @@ function ResolveModal({ dispute, onClose, onSaved }) {
   const [status, setStatus]           = useState(dispute.status === 'OPEN' ? 'UNDER_REVIEW' : dispute.status)
   const [refundAmount, setRefundAmount] = useState(dispute.refundAmount || 0)
   const [resolution, setResolution]   = useState(dispute.resolution || '')
+  const [restock, setRestock]         = useState(null) // true | false | null (pas encore choisi)
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState('')
 
   const needsRefund = status === 'RESOLVED_REFUND'
+  // Le choix de restockage n'a d'effet qu'à la PREMIÈRE résolution en
+  // remboursement — déjà résolu = on ne fait qu'éditer montant/note, le
+  // stock (déjà traité) n'est jamais rejoué.
+  const alreadyResolved = Boolean(dispute.resolvedAt)
+  const needsRestockChoice = needsRefund && !alreadyResolved
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (needsRefund && (!refundAmount || Number(refundAmount) <= 0)) {
       setError('Saisissez un montant de remboursement positif.')
+      return
+    }
+    if (needsRestockChoice && restock === null) {
+      setError('Précisez si l\'article doit être remis en stock.')
       return
     }
     setLoading(true); setError('')
@@ -58,6 +68,7 @@ function ResolveModal({ dispute, onClose, onSaved }) {
         status,
         refundAmount: needsRefund ? Number(refundAmount) : 0,
         resolution: resolution.trim() || null,
+        ...(needsRestockChoice ? { restock } : {}),
       })
       onSaved()
       onClose()
@@ -140,6 +151,44 @@ function ResolveModal({ dispute, onClose, onSaved }) {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Restockage — décision explicite, jamais automatique selon le motif */}
+          <AnimatePresence>
+            {needsRestockChoice && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                <label className="block text-xs font-bold tracking-wider uppercase text-charcoal/40 mb-2">
+                  L'article doit-il être remis en stock ? *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                    restock === true ? 'border-forest bg-forest/5 text-forest' : 'border-charcoal/10 text-charcoal/60 hover:border-gray-300'
+                  }`}>
+                    <input type="radio" name="restock" checked={restock === true} onChange={() => setRestock(true)} className="sr-only" />
+                    <span className="text-sm font-bold">Oui, article retourné</span>
+                  </label>
+                  <label className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                    restock === false ? 'border-red-400 bg-red-50 text-red-600' : 'border-charcoal/10 text-charcoal/60 hover:border-gray-300'
+                  }`}>
+                    <input type="radio" name="restock" checked={restock === false} onChange={() => setRestock(false)} className="sr-only" />
+                    <span className="text-sm font-bold">Non {dispute.reason === 'PRODUCT_DAMAGED' ? '(endommagé)' : ''}</span>
+                  </label>
+                </div>
+                <p className="text-xs text-charcoal/40 mt-1.5">
+                  {dispute.reason === 'PRODUCT_DAMAGED'
+                    ? 'Un produit endommagé n\'est normalement pas remis en vente.'
+                    : 'Ce choix est définitif : il ne pourra pas être rejoué en modifiant la décision ensuite.'}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {alreadyResolved && needsRefund && (
+            <div className="bg-charcoal/3 rounded-xl p-3">
+              <p className="text-xs text-charcoal/50">
+                Le stock a déjà été traité pour ce litige ({dispute.resolvedAt ? 'résolu le ' + fmtDate(dispute.resolvedAt) : ''}) — modifier le montant ou la note n'y touchera pas.
+              </p>
+            </div>
+          )}
 
           {/* Note de résolution */}
           <div>

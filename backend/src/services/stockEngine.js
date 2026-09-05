@@ -123,6 +123,19 @@ async function restockFromCancellation(client, { productId, quantity, orderId, a
   return applyMovement(client, { productId, type: 'RESTOCK', quantity, sourceType: 'ORDER', sourceId: orderId, reason, actorId })
 }
 
+// Restockage suite à un retour dans le cadre d'un litige (LOT 7) — l'article
+// a physiquement été rendu et peut resservir. Décision explicite de l'admin
+// à chaque résolution (jamais une règle automatique par motif de litige :
+// un produit endommagé, par exemple, n'appelle normalement PAS cette
+// fonction — voir disputes.js). Si l'article n'est PAS restocké, aucun
+// mouvement n'est créé : la vente d'origine (SALE) reste l'unique et
+// correcte trace de sa sortie de stock — ce n'est pas une perte
+// supplémentaire, l'article est simplement resté sorti.
+async function restockFromReturn(client, { productId, quantity, disputeId, actorId = null, reason = null }) {
+  if (!Number.isInteger(quantity) || quantity <= 0) throw new StockEngineError('quantity doit être un entier positif')
+  return applyMovement(client, { productId, type: 'RESTOCK', quantity, sourceType: 'DISPUTE', sourceId: disputeId, reason, actorId })
+}
+
 // Réception de marchandise (achat/livraison fournisseur). Motif optionnel
 // mais recommandé — devient obligatoire au LOT 5 quand ce chemin remplace
 // l'écriture directe du formulaire vendeur.
@@ -198,6 +211,7 @@ module.exports = {
   initializeStock,
   recordSale,
   restockFromCancellation,
+  restockFromReturn,
   receiveStock,
   adjustStock,
   recordLoss,

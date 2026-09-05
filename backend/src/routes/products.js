@@ -4,6 +4,7 @@ const { authenticate, requireRole } = require('../middleware/auth')
 const { uploadCsv } = require('../middleware/upload')
 const Papa = require('papaparse')
 const Anthropic = require('@anthropic-ai/sdk')
+const stockEngine = require('../services/stockEngine')
 
 const slugify = (str) =>
   str.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '-' + Date.now()
@@ -213,25 +214,33 @@ router.post('/', authenticate, requireRole('SELLER'), async (req, res) => {
       })
     }
 
-    const product = await prisma.product.create({
-      data: {
-        shopId: shop.id,
-        name,
-        slug: slugify(name),
-        description,
-        category,
-        price: Number(price),
-        pricePerKg: Math.round(Number(price) / (Number(unit?.replace(/[^0-9]/g, '') || 5))),
-        unit: unit || '5kg',
-        stock: Number(stock) || 0,
-        images: JSON.stringify(images || []),
-        badge:    badge    || null,
-        origin:   origin   || null,
-        harvest:  harvest  || null,
-        saleType: ['RETAIL','WHOLESALE','BOTH'].includes(saleType) ? saleType : 'BOTH',
-        wholesalePrice:  wholesalePrice  != null && wholesalePrice  !== '' ? Number(wholesalePrice)  : null,
-        minWholesaleQty: minWholesaleQty != null && minWholesaleQty !== '' ? Number(minWholesaleQty) : null,
-      },
+    // Le produit est créé avec stock=0, puis stockEngine.initializeStock (LOT 5)
+    // l'amène à sa quantité initiale dans la même transaction — jamais une
+    // écriture directe de `stock` en dehors du Stock Engine.
+    const initialStock = Number(stock) || 0
+    const product = await prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
+        data: {
+          shopId: shop.id,
+          name,
+          slug: slugify(name),
+          description,
+          category,
+          price: Number(price),
+          pricePerKg: Math.round(Number(price) / (Number(unit?.replace(/[^0-9]/g, '') || 5))),
+          unit: unit || '5kg',
+          stock: 0,
+          images: JSON.stringify(images || []),
+          badge:    badge    || null,
+          origin:   origin   || null,
+          harvest:  harvest  || null,
+          saleType: ['RETAIL','WHOLESALE','BOTH'].includes(saleType) ? saleType : 'BOTH',
+          wholesalePrice:  wholesalePrice  != null && wholesalePrice  !== '' ? Number(wholesalePrice)  : null,
+          minWholesaleQty: minWholesaleQty != null && minWholesaleQty !== '' ? Number(minWholesaleQty) : null,
+        },
+      })
+      await stockEngine.initializeStock(tx, { productId: created.id, quantity: initialStock, actorId: req.user.id })
+      return tx.product.findUnique({ where: { id: created.id } })
     })
     res.status(201).json(product)
   } catch (e) {
@@ -262,13 +271,16 @@ router.put('/:id', authenticate, requireRole('SELLER'), async (req, res) => {
     }
 
     // ── Détection des changements ─────────────────────────────────────────────
+    // `stock` n'est plus modifiable ici depuis le LOT 5 (Stock Engine) — toute
+    // écriture directe et absolue de la quantité était le risque principal
+    // identifié par l'audit (§0.4) : aucun motif, aucun mouvement tracé. Le
+    // champ est ignoré s'il est envoyé ; passer par POST /:id/adjust-stock.
     const TRACKED = {
       name:        'Nom',
       description: 'Description',
       category:    'Catégorie',
       price:       'Prix',
       unit:        'Unité',
-      stock:       'Stock',
       badge:       'Badge',
       origin:      'Origine',
       harvest:     'Récolte',
@@ -284,7 +296,6 @@ router.put('/:id', authenticate, requireRole('SELLER'), async (req, res) => {
       let newVal = req.body[field]
       // Normalisation numérique
       if (field === 'price')           { oldVal = Number(oldVal); newVal = Number(newVal) }
-      if (field === 'stock')           { oldVal = Number(oldVal); newVal = Number(newVal) }
       if (field === 'wholesalePrice')  { oldVal = oldVal != null ? Number(oldVal) : null; newVal = newVal != null && newVal !== '' ? Number(newVal) : null }
       if (field === 'minWholesaleQty') { oldVal = oldVal != null ? Number(oldVal) : null; newVal = newVal != null && newVal !== '' ? Number(newVal) : null }
       if (field === 'active')          { oldVal = Boolean(oldVal); newVal = Boolean(newVal) }
@@ -305,11 +316,6 @@ router.put('/:id', authenticate, requireRole('SELLER'), async (req, res) => {
       const price = Number(req.body.price)
       if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: 'Prix invalide' })
       data.price = price
-    }
-    if (req.body.stock !== undefined) {
-      const stock = Number(req.body.stock)
-      if (!Number.isFinite(stock) || stock < 0) return res.status(400).json({ error: 'Stock invalide' })
-      data.stock = stock
     }
     if (req.body.images !== undefined) data.images = JSON.stringify(req.body.images)
     if ('wholesalePrice' in req.body) {
@@ -414,22 +420,27 @@ router.post('/import-csv', authenticate, requireRole('SELLER'), uploadCsv.single
     for (const row of data) {
       if (required.some(k => !row[k])) { failed.push({ row, reason: 'Champs requis manquants' }); continue }
       try {
-        const product = await prisma.product.create({
-          data: {
-            shopId: shop.id,
-            name: row.name,
-            slug: slugify(row.name),
-            description: row.description || null,
-            category: row.category,
-            price: Number(row.price),
-            pricePerKg: Number(row.pricePerKg) || 0,
-            unit: row.unit || '5kg',
-            stock: Number(row.stock),
-            images: row.images ? JSON.stringify(row.images.split('|')) : '[]',
-            badge: row.badge || null,
-            origin: row.origin || null,
-            harvest: row.harvest || null,
-          },
+        const rowStock = Number(row.stock)
+        const product = await prisma.$transaction(async (tx) => {
+          const p = await tx.product.create({
+            data: {
+              shopId: shop.id,
+              name: row.name,
+              slug: slugify(row.name),
+              description: row.description || null,
+              category: row.category,
+              price: Number(row.price),
+              pricePerKg: Number(row.pricePerKg) || 0,
+              unit: row.unit || '5kg',
+              stock: 0,
+              images: row.images ? JSON.stringify(row.images.split('|')) : '[]',
+              badge: row.badge || null,
+              origin: row.origin || null,
+              harvest: row.harvest || null,
+            },
+          })
+          await stockEngine.initializeStock(tx, { productId: p.id, quantity: rowStock, actorId: req.user.id })
+          return p
         })
         created.push(product)
       } catch (err) {
@@ -438,6 +449,57 @@ router.post('/import-csv', authenticate, requireRole('SELLER'), uploadCsv.single
     }
 
     res.json({ created: created.length, failed: failed.length, errors: failed })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ─── Stock Engine (LOT 5) ───────────────────────────────────────────────────
+// Remplace l'ancienne écriture directe de `stock` via PUT /:id : chaque
+// changement de quantité passe désormais par un mouvement typé avec motif
+// obligatoire, tracé dans StockMovement.
+const ADJUST_TYPES = ['RECEPTION', 'LOSS', 'ADJUSTMENT']
+
+// POST /api/products/:id/adjust-stock — seller
+router.post('/:id/adjust-stock', authenticate, requireRole('SELLER'), async (req, res) => {
+  const { type, quantity, reason } = req.body
+  if (!ADJUST_TYPES.includes(type)) return res.status(400).json({ error: `type ∈ ${ADJUST_TYPES.join('|')}` })
+  if (!reason || !reason.trim()) return res.status(400).json({ error: 'Un motif est requis' })
+  const qty = Number(quantity)
+
+  try {
+    const shop = await prisma.shop.findUnique({ where: { userId: req.user.id } })
+    const product = await prisma.product.findFirst({ where: { id: Number(req.params.id), shopId: shop?.id } })
+    if (!product) return res.status(404).json({ error: 'Produit introuvable' })
+
+    let result
+    if (type === 'RECEPTION') {
+      if (!Number.isInteger(qty) || qty <= 0) return res.status(400).json({ error: 'quantity doit être un entier positif' })
+      result = await stockEngine.receiveStock(prisma, { productId: product.id, quantity: qty, actorId: req.user.id, reason: reason.trim() })
+    } else if (type === 'LOSS') {
+      if (!Number.isInteger(qty) || qty <= 0) return res.status(400).json({ error: 'quantity doit être un entier positif' })
+      result = await stockEngine.recordLoss(prisma, { productId: product.id, quantity: qty, actorId: req.user.id, reason: reason.trim() })
+    } else {
+      if (!Number.isInteger(qty) || qty === 0) return res.status(400).json({ error: 'quantity (delta signé) doit être un entier non nul' })
+      result = await stockEngine.adjustStock(prisma, { productId: product.id, delta: qty, actorId: req.user.id, reason: reason.trim() })
+    }
+
+    res.status(201).json(result)
+  } catch (e) {
+    if (e instanceof stockEngine.InsufficientStockError) return res.status(400).json({ error: e.message })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// GET /api/products/:id/stock-movements — seller : historique des mouvements de stock
+router.get('/:id/stock-movements', authenticate, requireRole('SELLER'), async (req, res) => {
+  try {
+    const shop = await prisma.shop.findUnique({ where: { userId: req.user.id } })
+    const product = await prisma.product.findFirst({ where: { id: Number(req.params.id), shopId: shop?.id } })
+    if (!product) return res.status(404).json({ error: 'Produit introuvable' })
+
+    const movements = await stockEngine.listMovements(prisma, { productId: product.id, limit: req.query.limit, offset: req.query.offset })
+    res.json({ movements })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }

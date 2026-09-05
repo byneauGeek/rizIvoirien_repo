@@ -98,6 +98,16 @@ async function applyMovementInTransaction(tx, { productId, type, quantity, sourc
 // ─── Mouvements nommés — un type figé par fonction, jamais laissé au choix
 // de l'appelant, pour qu'un `git grep` sur un type retrouve tous ses usages. ───
 
+// Stock de départ d'un produit à sa création (LOT 5) — le produit DOIT être
+// créé avec stock=0 avant cet appel : c'est ce mouvement qui l'amène à sa
+// quantité initiale, jamais une écriture directe sur Product.stock. Si
+// quantity=0, rien à tracer (juste la position, créée par ensurePosition).
+async function initializeStock(client, { productId, quantity, actorId = null }) {
+  if (!Number.isInteger(quantity) || quantity < 0) throw new StockEngineError('quantity doit être un entier ≥ 0')
+  if (quantity === 0) return { position: await ensurePosition(client, productId), movement: null }
+  return applyMovement(client, { productId, type: 'INITIAL_STOCK', quantity, sourceType: 'MANUAL', actorId })
+}
+
 // Vente : sortie liée à une commande. quantity > 0 en entrée (magnitude),
 // converti en sortie négative.
 async function recordSale(client, { productId, quantity, orderId, actorId = null }) {
@@ -185,6 +195,7 @@ module.exports = {
   ProductNotFoundError,
   ensurePosition,
   applyMovement,
+  initializeStock,
   recordSale,
   restockFromCancellation,
   receiveStock,

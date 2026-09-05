@@ -88,14 +88,17 @@ export default function ProductFormView({ product, shopName, shopRating = 0, onB
       const payload = {
         ...form,
         price:           Number(form.price),
-        stock:           Number(form.stock) || 0,
         wholesalePrice:  form.wholesalePrice  ? Number(form.wholesalePrice)  : null,
         minWholesaleQty: form.minWholesaleQty ? Number(form.minWholesaleQty) : null,
         active:          publish,
       }
       if (product) {
+        // Le stock ne se modifie plus depuis ce formulaire (Stock Engine,
+        // LOT 5) — ajustez-le depuis la liste des produits, avec un motif.
+        delete payload.stock
         await api.put(`/products/${product.id}`, payload)
       } else {
+        payload.stock = Number(form.stock) || 0
         await api.post('/products', payload)
       }
       setSaved(true)
@@ -238,15 +241,24 @@ export default function ProductFormView({ product, shopName, shopRating = 0, onB
                   />
                 </Field>
 
-                <Field label="Stock (sacs)">
-                  <input
-                    type="number"
-                    value={form.stock}
-                    onChange={setE('stock')}
-                    placeholder="ex : 50"
-                    className={inputCls}
-                  />
-                </Field>
+                {product ? (
+                  <Field label="Stock (sacs)">
+                    <div className={`${inputCls} bg-charcoal/3 text-charcoal/60 flex items-center justify-between`}>
+                      <span>{product.stock} sac{product.stock > 1 ? 's' : ''}</span>
+                      <span className="font-syne text-[10px] font-bold text-charcoal/35 uppercase tracking-wider">Ajuster depuis la liste</span>
+                    </div>
+                  </Field>
+                ) : (
+                  <Field label="Stock initial (sacs)">
+                    <input
+                      type="number"
+                      value={form.stock}
+                      onChange={setE('stock')}
+                      placeholder="ex : 50"
+                      className={inputCls}
+                    />
+                  </Field>
+                )}
 
                 <Field label="Badge promo">
                   <select value={form.badge} onChange={setE('badge')} className={inputCls}>

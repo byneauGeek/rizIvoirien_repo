@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../../api/client'
 import { Plus, Pencil, Trash2, Package, Search, AlertTriangle, X, ChevronDown,
-         CheckSquare, Square, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react'
+         CheckSquare, Square, Eye, EyeOff, CheckCircle2, AlertCircle, Boxes, Clock } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ProductFormView from './ProductFormView'
 
@@ -42,6 +42,128 @@ function DeleteModal({ count, productName, onConfirm, onCancel, loading }) {
             {loading && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
             Désactiver
           </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+/* ── Ajustement de stock (Stock Engine, LOT 5) ── */
+const ADJUST_TYPES = [
+  { value: 'RECEPTION', label: 'Réception de marchandise', hint: 'Livraison fournisseur, réapprovisionnement' },
+  { value: 'LOSS', label: 'Perte / casse', hint: 'Sacs endommagés, périmés, volés' },
+  { value: 'ADJUSTMENT', label: 'Correction', hint: 'Erreur de comptage — peut être négative' },
+]
+
+function StockAdjustModal({ product, onClose, onSaved }) {
+  const [type, setType] = useState('RECEPTION')
+  const [quantity, setQuantity] = useState('')
+  const [reason, setReason] = useState('')
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [movements, setMovements] = useState([])
+  const [loadingHistory, setLoadingHistory] = useState(true)
+
+  useEffect(() => {
+    api.get(`/products/${product.id}/stock-movements?limit=10`)
+      .then(d => setMovements(d.movements || []))
+      .catch(() => {})
+      .finally(() => setLoadingHistory(false))
+  }, [product.id])
+
+  const submit = async () => {
+    setError(null)
+    const qty = Number(quantity)
+    if (!Number.isInteger(qty) || qty === 0) return setError('Quantité invalide.')
+    if (type !== 'ADJUSTMENT' && qty < 0) return setError('Utilisez une quantité positive pour ce type.')
+    if (!reason.trim()) return setError('Un motif est requis.')
+
+    setSaving(true)
+    try {
+      await api.post(`/products/${product.id}/adjust-stock`, { type, quantity: qty, reason: reason.trim() })
+      onSaved()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4 max-h-[85vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40">Ajuster le stock</p>
+            <p className="font-playfair text-lg font-bold text-charcoal">{product.name}</p>
+            <p className="font-dm text-xs text-charcoal/40 mt-0.5">Stock actuel : {product.stock} sac{product.stock > 1 ? 's' : ''}</p>
+          </div>
+          <button onClick={onClose} className="text-charcoal/30 hover:text-charcoal p-1"><X size={18} /></button>
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-2xl px-3 py-2.5">
+            <AlertTriangle size={13} className="text-red-500 shrink-0" />
+            <p className="font-dm text-xs text-red-600">{error}</p>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div>
+            <label className="block font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-1.5">Type de mouvement</label>
+            <select value={type} onChange={e => setType(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-2xl border border-charcoal/10 bg-white font-dm text-sm">
+              {ADJUST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <p className="font-dm text-[11px] text-charcoal/35 mt-1">{ADJUST_TYPES.find(t => t.value === type)?.hint}</p>
+          </div>
+          <div>
+            <label className="block font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-1.5">
+              {type === 'ADJUSTMENT' ? 'Delta (peut être négatif)' : 'Quantité (sacs)'}
+            </label>
+            <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)}
+              placeholder={type === 'ADJUSTMENT' ? 'ex : -3 ou 5' : 'ex : 20'}
+              className="w-full px-4 py-2.5 rounded-2xl border border-charcoal/10 bg-white font-dm text-sm" />
+          </div>
+          <div>
+            <label className="block font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-1.5">Motif *</label>
+            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2}
+              placeholder="Obligatoire — ex : Livraison du 05/09, sacs mouillés en entrepôt…"
+              className="w-full px-4 py-2.5 rounded-2xl border border-charcoal/10 bg-white font-dm text-sm resize-none" />
+          </div>
+        </div>
+
+        <button onClick={submit} disabled={saving}
+          className="w-full py-2.5 rounded-2xl bg-[#E8A217] text-white font-syne text-sm font-bold hover:bg-[#d4901a] transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+          {saving && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+          Enregistrer le mouvement
+        </button>
+
+        <div className="pt-2 border-t border-charcoal/6">
+          <p className="font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-2 flex items-center gap-1.5">
+            <Clock size={11} /> Mouvements récents
+          </p>
+          {loadingHistory ? (
+            <p className="font-dm text-xs text-charcoal/30">Chargement…</p>
+          ) : movements.length === 0 ? (
+            <p className="font-dm text-xs text-charcoal/30 italic">Aucun mouvement enregistré</p>
+          ) : (
+            <div className="space-y-1.5">
+              {movements.map(m => (
+                <div key={m.id} className="flex items-center justify-between bg-charcoal/3 rounded-xl px-3 py-2">
+                  <div>
+                    <p className="font-dm text-xs text-charcoal">{m.type}{m.reason ? ` — ${m.reason}` : ''}</p>
+                    <p className="font-dm text-[10px] text-charcoal/35">{new Date(m.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                  <span className={`font-syne text-xs font-bold ${m.quantity > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {m.quantity > 0 ? '+' : ''}{m.quantity}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </motion.div>
     </div>
@@ -122,6 +244,9 @@ export default function VendorProductsTab() {
   /* ── Suppression ── */
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting]         = useState(false)
+
+  /* ── Ajustement de stock ── */
+  const [adjustTarget, setAdjustTarget] = useState(null)
 
   /* ── Sélection en masse ── */
   const [selectedIds, setSelectedIds] = useState(new Set())
@@ -242,6 +367,17 @@ export default function VendorProductsTab() {
             onConfirm={confirmDelete}
             onCancel={() => setDeleteTarget(null)}
             loading={deleting}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Modal d'ajustement de stock */}
+      <AnimatePresence>
+        {adjustTarget && (
+          <StockAdjustModal
+            product={adjustTarget}
+            onClose={() => setAdjustTarget(null)}
+            onSaved={() => { setAdjustTarget(null); load(true) }}
           />
         )}
       </AnimatePresence>
@@ -410,6 +546,7 @@ export default function VendorProductsTab() {
                     onToggleSelect={() => toggleSelect(p.id)}
                     onEdit={() => openEdit(p)}
                     onDelete={() => setDeleteTarget(p)}
+                    onAdjustStock={() => setAdjustTarget(p)}
                   />
                 ))}
               </div>
@@ -436,7 +573,7 @@ export default function VendorProductsTab() {
 }
 
 /* ── Carte produit dans la liste ── */
-function ProductListCard({ product, index, selected, onToggleSelect, onEdit, onDelete }) {
+function ProductListCard({ product, index, selected, onToggleSelect, onEdit, onDelete, onAdjustStock }) {
   const images = parseImages(product.images)
   const cover  = images[0] || ''
 
@@ -503,6 +640,10 @@ function ProductListCard({ product, index, selected, onToggleSelect, onEdit, onD
           <button onClick={onEdit}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl font-syne text-xs font-bold text-charcoal shadow-sm hover:shadow transition-shadow">
             <Pencil size={12} /> Modifier
+          </button>
+          <button onClick={onAdjustStock}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl font-syne text-xs font-bold text-charcoal shadow-sm hover:shadow transition-shadow">
+            <Boxes size={12} /> Stock
           </button>
           <button onClick={onDelete}
             className="p-1.5 bg-white rounded-xl text-red-500 shadow-sm hover:shadow transition-shadow">

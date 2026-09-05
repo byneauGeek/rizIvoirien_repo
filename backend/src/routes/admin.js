@@ -1766,6 +1766,11 @@ router.get('/logistics/shipments', ...guard, async (req, res) => {
         where,
         include: {
           order: { select: { id: true, total: true, deliveryFee: true, buyer: { select: { name: true, phone: true } } } },
+          // LOT 9 (Arbitrage XXX RIZ) : un Shipment B2B (LOT2) n'a pas
+          // d'Order — sans ce include, cette liste (jusqu'ici sans aucune UI,
+          // premier consommateur réel) affichait une livraison B2B sans
+          // aucune information sur qui/combien.
+          b2bTransaction: { select: { id: true, product: true, quantity: true, unit: true, deliveryFee: true, buyer: { select: { name: true, phone: true } } } },
           driver: { select: { id: true, user: { select: { name: true, phone: true } } } },
         },
         orderBy: { updatedAt: 'desc' },

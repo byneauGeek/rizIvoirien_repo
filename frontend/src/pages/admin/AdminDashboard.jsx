@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, ClipboardList, Store, Truck, Image, CreditCard, BarChart2, Settings, LogOut, Tag, Users, DollarSign, Bell, Printer, FileText, Percent, AlertTriangle, ScrollText, Briefcase, Menu, X, Sprout, Calculator } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Store, Truck, Image, CreditCard, BarChart2, Settings, LogOut, Tag, Users, DollarSign, Bell, Printer, FileText, Percent, AlertTriangle, ScrollText, Briefcase, Menu, X, Sprout, Calculator, Route } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../api/client'
@@ -22,6 +22,7 @@ import AuditLogTab from './AuditLogTab'
 import CommercialSettingsTab from './CommercialSettingsTab'
 import B2BAdminTab from './B2BAdminTab'
 import AccountingRoleTab from './AccountingRoleTab'
+import LogisticsAdminTab from './LogisticsAdminTab'
 
 const TABS = [
   { id: 'analytics', label: 'Vue d\'ensemble',        icon: LayoutDashboard },
@@ -42,6 +43,7 @@ const TABS = [
   { id: 'commercial', label: 'Espace Commercial',        icon: Briefcase },
   { id: 'b2b',        label: 'Filière B2B',               icon: Sprout, badge: 'b2bPending' },
   { id: 'accounting-role', label: 'Rôle Comptable',        icon: Calculator },
+  { id: 'logistics',  label: 'Logistique',                icon: Route },
 ]
 
 export default function AdminDashboard() {
@@ -170,11 +172,18 @@ export default function AdminDashboard() {
 
       {/* Main */}
       <main className="md:ml-64 flex-1 min-h-screen">
-        <AnimatePresence mode="wait">
+        {/* Pas de mode="wait" ni de prop exit : sur cette page, une animation
+            de sortie qui ne se résout jamais (onglet en arrière-plan, RAF non
+            garanti dans certains environnements) bloquait DÉFINITIVEMENT le
+            changement d'onglet — le clic changeait bien l'état React (tab),
+            mais l'ancien contenu restait affiché indéfiniment. Même bug déjà
+            rencontré et corrigé sur DriverDashboard.jsx (LOT3, Arbitrage XXX
+            RIZ) — mêmes causes, même correctif. D'autres pages du projet
+            partagent encore ce même risque latent (hors périmètre ici). */}
+        <AnimatePresence>
           <motion.div key={tab}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
             className="p-8 pt-20 md:pt-8">
             {tab === 'analytics' && <AnalyticsTab />}
@@ -195,6 +204,7 @@ export default function AdminDashboard() {
             {tab === 'commercial' && <CommercialSettingsTab />}
             {tab === 'b2b'        && <B2BAdminTab />}
             {tab === 'accounting-role' && <AccountingRoleTab />}
+            {tab === 'logistics'  && <LogisticsAdminTab />}
           </motion.div>
         </AnimatePresence>
       </main>

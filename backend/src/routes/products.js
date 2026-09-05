@@ -505,4 +505,27 @@ router.get('/:id/stock-movements', authenticate, requireRole('SELLER'), async (r
   }
 })
 
+// ─── Inventaire physique (LOT 6) ────────────────────────────────────────────
+// Compte terrain plutôt qu'un delta connu (ADJUSTMENT) — l'écart avec la
+// position système est calculé et tracé par le Stock Engine, jamais saisi
+// directement par le vendeur.
+router.post('/:id/inventory-count', authenticate, requireRole('SELLER'), async (req, res) => {
+  const { countedQuantity, reason } = req.body
+  const counted = Number(countedQuantity)
+  if (!Number.isInteger(counted) || counted < 0) return res.status(400).json({ error: 'countedQuantity doit être un entier ≥ 0' })
+
+  try {
+    const shop = await prisma.shop.findUnique({ where: { userId: req.user.id } })
+    const product = await prisma.product.findFirst({ where: { id: Number(req.params.id), shopId: shop?.id } })
+    if (!product) return res.status(404).json({ error: 'Produit introuvable' })
+
+    const result = await stockEngine.applyInventoryCount(prisma, {
+      productId: product.id, countedQuantity: counted, actorId: req.user.id, reason: reason?.trim() || null,
+    })
+    res.status(201).json(result)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 module.exports = router

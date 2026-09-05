@@ -56,8 +56,10 @@ const ADJUST_TYPES = [
 ]
 
 function StockAdjustModal({ product, onClose, onSaved }) {
+  const [mode, setMode] = useState('movement') // 'movement' | 'inventory'
   const [type, setType] = useState('RECEPTION')
   const [quantity, setQuantity] = useState('')
+  const [countedQuantity, setCountedQuantity] = useState('')
   const [reason, setReason] = useState('')
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -71,8 +73,25 @@ function StockAdjustModal({ product, onClose, onSaved }) {
       .finally(() => setLoadingHistory(false))
   }, [product.id])
 
+  const inventoryDelta = countedQuantity !== '' ? Number(countedQuantity) - product.stock : null
+
   const submit = async () => {
     setError(null)
+    if (mode === 'inventory') {
+      const counted = Number(countedQuantity)
+      if (!Number.isInteger(counted) || counted < 0) return setError('Quantité comptée invalide.')
+      setSaving(true)
+      try {
+        await api.post(`/products/${product.id}/inventory-count`, { countedQuantity: counted, reason: reason.trim() || undefined })
+        onSaved()
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+
     const qty = Number(quantity)
     if (!Number.isInteger(qty) || qty === 0) return setError('Quantité invalide.')
     if (type !== 'ADJUSTMENT' && qty < 0) return setError('Utilisez une quantité positive pour ce type.')
@@ -110,35 +129,71 @@ function StockAdjustModal({ product, onClose, onSaved }) {
           </div>
         )}
 
-        <div className="space-y-3">
-          <div>
-            <label className="block font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-1.5">Type de mouvement</label>
-            <select value={type} onChange={e => setType(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-2xl border border-charcoal/10 bg-white font-dm text-sm">
-              {ADJUST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-            <p className="font-dm text-[11px] text-charcoal/35 mt-1">{ADJUST_TYPES.find(t => t.value === type)?.hint}</p>
-          </div>
-          <div>
-            <label className="block font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-1.5">
-              {type === 'ADJUSTMENT' ? 'Delta (peut être négatif)' : 'Quantité (sacs)'}
-            </label>
-            <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)}
-              placeholder={type === 'ADJUSTMENT' ? 'ex : -3 ou 5' : 'ex : 20'}
-              className="w-full px-4 py-2.5 rounded-2xl border border-charcoal/10 bg-white font-dm text-sm" />
-          </div>
-          <div>
-            <label className="block font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-1.5">Motif *</label>
-            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2}
-              placeholder="Obligatoire — ex : Livraison du 05/09, sacs mouillés en entrepôt…"
-              className="w-full px-4 py-2.5 rounded-2xl border border-charcoal/10 bg-white font-dm text-sm resize-none" />
-          </div>
+        <div className="flex rounded-2xl overflow-hidden border border-charcoal/10">
+          <button onClick={() => setMode('movement')}
+            className={`flex-1 py-2 font-syne text-xs font-bold transition-colors ${mode === 'movement' ? 'bg-charcoal text-white' : 'bg-white text-charcoal/50'}`}>
+            Mouvement
+          </button>
+          <button onClick={() => setMode('inventory')}
+            className={`flex-1 py-2 font-syne text-xs font-bold transition-colors ${mode === 'inventory' ? 'bg-charcoal text-white' : 'bg-white text-charcoal/50'}`}>
+            Inventaire physique
+          </button>
         </div>
+
+        {mode === 'movement' ? (
+          <div className="space-y-3">
+            <div>
+              <label className="block font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-1.5">Type de mouvement</label>
+              <select value={type} onChange={e => setType(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-2xl border border-charcoal/10 bg-white font-dm text-sm">
+                {ADJUST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              <p className="font-dm text-[11px] text-charcoal/35 mt-1">{ADJUST_TYPES.find(t => t.value === type)?.hint}</p>
+            </div>
+            <div>
+              <label className="block font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-1.5">
+                {type === 'ADJUSTMENT' ? 'Delta (peut être négatif)' : 'Quantité (sacs)'}
+              </label>
+              <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)}
+                placeholder={type === 'ADJUSTMENT' ? 'ex : -3 ou 5' : 'ex : 20'}
+                className="w-full px-4 py-2.5 rounded-2xl border border-charcoal/10 bg-white font-dm text-sm" />
+            </div>
+            <div>
+              <label className="block font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-1.5">Motif *</label>
+              <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2}
+                placeholder="Obligatoire — ex : Livraison du 05/09, sacs mouillés en entrepôt…"
+                className="w-full px-4 py-2.5 rounded-2xl border border-charcoal/10 bg-white font-dm text-sm resize-none" />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="font-dm text-xs text-charcoal/50">
+              Saisissez la quantité réellement comptée sur le terrain — l'écart avec le système est calculé et tracé automatiquement.
+            </p>
+            <div>
+              <label className="block font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-1.5">Quantité comptée (sacs)</label>
+              <input type="number" min="0" value={countedQuantity} onChange={e => setCountedQuantity(e.target.value)}
+                placeholder="ex : 92"
+                className="w-full px-4 py-2.5 rounded-2xl border border-charcoal/10 bg-white font-dm text-sm" />
+              {inventoryDelta !== null && !Number.isNaN(inventoryDelta) && (
+                <p className={`font-syne text-xs font-bold mt-1.5 ${inventoryDelta === 0 ? 'text-charcoal/40' : inventoryDelta > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                  Écart : {inventoryDelta > 0 ? '+' : ''}{inventoryDelta} sac{Math.abs(inventoryDelta) > 1 ? 's' : ''}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block font-syne text-[10px] font-bold uppercase tracking-wider text-charcoal/40 mb-1.5">Note (optionnel)</label>
+              <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2}
+                placeholder="ex : Comptage mensuel du 05/09"
+                className="w-full px-4 py-2.5 rounded-2xl border border-charcoal/10 bg-white font-dm text-sm resize-none" />
+            </div>
+          </div>
+        )}
 
         <button onClick={submit} disabled={saving}
           className="w-full py-2.5 rounded-2xl bg-[#E8A217] text-white font-syne text-sm font-bold hover:bg-[#d4901a] transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
           {saving && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-          Enregistrer le mouvement
+          {mode === 'inventory' ? 'Enregistrer l\'inventaire' : 'Enregistrer le mouvement'}
         </button>
 
         <div className="pt-2 border-t border-charcoal/6">

@@ -70,7 +70,7 @@ function DeliveryCodeBadge({ code }) {
   return (
     <div className="mt-2 flex items-center justify-between gap-2 bg-safran/10 border border-safran/30 rounded-xl px-3 py-2">
       <p className="font-dm text-xs text-charcoal/70">Code à communiquer au livreur à la remise :</p>
-      <span className="font-syne text-lg font-bold tracking-[0.3em] text-charcoal">{code}</span>
+      <span data-testid="delivery-code" className="font-syne text-lg font-bold tracking-[0.3em] text-charcoal">{code}</span>
     </div>
   )
 }

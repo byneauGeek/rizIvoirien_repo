@@ -132,7 +132,15 @@ export default function DeliveryTab({ onDelivered }) {
       await api.put(`/drivers/delivery/${order.id}/status`, { status: 'DELIVERED', otp: otp.trim() })
       setShowOtpInput(false); setOtp('')
       if (onDelivered) onDelivered()
-      load()
+      // LOT 17 : GET /drivers/active-delivery ne renvoie QUE PRET/CONFIRMED/
+      // IN_TRANSIT — un load() immédiat ici renvoie order:null et l'écran
+      // "Livraison réussie !" ci-dessous n'apparaît alors jamais, remplacé
+      // instantanément par l'état vide "Aucune livraison en cours" (trouvé
+      // par le premier test E2E de ce programme, jamais par les tests
+      // d'intégration API). Mise à jour locale optimiste : on sait déjà que
+      // ça a réussi, pas besoin de re-fetch pour l'afficher ; le poll
+      // périodique (20s) fera naturellement retomber sur l'état vide ensuite.
+      setOrder(prev => (prev ? { ...prev, status: 'DELIVERED' } : prev))
     } catch (err) { setAdvanceError(err.message || 'Code incorrect') }
     finally { setUpdating(false) }
   }

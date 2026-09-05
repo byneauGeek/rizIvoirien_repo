@@ -819,4 +819,91 @@ router.post('/my/plan-upgrade-request', authenticate, requireRole('DRIVER'), asy
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ─── LOT 7 (Arbitrage XXX RIZ) : tournées multi-arrêts (MVP) ────────────────
+// Une Route ne fait QUE grouper des Shipment déjà assignés à CE livreur — la
+// livraison réelle (OTP/QR, paiement) reste PUT /delivery/(b2b/):id/status,
+// inchangée. "arrive" et "complete" ne sont que des jalons de progression sur
+// la tournée, jamais un raccourci qui contournerait la preuve de livraison.
+
+// GET /api/drivers/routes/active — tournée en cours (ou planifiée) du livreur.
+router.get('/routes/active', authenticate, requireRole('DRIVER'), async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } })
+    if (!driver) return res.status(404).json({ error: 'Profil livreur introuvable' })
+
+    const route = await prisma.route.findFirst({
+      where: { driverId: driver.id, status: { in: ['PLANNED', 'IN_PROGRESS'] } },
+      orderBy: { createdAt: 'desc' },
+      include: { stops: { orderBy: { order: 'asc' }, include: { shipment: true } } },
+    })
+    res.json({ route })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// PUT /api/drivers/routes/:routeId/stops/:stopId/arrive — le livreur arrive à cet arrêt.
+router.put('/routes/:routeId/stops/:stopId/arrive', authenticate, requireRole('DRIVER'), async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } })
+    if (!driver) return res.status(404).json({ error: 'Profil livreur introuvable' })
+
+    const route = await prisma.route.findUnique({ where: { id: Number(req.params.routeId) } })
+    if (!route || route.driverId !== driver.id) return res.status(404).json({ error: 'Tournée introuvable' })
+    const stop = await prisma.routeStop.findUnique({ where: { id: Number(req.params.stopId) } })
+    if (!stop || stop.routeId !== route.id) return res.status(404).json({ error: 'Arrêt introuvable' })
+    if (stop.status !== 'PENDING') return res.status(400).json({ error: `Arrêt déjà ${stop.status.toLowerCase()}` })
+
+    const [updatedStop] = await prisma.$transaction([
+      prisma.routeStop.update({ where: { id: stop.id }, data: { status: 'ARRIVED', arrivedAt: new Date() } }),
+      ...(route.status === 'PLANNED'
+        ? [prisma.route.update({ where: { id: route.id }, data: { status: 'IN_PROGRESS', startedAt: new Date() } })]
+        : []),
+    ])
+    res.json({ stop: updatedStop })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// PUT /api/drivers/routes/:routeId/stops/:stopId/complete — clôture l'arrêt
+// UNE FOIS que le Shipment sous-jacent est réellement terminé (DELIVERED ou
+// FAILED, via le pipeline OTP/QR existant) — jamais un raccourci qui
+// marquerait l'arrêt "fait" sans preuve de livraison réelle.
+router.put('/routes/:routeId/stops/:stopId/complete', authenticate, requireRole('DRIVER'), async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } })
+    if (!driver) return res.status(404).json({ error: 'Profil livreur introuvable' })
+
+    const route = await prisma.route.findUnique({ where: { id: Number(req.params.routeId) }, include: { stops: true } })
+    if (!route || route.driverId !== driver.id) return res.status(404).json({ error: 'Tournée introuvable' })
+    const stop = route.stops.find(s => s.id === Number(req.params.stopId))
+    if (!stop) return res.status(404).json({ error: 'Arrêt introuvable' })
+    if (['COMPLETED', 'FAILED'].includes(stop.status)) return res.status(400).json({ error: 'Arrêt déjà clôturé' })
+
+    const shipment = await prisma.shipment.findUnique({ where: { id: stop.shipmentId } })
+    if (!['DELIVERED', 'FAILED'].includes(shipment.status)) {
+      return res.status(400).json({ error: 'La livraison de cet arrêt n\'est pas encore terminée — complétez-la d\'abord (code ou QR) avant de clôturer l\'arrêt' })
+    }
+
+    const newStopStatus = shipment.status === 'DELIVERED' ? 'COMPLETED' : 'FAILED'
+    const otherStopsTerminal = route.stops
+      .filter(s => s.id !== stop.id)
+      .every(s => ['COMPLETED', 'FAILED'].includes(s.status))
+
+    const [updatedStop] = await prisma.$transaction([
+      prisma.routeStop.update({
+        where: { id: stop.id },
+        data: { status: newStopStatus, departedAt: new Date(), failureReason: shipment.failureReason },
+      }),
+      ...(otherStopsTerminal
+        ? [prisma.route.update({ where: { id: route.id }, data: { status: 'COMPLETED', completedAt: new Date() } })]
+        : []),
+    ])
+    res.json({ stop: updatedStop, routeCompleted: otherStopsTerminal })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 module.exports = router

@@ -1508,6 +1508,130 @@ router.delete('/logistics/pricing-rules/:id', ...guard, async (req, res) => {
   }
 })
 
+// ─── Logistique — LOT 7 (Arbitrage XXX RIZ) : tournées multi-arrêts (MVP) ──
+// Une Route ne fait QUE grouper des Shipment déjà existants (créés
+// normalement, driver déjà assigné) et suivre leur ordre de passage — PAS de
+// VRP/optimisation, l'admin choisit et ordonne manuellement. La livraison
+// réelle (OTP/QR, paiement) continue de passer par les routes existantes
+// PUT /drivers/delivery/(b2b/):id/status, inchangées.
+router.get('/logistics/routes', ...guard, async (req, res) => {
+  const { driverId, status } = req.query
+  try {
+    const routes = await prisma.route.findMany({
+      where: {
+        ...(driverId && { driverId: Number(driverId) }),
+        ...(status && { status }),
+      },
+      include: {
+        driver: { select: { id: true, user: { select: { name: true } } } },
+        stops: { orderBy: { order: 'asc' }, include: { shipment: { select: { id: true, status: true, dropoffAddress: true, orderId: true, b2bTransactionId: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    res.json({ routes })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.get('/logistics/routes/:id', ...guard, async (req, res) => {
+  try {
+    const route = await prisma.route.findUnique({
+      where: { id: Number(req.params.id) },
+      include: {
+        driver: { select: { id: true, user: { select: { name: true, phone: true } } } },
+        stops: { orderBy: { order: 'asc' }, include: { shipment: true } },
+      },
+    })
+    if (!route) return res.status(404).json({ error: 'Tournée introuvable' })
+    res.json({ route })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/logistics/routes', ...guard, async (req, res) => {
+  const { driverId } = req.body
+  if (!driverId) return res.status(400).json({ error: 'driverId requis' })
+  try {
+    const driver = await prisma.driver.findUnique({ where: { id: Number(driverId) } })
+    if (!driver) return res.status(404).json({ error: 'Livreur introuvable' })
+    const route = await prisma.route.create({ data: { driverId: Number(driverId) } })
+    setImmediate(() => logAction(req.user.id, 'ROUTE_CREATE', 'Route', route.id, { driverId }))
+    res.status(201).json({ route })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Un Shipment ajouté à une tournée doit déjà être assigné au MÊME livreur —
+// une Route ne réassigne jamais un Shipment, elle groupe des Shipment déjà
+// affectés (voir POST /logistics/b2b/:id/assign, offres acceptées côté B2C).
+router.post('/logistics/routes/:id/stops', ...guard, async (req, res) => {
+  const { shipmentId, order } = req.body
+  if (!shipmentId || !(order > 0)) return res.status(400).json({ error: 'shipmentId et order (> 0) requis' })
+  try {
+    const route = await prisma.route.findUnique({ where: { id: Number(req.params.id) } })
+    if (!route) return res.status(404).json({ error: 'Tournée introuvable' })
+    if (['COMPLETED', 'CANCELLED'].includes(route.status)) return res.status(400).json({ error: 'Cette tournée est déjà terminée' })
+
+    const shipment = await prisma.shipment.findUnique({ where: { id: Number(shipmentId) } })
+    if (!shipment) return res.status(404).json({ error: 'Livraison introuvable' })
+    if (shipment.driverId !== route.driverId) return res.status(400).json({ error: 'Cette livraison n\'est pas assignée au livreur de la tournée' })
+    if (['DELIVERED', 'FAILED', 'CANCELLED'].includes(shipment.status)) return res.status(400).json({ error: 'Cette livraison est déjà terminée' })
+
+    const stop = await prisma.routeStop.create({ data: { routeId: route.id, shipmentId: Number(shipmentId), order: Number(order) } })
+    setImmediate(() => logAction(req.user.id, 'ROUTE_STOP_ADD', 'RouteStop', stop.id, { routeId: route.id, shipmentId, order }))
+    res.status(201).json({ stop })
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'Cette livraison est déjà dans une tournée, ou cet ordre est déjà pris sur cette tournée' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.put('/logistics/routes/:id/stops/:stopId', ...guard, async (req, res) => {
+  const { order } = req.body
+  if (!(order > 0)) return res.status(400).json({ error: 'order (> 0) requis' })
+  try {
+    const stop = await prisma.routeStop.update({
+      where: { id: Number(req.params.stopId) },
+      data: { order: Number(order) },
+    })
+    setImmediate(() => logAction(req.user.id, 'ROUTE_STOP_REORDER', 'RouteStop', stop.id, { order }))
+    res.json({ stop })
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Arrêt introuvable' })
+    if (e.code === 'P2002') return res.status(409).json({ error: 'Cet ordre est déjà pris sur cette tournée' })
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.delete('/logistics/routes/:id/stops/:stopId', ...guard, async (req, res) => {
+  try {
+    const stop = await prisma.routeStop.findUnique({ where: { id: Number(req.params.stopId) } })
+    if (!stop) return res.status(404).json({ error: 'Arrêt introuvable' })
+    if (stop.status !== 'PENDING') return res.status(400).json({ error: 'Impossible de retirer un arrêt déjà en cours ou terminé' })
+    await prisma.routeStop.delete({ where: { id: stop.id } })
+    setImmediate(() => logAction(req.user.id, 'ROUTE_STOP_REMOVE', 'RouteStop', stop.id, {}))
+    res.status(204).end()
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.put('/logistics/routes/:id/cancel', ...guard, async (req, res) => {
+  try {
+    const route = await prisma.route.findUnique({ where: { id: Number(req.params.id) } })
+    if (!route) return res.status(404).json({ error: 'Tournée introuvable' })
+    if (route.status === 'COMPLETED') return res.status(400).json({ error: 'Une tournée déjà terminée ne peut pas être annulée' })
+    const updated = await prisma.route.update({ where: { id: route.id }, data: { status: 'CANCELLED' } })
+    setImmediate(() => logAction(req.user.id, 'ROUTE_CANCEL', 'Route', route.id, {}))
+    res.json({ route: updated })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // ─── Logistique — LOT 11 : réconciliation Comptabilité ↔ Logistique ────────
 // (arbitrage Décision 2, Option B) — les deux sources restent distinctes
 // (aucune donnée supprimée), mais deviennent enfin comparables au même

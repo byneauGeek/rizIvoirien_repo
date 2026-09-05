@@ -539,6 +539,33 @@ CREATE TABLE "Driver" (
 );
 
 -- CreateTable
+CREATE TABLE "Route" (
+    "id" SERIAL NOT NULL,
+    "driverId" INTEGER NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PLANNED',
+    "startedAt" TIMESTAMP(3),
+    "completedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Route_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "RouteStop" (
+    "id" SERIAL NOT NULL,
+    "routeId" INTEGER NOT NULL,
+    "shipmentId" INTEGER NOT NULL,
+    "order" INTEGER NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "arrivedAt" TIMESTAMP(3),
+    "departedAt" TIMESTAMP(3),
+    "failureReason" TEXT,
+
+    CONSTRAINT "RouteStop_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "DriverCurrentLocation" (
     "id" SERIAL NOT NULL,
     "driverId" INTEGER NOT NULL,
@@ -1291,6 +1318,21 @@ CREATE UNIQUE INDEX "Driver_userId_key" ON "Driver"("userId");
 CREATE UNIQUE INDEX "Driver_inviteCode_key" ON "Driver"("inviteCode");
 
 -- CreateIndex
+CREATE INDEX "Route_driverId_idx" ON "Route"("driverId");
+
+-- CreateIndex
+CREATE INDEX "Route_status_idx" ON "Route"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "RouteStop_shipmentId_key" ON "RouteStop"("shipmentId");
+
+-- CreateIndex
+CREATE INDEX "RouteStop_routeId_idx" ON "RouteStop"("routeId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "RouteStop_routeId_order_key" ON "RouteStop"("routeId", "order");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "DriverCurrentLocation_driverId_key" ON "DriverCurrentLocation"("driverId");
 
 -- CreateIndex
@@ -1586,6 +1628,15 @@ ALTER TABLE "Hub" ADD CONSTRAINT "Hub_zoneId_fkey" FOREIGN KEY ("zoneId") REFERE
 
 -- AddForeignKey
 ALTER TABLE "Driver" ADD CONSTRAINT "Driver_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Route" ADD CONSTRAINT "Route_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RouteStop" ADD CONSTRAINT "RouteStop_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "Route"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RouteStop" ADD CONSTRAINT "RouteStop_shipmentId_fkey" FOREIGN KEY ("shipmentId") REFERENCES "Shipment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DriverCurrentLocation" ADD CONSTRAINT "DriverCurrentLocation_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE CASCADE ON UPDATE CASCADE;

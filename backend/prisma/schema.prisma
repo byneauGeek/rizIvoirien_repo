@@ -643,6 +643,7 @@ model Shipment {
 
   events             ShipmentEvent[]
   verificationTokens DeliveryVerificationToken[]
+  routeStop          RouteStop?
 
   @@index([driverId])
   @@index([status])
@@ -859,6 +860,60 @@ model Driver {
   currentLocation     DriverCurrentLocation?
   locationHistory     DriverLocationHistory[]
   shipments           Shipment[]
+  routes              Route[]
+}
+
+// LOT 7 (Arbitrage XXX RIZ, "logistique multi-stops MVP") : regroupe
+// plusieurs Shipment déjà existants (créés normalement via
+// createShipmentForOrder/createShipmentForB2BTransaction, inchangés) en une
+// seule tournée pour UN livreur — PAS un moteur d'optimisation de tournées
+// (VRP), juste un regroupement + séquencement manuel par l'admin. La preuve
+// de livraison (OTP/QR), le paiement du livreur, les statuts Order/
+// B2BTransaction restent intégralement gérés par deliveryLifecycle.js comme
+// avant — une Route ne fait QUE grouper des Shipment et suivre l'ordre de
+// passage, elle ne duplique aucune logique de livraison.
+model Route {
+  id          Int       @id @default(autoincrement())
+  driverId    Int
+  driver      Driver    @relation(fields: [driverId], references: [id])
+  status      String    @default("PLANNED") // PLANNED | IN_PROGRESS | COMPLETED | CANCELLED
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  stops RouteStop[]
+
+  @@index([driverId])
+  @@index([status])
+}
+
+model RouteStop {
+  id            Int       @id @default(autoincrement())
+  routeId       Int
+  route         Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  // Un Shipment ne peut être planifié que dans UNE tournée à la fois — la
+  // livraison "hors tournée" (le cas majoritaire aujourd'hui : un livreur, une
+  // course) n'est pas affectée, un Shipment sans RouteStop se comporte
+  // exactement comme avant ce lot.
+  shipmentId    Int       @unique
+  shipment      Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  // Séquence de passage voulue (1, 2, 3...), modifiable par l'admin tant que
+  // la tournée n'est pas terminée. Pas de contrainte d'ordre strict côté
+  // livreur dans ce MVP (pas de VRP) : c'est un guide d'affichage, pas un
+  // verrou qui empêcherait de traiter un arrêt hors séquence en cas d'imprévu
+  // terrain (ex. client absent, on passe au suivant).
+  order         Int
+  // Reflète l'état du Shipment sous-jacent, jamais un état parallèle inventé :
+  // COMPLETED/FAILED ne sont posés qu'après que le Shipment est réellement
+  // passé DELIVERED/FAILED via le pipeline existant (OTP/QR).
+  status        String    @default("PENDING") // PENDING | ARRIVED | COMPLETED | FAILED
+  arrivedAt     DateTime?
+  departedAt    DateTime?
+  failureReason String?
+
+  @@unique([routeId, order])
+  @@index([routeId])
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

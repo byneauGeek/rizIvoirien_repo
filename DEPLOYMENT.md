@@ -100,12 +100,49 @@ logs de build CI pour ce message avant de publier.
 - **Rétention GPS** : DriverLocationHistory est purgée automatiquement selon
   `gpsHistoryRetentionDays` — vérifier que cette durée est conforme à la
   politique de confidentialité affichée aux livreurs avant le lancement.
-- **Tests E2E (LOT17)** : `cd e2e && npm test` lance le cycle de livraison
-  complet dans un vrai navigateur (Playwright), contre une base SQLite
-  dédiée (`backend/prisma/e2e.db`, jamais dev.db). À exécuter avant tout
-  déploiement touchant au parcours livraison — c'est le seul test de ce
-  projet qui fait réellement passer par le frontend, pas seulement par
-  l'API.
+- **Tests E2E (LOT17, étendu LOT10 "Arbitrage XXX RIZ")** : `cd e2e && npm test`
+  lance 2 scénarios dans un vrai navigateur (Playwright), contre une base
+  SQLite dédiée (`backend/prisma/e2e.db`, jamais dev.db) — le cycle complet
+  via le code de secours OTP, et le cycle QR scanné + confirmation active de
+  l'acheteur. À exécuter avant tout déploiement touchant au parcours
+  livraison — c'est le seul test de ce projet qui fait réellement passer par
+  le frontend, pas seulement par l'API.
+
+## Logistique — programme "Arbitrage XXX RIZ" (LOT 1-11) — points spécifiques
+
+- **QR dynamique nécessite un contexte sécurisé (HTTPS)** : `html5-qrcode`
+  utilise `getUserMedia`, que les navigateurs bloquent silencieusement hors
+  HTTPS (sauf `localhost`) — sans certificat TLS valide en production, le
+  scanner QR du livreur affichera systématiquement "Caméra indisponible" et
+  personne ne pourra scanner. Vérifier que le domaine de production est bien
+  servi en HTTPS avant le lancement (généralement automatique chez la
+  plupart des hébergeurs modernes, mais à confirmer explicitement).
+- **Grille tarifaire (PricingRule)** : démarre VIDE en production (comme
+  VehicleType, LOT6/18) — tant qu'aucune règle n'est configurée pour un
+  (segment, niveau de service) donné, le calcul retombe automatiquement sur
+  l'ancien forfait (véhicule/plateforme), jamais une erreur ni un prix à 0
+  inventé. À configurer via `/admin` → Logistique → Tarification une fois les
+  vrais coûts internes par zone connus — sans ça, la tarification par zone
+  n'a aucun effet réel malgré une UI complète.
+- **Zones/Hubs** : comme PricingRule, aucune Zone n'existe par défaut — sans
+  zone créée, la résolution automatique de corridor (origine/destination) ne
+  peut jamais matcher, donc aucune PricingRule spécifique à un corridor ne
+  s'applique (seul un éventuel joker segment+serviceLevel le pourrait). À
+  peupler via `/admin` → Logistique → Zones/Hubs en cohérence avec les zones
+  de livraison réelles couvertes.
+- **`PlatformSettings.qrTokenTtlMinutes`** (15 min par défaut) : même
+  logique que `deliveryMaxPrice`/`gpsHistoryRetentionDays` déjà notés
+  ci-dessus — une valeur de démarrage raisonnable, pas un choix métier validé.
+- **Tournées multi-arrêts (Route/RouteStop)** : fonctionnalité opt-in, sans
+  effet sur le fonctionnement normal (une livraison simple sans tournée
+  associée se comporte exactement comme avant ce programme) — rien à
+  configurer pour l'activer, l'admin crée une tournée au cas par cas
+  (`/admin` → Logistique → Tournées) uniquement quand un livreur a
+  effectivement plusieurs livraisons groupées à effectuer.
+- **Capacités B2B additives (UserCapability)** : un compte peut désormais
+  cumuler son rôle principal et une ou plusieurs capacités secondaires
+  (Mon compte → Capacités B2B) sans compte supplémentaire — purement additif,
+  aucune migration de données existantes nécessaire.
 
 ## Checklist avant mise en production
 
@@ -120,6 +157,14 @@ logs de build CI pour ce message avant de publier.
 - [ ] `GET /api/health` répond `{ ok: true, db: 'ok' }`
 - [ ] Sauvegardes automatiques de la base PostgreSQL configurées côté hébergeur
 - [ ] Valeurs de PlatformSettings logistique (vitesse moyenne ETA, rétention
-      GPS, plafonds de frais par véhicule) revues avec l'équipe produit —
-      les défauts sont des points de départ, pas des choix validés
-- [ ] `cd e2e && npm test` passe contre le build à déployer
+      GPS, plafonds de frais par véhicule, durée de vie du QR) revues avec
+      l'équipe produit — les défauts sont des points de départ, pas des
+      choix validés
+- [ ] `cd e2e && npm test` passe contre le build à déployer (2 scénarios :
+      code de secours OTP, et QR scanné + confirmation active de l'acheteur)
+- [ ] Domaine de production servi en HTTPS (requis pour que le scanner QR du
+      livreur fonctionne — `getUserMedia` est bloqué hors contexte sécurisé)
+- [ ] Au moins une Zone et une règle de tarification (PricingRule) configurées
+      via `/admin` → Logistique si la tarification par zone doit être active
+      dès le lancement (sinon l'ancien forfait s'applique automatiquement,
+      ce qui n'est pas un blocage mais peut surprendre si non anticipé)

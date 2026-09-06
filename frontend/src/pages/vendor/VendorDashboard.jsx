@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, ClipboardList, Package, Store, FileText, LogOut, ChevronRight, AlertTriangle, Bell, Star, BarChart2, Crown } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Package, Store, FileText, LogOut, ChevronRight, AlertTriangle, Bell, Star, BarChart2, Crown, Sprout } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { api } from '../../api/client'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -157,6 +157,15 @@ export default function VendorDashboard() {
               </button>
             )
           })}
+
+          {/* LOT B2B-01 (audit XXX RIZ) : gap confirmé — aucun point d'entrée
+              vers l'activation B2B n'existait depuis l'espace vendeur (seule
+              AccountPage générique l'exposait, sans lien depuis ce dashboard). */}
+          <Link to="/account?tab=capabilities"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all text-white/40 hover:bg-white/5 hover:text-white/70">
+            <Sprout size={15} className="shrink-0" />
+            <span className="font-syne text-sm font-semibold flex-1">Filière B2B</span>
+          </Link>
         </nav>
 
         {/* Footer */}

@@ -48,7 +48,7 @@ router.get('/verifications', ...guard, async (req, res) => {
 // PUT /api/admin/b2b/verifications/:profileType/:id — VERIFIED | REJECTED (→ retour UNVERIFIED) | SUSPENDED | PENDING
 router.put('/verifications/:profileType/:id', ...guard, async (req, res) => {
   const { profileType, id } = req.params
-  const { verification } = req.body
+  const { verification, reason } = req.body
   const modelName = PROFILE_MODEL[profileType]
   if (!modelName) return res.status(400).json({ error: 'Type de profil invalide' })
   // REJECTED n'est pas un statut stocké (le cahier de cadrage n'en définit que 4) —
@@ -59,7 +59,10 @@ router.put('/verifications/:profileType/:id', ...guard, async (req, res) => {
   try {
     const profile = await prisma[modelName].update({
       where: { id: Number(id) },
-      data: { verification: nextStatus },
+      // LOT AUDIT-B2B-03 (audit XXX RIZ) : conserve le motif uniquement sur un
+      // refus ; toute autre décision l'efface (un profil VERIFIED/PENDING ne
+      // doit jamais afficher un motif de refus obsolète d'une tentative passée).
+      data: { verification: nextStatus, rejectionReason: verification === 'REJECTED' ? (reason || null) : null },
       include: { user: { select: { id: true, name: true } } },
     })
     // LOT B2B-8 : même correctif que pour notify() ci-dessous — attendu
@@ -72,7 +75,9 @@ router.put('/verifications/:profileType/:id', ...guard, async (req, res) => {
     const messages = {
       VERIFIED: 'Votre profil a été vérifié ✅',
       SUSPENDED: 'Votre profil a été suspendu par un administrateur.',
-      UNVERIFIED: verification === 'REJECTED' ? 'Votre demande de vérification a été refusée.' : 'Votre profil est repassé au statut non vérifié.',
+      UNVERIFIED: verification === 'REJECTED'
+        ? `Votre demande de vérification a été refusée.${reason ? ` Motif : ${reason}` : ''}`
+        : 'Votre profil est repassé au statut non vérifié.',
       PENDING: 'Votre demande de vérification est en cours de traitement.',
     }
     // LOT B2B-8 (audit XXX RIZ) : notification in-app attendue directement,

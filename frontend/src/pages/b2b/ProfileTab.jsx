@@ -128,6 +128,15 @@ export default function ProfileTab({ effectiveRole }) {
         </div>
       </div>
 
+      {/* LOT AUDIT-B2B-03 (audit XXX RIZ) : sans ce message, un refus était
+          indiscernable de "jamais candidaté" pour le titulaire du profil. */}
+      {profile?.verification === 'UNVERIFIED' && profile?.rejectionReason && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+          <AlertCircle size={14} className="text-amber-600 shrink-0" />
+          <p className="font-dm text-sm text-amber-700">Candidature précédente refusée — motif : {profile.rejectionReason}</p>
+        </div>
+      )}
+
       {error && (
         <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
           <AlertCircle size={14} className="text-red-500 shrink-0" />

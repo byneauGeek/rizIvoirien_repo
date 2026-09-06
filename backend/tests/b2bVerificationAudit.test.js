@@ -63,6 +63,31 @@ describe('LOT B2B-8 — traçabilité et notification sur changement de vérific
     expect(notif.message).toMatch(/refusée/i)
   })
 
+  // LOT AUDIT-B2B-03 (audit XXX RIZ)
+  test('REJECTED avec motif : le motif est stocké et repris dans la notification, puis effacé si re-vérifié', async () => {
+    const admin = await createUser('ADMIN')
+    const reg = await registerB2B('TRADER', { companyName: 'Négoce Test 2' })
+    const traderId = reg.body.user.trader.id
+    const traderUserId = reg.body.user.id
+
+    const rejected = await request(app).put(`/api/admin/b2b/verifications/TRADER/${traderId}`)
+      .set('Authorization', `Bearer ${signToken(admin)}`)
+      .send({ verification: 'REJECTED', reason: 'RCCM illisible' })
+    expect(rejected.status).toBe(200)
+    expect(rejected.body.rejectionReason).toBe('RCCM illisible')
+
+    await new Promise(r => setImmediate(r))
+    const notif = await prisma.notification.findFirst({
+      where: { userId: traderUserId, type: 'B2B_VERIFICATION' }, orderBy: { createdAt: 'desc' },
+    })
+    expect(notif.message).toMatch(/RCCM illisible/)
+
+    const approved = await request(app).put(`/api/admin/b2b/verifications/TRADER/${traderId}`)
+      .set('Authorization', `Bearer ${signToken(admin)}`)
+      .send({ verification: 'VERIFIED' })
+    expect(approved.body.rejectionReason).toBeNull()
+  })
+
   test('SUSPENDED : journalisé et notifié', async () => {
     const admin = await createUser('ADMIN')
     const reg = await registerB2B('COOPERATIVE', { name: 'Coop Test', responsable: 'Kouassi', region: 'Man' })

@@ -105,6 +105,12 @@ model Producer {
   // déjà existant dans GET /admin/b2b/verifications).
   documentUrl  String?
   verification String   @default("UNVERIFIED") // UNVERIFIED|PENDING|VERIFIED|SUSPENDED
+  // LOT AUDIT-B2B-03 (audit XXX RIZ) : REJECTED n'est pas un statut stocké
+  // (retombe sur UNVERIFIED, cf. b2bAdmin.js) — sans ce champ, un refus était
+  // indiscernable de "jamais candidaté", et le motif du refus perdu. Effacé à
+  // chaque nouvelle soumission (request-verification) et à chaque décision
+  // admin autre que REJECTED, pour ne jamais afficher un motif obsolète.
+  rejectionReason String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -126,6 +132,7 @@ model Cooperative {
   description  String?
   documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
   verification String   @default("UNVERIFIED")
+  rejectionReason String? // LOT AUDIT-B2B-03 — cf. commentaire sur Producer.rejectionReason
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -156,6 +163,7 @@ model Trader {
   zones        String?
   documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
   verification String   @default("UNVERIFIED")
+  rejectionReason String? // LOT AUDIT-B2B-03 — cf. commentaire sur Producer.rejectionReason
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -172,6 +180,7 @@ model Processor {
   zones        String?
   documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
   verification String   @default("UNVERIFIED")
+  rejectionReason String? // LOT AUDIT-B2B-03 — cf. commentaire sur Producer.rejectionReason
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -189,6 +198,7 @@ model Exporter {
   zones        String?
   documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
   verification String   @default("UNVERIFIED")
+  rejectionReason String? // LOT AUDIT-B2B-03 — cf. commentaire sur Producer.rejectionReason
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

@@ -363,6 +363,7 @@ function CapabilitiesTab() {
   const { updateUser } = useAuth()
   const { regions: CI_REGIONS } = useB2BReferenceData()
   const [active, setActive] = useState(null) // capacités déjà activées : { TRADER: {...profil}, ... }
+  const [shop, setShop] = useState(null)
   const [loading, setLoading] = useState(true)
   const [profileType, setProfileType] = useState(null)
   const [profile, setProfile] = useState({})
@@ -378,11 +379,30 @@ function CapabilitiesTab() {
         if (me[rel]) found[type] = me[rel]
       }
       setActive(found)
+      setShop(me.shop || null)
     }).catch(() => setActive({})).finally(() => setLoading(false))
   }, [])
 
   const selected = CAPABILITY_TYPES.find(p => p.type === profileType)
   const setP = (field) => (e) => setProfile(p => ({ ...p, [field]: e.target.value }))
+
+  // LOT B2B-02 (audit XXX RIZ) : gap confirmé — le formulaire redemandait
+  // "nom de l'entreprise"/"région" à un vendeur dont la boutique connaît déjà
+  // ces informations (Shop.businessName/Shop.location). Préremplit seulement
+  // (l'utilisateur reste libre de corriger), ne préremplit jamais par-dessus
+  // une saisie déjà en cours.
+  const startCapability = (type) => {
+    setProfileType(type)
+    if (!shop) return
+    const prefill = {}
+    if ((type === 'TRADER' || type === 'PROCESSOR' || type === 'EXPORTER') && shop.businessName) {
+      prefill.companyName = shop.businessName
+    }
+    if ((type === 'PRODUCER' || type === 'COOPERATIVE') && shop.location) {
+      prefill.region = shop.location
+    }
+    if (Object.keys(prefill).length) setProfile(p => ({ ...prefill, ...p }))
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -422,7 +442,7 @@ function CapabilitiesTab() {
           {CAPABILITY_TYPES.map(({ type, label, icon: Icon, desc }) => {
             const isActive = Boolean(active?.[type])
             return (
-              <button key={type} onClick={() => !isActive && setProfileType(type)} disabled={isActive}
+              <button key={type} onClick={() => !isActive && startCapability(type)} disabled={isActive}
                 className={`text-left bg-white border-2 rounded-2xl p-4 transition-colors ${
                   isActive ? 'border-green-200 bg-green-50/50 cursor-default' : 'border-charcoal/10 hover:border-forest'
                 }`}>

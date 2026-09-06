@@ -46,10 +46,18 @@ function VerificationsPanel() {
   useEffect(() => { load() }, [filter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setStatus = async (p, verification) => {
+    // LOT AUDIT-B2B-03 (audit XXX RIZ) : un refus sans motif était indiscernable
+    // d'un abandon de candidature pour le titulaire — demande le motif ici,
+    // seul point d'entrée réel de cette décision côté admin.
+    let reason
+    if (verification === 'REJECTED') {
+      reason = window.prompt('Motif du refus (affiché au candidat) :')
+      if (reason === null) return // annulé
+    }
     const key = `${p.profileType}-${p.id}`
     setBusyKey(key)
     try {
-      await api.put(`/admin/b2b/verifications/${p.profileType}/${p.id}`, { verification })
+      await api.put(`/admin/b2b/verifications/${p.profileType}/${p.id}`, { verification, reason })
       load()
     } catch (err) {
       setError(err.message)

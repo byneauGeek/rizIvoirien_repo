@@ -299,6 +299,50 @@ describe('B2B — admin : vérification, modération, stats', () => {
     expect(approve.body.verification).toBe('VERIFIED')
   })
 
+  // LOT AUDIT-B2B-05 (audit XXX RIZ)
+  test('la soumission notifie le candidat (confirmation) et l\'admin (id 1)', async () => {
+    const seller = await registerB2B('PRODUCER', { region: 'Soubré' })
+    const sellerUserId = seller.body.user.id
+    await request(app).put('/api/b2b/my-profile')
+      .set('Authorization', `Bearer ${seller.body.token}`)
+      .send({ documentUrl: 'https://res.cloudinary.com/test/rccm2.jpg' })
+
+    const res = await request(app).post('/api/b2b/my-profile/request-verification')
+      .set('Authorization', `Bearer ${seller.body.token}`)
+    expect(res.status).toBe(200)
+
+    const confirmation = await prisma.notification.findFirst({ where: { userId: sellerUserId, type: 'B2B_VERIFICATION' } })
+    expect(confirmation).toBeTruthy()
+    expect(confirmation.message).toMatch(/transmise/)
+
+    const adminNotif = await prisma.notification.findFirst({ where: { userId: 1, type: 'B2B_NEW_APPLICATION' } })
+    expect(adminNotif).toBeTruthy()
+    expect(adminNotif.message).toContain('PRODUCER')
+  })
+
+  test('resoumettre après un refus efface le motif de rejet précédent', async () => {
+    const admin = await createUser('ADMIN')
+    const seller = await registerB2B('PRODUCER', { region: 'Sinfra' })
+    await request(app).put('/api/b2b/my-profile')
+      .set('Authorization', `Bearer ${seller.body.token}`)
+      .send({ documentUrl: 'https://res.cloudinary.com/test/rccm3.jpg' })
+    await request(app).post('/api/b2b/my-profile/request-verification')
+      .set('Authorization', `Bearer ${seller.body.token}`)
+
+    const producer = await prisma.producer.findFirst({ where: { region: 'Sinfra' }, orderBy: { id: 'desc' } })
+    await request(app).put(`/api/admin/b2b/verifications/PRODUCER/${producer.id}`)
+      .set('Authorization', `Bearer ${signToken(admin)}`)
+      .send({ verification: 'REJECTED', reason: 'Document flou' })
+
+    const afterReject = await request(app).get('/api/b2b/my-profile').set('Authorization', `Bearer ${seller.body.token}`)
+    expect(afterReject.body.rejectionReason).toBe('Document flou')
+
+    const resubmit = await request(app).post('/api/b2b/my-profile/request-verification')
+      .set('Authorization', `Bearer ${seller.body.token}`)
+    expect(resubmit.status).toBe(200)
+    expect(resubmit.body.rejectionReason).toBeNull()
+  })
+
   test('les stats admin B2B reflètent l\'activité créée', async () => {
     const admin = await createUser('ADMIN')
     const stats = await request(app).get('/api/admin/b2b/stats').set('Authorization', `Bearer ${signToken(admin)}`)

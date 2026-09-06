@@ -141,3 +141,51 @@ describe('LOT 7 — résolution de litige avec décision de restockage explicite
     expect(posB.quantity).toBe(10)
   })
 })
+
+describe('LOT AUDIT-G2 — remboursement de litige crée une créance réelle contre la boutique', () => {
+  test('RESOLVED_REFUND crée un Receivable, débiteur = propriétaire de la boutique', async () => {
+    const admin = await createUser('ADMIN')
+    const { dispute, order } = await createDeliveredOrderWithDispute()
+    const shop = await prisma.shop.findUnique({ where: { id: order.shopId } })
+
+    const res = await request(app).put(`/api/disputes/${dispute.id}/resolve`)
+      .set('Authorization', `Bearer ${signToken(admin)}`)
+      .send({ status: 'RESOLVED_REFUND', refundAmount: 15000, restock: true })
+    expect(res.status).toBe(200)
+
+    const receivable = await prisma.receivable.findFirst({ where: { sourceType: 'DISPUTE_REFUND', sourceId: dispute.id } })
+    expect(receivable).toBeTruthy()
+    expect(receivable.debtorUserId).toBe(shop.userId)
+    expect(receivable.amount).toBe(15000)
+    expect(receivable.status).toBe('OPEN')
+  })
+
+  test('modifier une décision déjà résolue ne crée pas de second Receivable', async () => {
+    const admin = await createUser('ADMIN')
+    const { dispute } = await createDeliveredOrderWithDispute()
+
+    await request(app).put(`/api/disputes/${dispute.id}/resolve`)
+      .set('Authorization', `Bearer ${signToken(admin)}`)
+      .send({ status: 'RESOLVED_REFUND', refundAmount: 10000, restock: true })
+    await request(app).put(`/api/disputes/${dispute.id}/resolve`)
+      .set('Authorization', `Bearer ${signToken(admin)}`)
+      .send({ status: 'RESOLVED_REFUND', refundAmount: 15000, resolution: 'Montant corrigé', restock: true })
+
+    const receivables = await prisma.receivable.findMany({ where: { sourceType: 'DISPUTE_REFUND', sourceId: dispute.id } })
+    expect(receivables).toHaveLength(1)
+    expect(receivables[0].amount).toBe(10000) // montant de la PREMIÈRE résolution, pas rejoué
+  })
+
+  test('RESOLVED_REJECTED ne crée aucun Receivable', async () => {
+    const admin = await createUser('ADMIN')
+    const { dispute } = await createDeliveredOrderWithDispute()
+
+    const res = await request(app).put(`/api/disputes/${dispute.id}/resolve`)
+      .set('Authorization', `Bearer ${signToken(admin)}`)
+      .send({ status: 'RESOLVED_REJECTED' })
+    expect(res.status).toBe(200)
+
+    const receivable = await prisma.receivable.findFirst({ where: { sourceType: 'DISPUTE_REFUND', sourceId: dispute.id } })
+    expect(receivable).toBeNull()
+  })
+})

@@ -99,7 +99,7 @@ router.put('/:id/resolve', authenticate, requireRole('ADMIN'), async (req, res) 
   try {
     const existing = await prisma.dispute.findUnique({
       where: { id: Number(req.params.id) },
-      include: { order: { include: { items: true } } },
+      include: { order: { include: { items: true, shop: { select: { userId: true, name: true } } } } },
     })
     if (!existing) return res.status(404).json({ error: 'Litige introuvable' })
 
@@ -134,6 +134,28 @@ router.put('/:id/resolve', authenticate, requireRole('ADMIN'), async (req, res) 
       }
       // isFirstRefundResolution && !restock : aucun mouvement — la vente
       // d'origine (SALE) reste la trace correcte, l'article n'est pas revenu.
+
+      // LOT AUDIT-G2 (audit XXX RIZ) : un remboursement n'existait que comme
+      // statut déclaratif sur Dispute — aucune écriture financière réelle,
+      // contrairement au principe déjà affirmé ailleurs dans ce module ("toute
+      // opération financière doit pouvoir être reliée à son origine métier").
+      // Modélisé en Receivable (le vendeur DOIT ce montant à la plateforme, qui
+      // l'a avancé au client), pas en Debt (qui représente l'inverse : la
+      // plateforme doit de l'argent À un bénéficiaire — sens opposé à un
+      // remboursement client déduit de la boutique). Uniquement à la PREMIÈRE
+      // résolution en RESOLVED_REFUND, comme le mouvement de stock ci-dessus,
+      // et seulement si un montant est réellement dû.
+      if (isFirstRefundResolution && Number(refundAmount) > 0 && existing.order?.shop?.userId) {
+        await tx.receivable.create({
+          data: {
+            debtorUserId: existing.order.shop.userId,
+            sourceType: 'DISPUTE_REFUND',
+            sourceId: existing.id,
+            amount: Number(refundAmount),
+            description: `Remboursement client — litige #${existing.id} (commande #${existing.orderId}, ${REASONS[existing.reason]})`,
+          },
+        })
+      }
 
       return updated
     })

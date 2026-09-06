@@ -1,6 +1,6 @@
 const request = require('supertest')
 const app = require('../src/index')
-const { createUser, prisma, signToken, uniqueEmail } = require('./helpers')
+const { createUser, createShopUser, prisma, signToken, uniqueEmail } = require('./helpers')
 
 async function registerB2B(profileType, profile, overrides = {}) {
   const email = overrides.email || uniqueEmail(profileType.toLowerCase())
@@ -341,6 +341,43 @@ describe('B2B — admin : vérification, modération, stats', () => {
       .set('Authorization', `Bearer ${seller.body.token}`)
     expect(resubmit.status).toBe(200)
     expect(resubmit.body.rejectionReason).toBeNull()
+  })
+
+  // LOT AUDIT-B2B-04 (audit XXX RIZ)
+  test('GET /admin/b2b/verifications/:type/:id renvoie la fiche complète (shop, historique)', async () => {
+    const { user: sellerUser, shop } = await createShopUser({ shopName: 'Boutique du Producteur' })
+    const admin = await createUser('ADMIN')
+
+    const capRes = await request(app).post('/api/auth/capabilities')
+      .set('Authorization', `Bearer ${signToken(sellerUser)}`)
+      .send({ profileType: 'PRODUCER', profile: { region: 'Daloa' } })
+    expect(capRes.status).toBe(201)
+    const producerId = capRes.body.profile.id
+
+    // Une décision passée doit apparaître dans l'historique de la fiche.
+    await request(app).put(`/api/admin/b2b/verifications/PRODUCER/${producerId}`)
+      .set('Authorization', `Bearer ${signToken(admin)}`)
+      .send({ verification: 'SUSPENDED' })
+
+    const detail = await request(app).get(`/api/admin/b2b/verifications/PRODUCER/${producerId}`)
+      .set('Authorization', `Bearer ${signToken(admin)}`)
+    expect(detail.status).toBe(200)
+    expect(detail.body.profile.region).toBe('Daloa')
+    expect(detail.body.shop.name).toBe('Boutique du Producteur')
+    expect(detail.body.shop._count).toHaveProperty('products')
+    expect(detail.body.history.length).toBeGreaterThanOrEqual(1)
+    expect(detail.body.history[0].adminName).toBe(admin.name)
+  })
+
+  test('un profil sans boutique (pas SELLER) renvoie shop: null', async () => {
+    const admin = await createUser('ADMIN')
+    const reg = await registerB2B('TRADER', { companyName: 'Sans Boutique SARL' })
+    const traderId = reg.body.user.trader.id
+
+    const detail = await request(app).get(`/api/admin/b2b/verifications/TRADER/${traderId}`)
+      .set('Authorization', `Bearer ${signToken(admin)}`)
+    expect(detail.status).toBe(200)
+    expect(detail.body.shop).toBeNull()
   })
 
   test('les stats admin B2B reflètent l\'activité créée', async () => {

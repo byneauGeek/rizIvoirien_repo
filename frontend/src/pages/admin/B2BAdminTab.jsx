@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, ShieldCheck, Flag, BarChart2, Package, Check, X, Ban, ListTree, Plus, Trash2 } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { AlertCircle, ShieldCheck, Flag, BarChart2, Package, Check, X, Ban, ListTree, Plus, Trash2, Eye, Store, Users, Clock, FileText } from 'lucide-react'
 import { api } from '../../api/client'
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
@@ -23,12 +24,165 @@ function ErrorBanner({ error, onRetry }) {
   )
 }
 
+// LOT AUDIT-B2B-04 (audit XXX RIZ) : gap confirmé — la liste n'exposait que
+// user{name,email,phone}, aucun contexte Shop (produits, commandes, note),
+// aucun historique. Fiche complète chargée à la demande (GET .../:type/:id).
+const PROFILE_FIELD_LABELS = {
+  region: 'Région', department: 'Département', commune: 'Commune', locality: 'Localité',
+  farmType: 'Type de production', surfaceHa: 'Superficie (ha)', capacityKg: 'Capacité (kg)',
+  description: 'Description', name: 'Nom', responsable: 'Responsable', zone: "Zone d'activité",
+  companyName: "Nom de l'entreprise", activity: 'Activité', zones: 'Zones recherchées',
+}
+
+function ProfileDetailModal({ profileType, id, onClose }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    api.get(`/admin/b2b/verifications/${profileType}/${id}`)
+      .then(setData)
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [profileType, id])
+
+  const { profile, shop, members, history } = data || {}
+
+  return (
+    <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <motion.div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl"
+        initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-charcoal/6 sticky top-0 bg-white z-10">
+          <div>
+            <p className="text-xs text-charcoal/40 font-medium">{profileType} #{id}</p>
+            <h3 className="font-bold text-charcoal">Fiche candidature B2B</h3>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-charcoal/8 rounded-lg transition-colors">
+            <X size={18} className="text-charcoal/50" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {loading ? (
+            <p className="text-center text-charcoal/40 py-8">Chargement…</p>
+          ) : error ? (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <AlertCircle size={14} className="text-red-500 shrink-0" />
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+          ) : (
+            <>
+              {/* Informations générales */}
+              <section>
+                <h4 className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40 mb-2">Informations générales</h4>
+                <div className="bg-charcoal/3 rounded-xl p-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <p><span className="text-charcoal/40">Nom / email :</span> {profile.user.name} · {profile.user.email}</p>
+                  <p><span className="text-charcoal/40">Téléphone :</span> {profile.user.phone || '—'}</p>
+                  <p><span className="text-charcoal/40">Compte créé le :</span> {new Date(profile.user.createdAt).toLocaleDateString('fr-FR')}</p>
+                  <p><span className="text-charcoal/40">Compte banni :</span> {profile.user.banned ? 'Oui' : 'Non'}</p>
+                  <p><span className="text-charcoal/40">Statut B2B :</span> {profile.verification}</p>
+                  {profile.rejectionReason && <p className="col-span-2 text-red-600"><span className="text-charcoal/40">Motif refus :</span> {profile.rejectionReason}</p>}
+                </div>
+              </section>
+
+              {/* Informations professionnelles */}
+              <section>
+                <h4 className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40 mb-2">Informations professionnelles déclarées</h4>
+                <div className="bg-charcoal/3 rounded-xl p-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  {Object.entries(PROFILE_FIELD_LABELS)
+                    .filter(([field]) => profile[field] !== undefined && profile[field] !== null && profile[field] !== '')
+                    .map(([field, label]) => (
+                      <p key={field}><span className="text-charcoal/40">{label} :</span> {String(profile[field])}</p>
+                    ))}
+                </div>
+              </section>
+
+              {/* Documents */}
+              <section>
+                <h4 className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40 mb-2 flex items-center gap-1.5"><FileText size={13} /> Documents</h4>
+                {profile.documentUrl ? (
+                  <a href={profile.documentUrl} target="_blank" rel="noreferrer" className="block">
+                    <img src={profile.documentUrl} alt="Pièce justificative" className="max-h-64 rounded-xl border border-charcoal/10" />
+                  </a>
+                ) : (
+                  <p className="text-sm text-red-500">Aucune pièce justificative fournie</p>
+                )}
+              </section>
+
+              {/* Activité boutique */}
+              <section>
+                <h4 className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40 mb-2 flex items-center gap-1.5"><Store size={13} /> Boutique associée</h4>
+                {shop ? (
+                  <div className="bg-charcoal/3 rounded-xl p-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <p><span className="text-charcoal/40">Nom :</span> {shop.name}{shop.businessName ? ` (${shop.businessName})` : ''}</p>
+                    <p><span className="text-charcoal/40">Statut :</span> {shop.status} {shop.active ? '· actif' : '· inactif'}</p>
+                    <p><span className="text-charcoal/40">Plan :</span> {shop.plan} {shop.certified ? '· certifié' : ''}</p>
+                    <p><span className="text-charcoal/40">Note :</span> {shop.rating}/5 ({shop.reviewCount} avis)</p>
+                    <p><span className="text-charcoal/40">Produits :</span> {shop._count.products}</p>
+                    <p><span className="text-charcoal/40">Commandes :</span> {shop._count.orders}</p>
+                    <p className="col-span-2"><span className="text-charcoal/40">Localisation :</span> {shop.location || '—'}</p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-charcoal/40">Ce compte n'a pas de boutique B2C (pas SELLER, ou boutique jamais créée).</p>
+                )}
+              </section>
+
+              {/* Membres (coopérative uniquement) */}
+              {profileType === 'COOPERATIVE' && (
+                <section>
+                  <h4 className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40 mb-2 flex items-center gap-1.5"><Users size={13} /> Membres ({members?.length || 0})</h4>
+                  {members?.length ? (
+                    <div className="space-y-1.5">
+                      {members.map(m => (
+                        <div key={m.id} className="bg-charcoal/3 rounded-xl px-4 py-2 text-sm flex items-center justify-between">
+                          <span>{m.producer.user.name} — {m.producer.region}</span>
+                          <span className="text-xs text-charcoal/40">{m.producer.verification}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-charcoal/40">Aucun membre enregistré.</p>
+                  )}
+                </section>
+              )}
+
+              {/* Historique */}
+              <section>
+                <h4 className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40 mb-2 flex items-center gap-1.5"><Clock size={13} /> Historique des décisions</h4>
+                {history?.length ? (
+                  <div className="space-y-1.5">
+                    {history.map(h => {
+                      let details = {}
+                      try { details = JSON.parse(h.details || '{}') } catch { /* ignore */ }
+                      return (
+                        <div key={h.id} className="bg-charcoal/3 rounded-xl px-4 py-2 text-sm flex items-center justify-between">
+                          <span>{details.verification || '—'} par {h.adminName || `admin #${h.adminId}`}</span>
+                          <span className="text-xs text-charcoal/40">{new Date(h.createdAt).toLocaleString('fr-FR')}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-charcoal/40">Aucune décision passée.</p>
+                )}
+              </section>
+            </>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
 function VerificationsPanel() {
   const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [busyKey, setBusyKey] = useState(null)
   const [filter, setFilter] = useState('PENDING')
+  const [detail, setDetail] = useState(null) // { profileType, id } | null
 
   const load = async () => {
     setLoading(true)
@@ -101,6 +255,10 @@ function VerificationsPanel() {
                   )}
                 </div>
                 <div className="flex gap-2">
+                  <button onClick={() => setDetail({ profileType: p.profileType, id: p.id })}
+                    className="flex items-center gap-1 bg-charcoal/5 text-charcoal font-syne text-xs font-bold px-3 py-1.5 rounded-xl">
+                    <Eye size={12} /> Voir la fiche
+                  </button>
                   <button onClick={() => setStatus(p, 'VERIFIED')} disabled={busyKey === key}
                     className="flex items-center gap-1 bg-green-50 text-green-700 font-syne text-xs font-bold px-3 py-1.5 rounded-xl disabled:opacity-50">
                     <Check size={12} /> Vérifier
@@ -118,6 +276,10 @@ function VerificationsPanel() {
             )
           })}
         </div>
+      )}
+
+      {detail && (
+        <ProfileDetailModal profileType={detail.profileType} id={detail.id} onClose={() => setDetail(null)} />
       )}
     </div>
   )

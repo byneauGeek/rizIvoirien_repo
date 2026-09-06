@@ -45,6 +45,61 @@ router.get('/verifications', ...guard, async (req, res) => {
   } catch (e) { sendError(res, e) }
 })
 
+// GET /api/admin/b2b/verifications/:profileType/:id — LOT AUDIT-B2B-04 (audit
+// XXX RIZ) : gap confirmé — la liste n'exposait que user{name,email,phone},
+// aucun contexte Shop (produits, commandes, note publique) pour un candidat
+// déjà SELLER, ni historique des décisions passées. Fiche à la demande
+// (pas incluse dans la liste : coûteux à charger pour chaque ligne d'une
+// file pouvant contenir de nombreux profils).
+router.get('/verifications/:profileType/:id', ...guard, async (req, res) => {
+  const { profileType, id } = req.params
+  const modelName = PROFILE_MODEL[profileType]
+  if (!modelName) return res.status(400).json({ error: 'Type de profil invalide' })
+  try {
+    const profile = await prisma[modelName].findUnique({
+      where: { id: Number(id) },
+      include: { user: { select: { id: true, name: true, email: true, phone: true, createdAt: true, banned: true } } },
+    })
+    if (!profile) return res.status(404).json({ error: 'Profil introuvable' })
+
+    const shop = await prisma.shop.findUnique({
+      where: { userId: profile.user.id },
+      select: {
+        id: true, name: true, businessName: true, rccm: true, description: true, speciality: true, since: true,
+        phone: true, email: true, location: true, avatar: true, coverImage: true, status: true, active: true,
+        plan: true, certified: true, rating: true, reviewCount: true, createdAt: true,
+        _count: { select: { products: true, orders: true } },
+      },
+    })
+
+    // Coopérative : la fiche admin doit permettre de comprendre l'organisation
+    // candidate (§8/§23 du cahier de cadrage) — membres réels, pas juste un
+    // compteur.
+    let members = null
+    if (profileType === 'COOPERATIVE') {
+      members = await prisma.cooperativeMember.findMany({
+        where: { cooperativeId: profile.id },
+        include: { producer: { select: { id: true, region: true, verification: true, user: { select: { name: true, email: true } } } } },
+        orderBy: { joinedAt: 'desc' },
+      })
+    }
+
+    const logs = await prisma.adminLog.findMany({
+      where: { action: 'B2B_VERIFICATION', targetType: profileType, targetId: profile.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    // AdminLog.adminId n'est pas une relation Prisma (Int simple) — jointure manuelle.
+    const adminIds = [...new Set(logs.map(l => l.adminId))]
+    const admins = adminIds.length
+      ? await prisma.user.findMany({ where: { id: { in: adminIds } }, select: { id: true, name: true } })
+      : []
+    const adminNameById = Object.fromEntries(admins.map(a => [a.id, a.name]))
+    const history = logs.map(l => ({ ...l, adminName: adminNameById[l.adminId] || null }))
+
+    res.json({ profileType, profile, shop, members, history })
+  } catch (e) { sendError(res, e) }
+})
+
 // PUT /api/admin/b2b/verifications/:profileType/:id — VERIFIED | REJECTED (→ retour UNVERIFIED) | SUSPENDED | PENDING
 router.put('/verifications/:profileType/:id', ...guard, async (req, res) => {
   const { profileType, id } = req.params

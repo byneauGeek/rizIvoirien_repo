@@ -177,7 +177,10 @@ router.get('/offers/mine', authenticate, requireRole(...OFFER_SELLER_ROLES), asy
     const actor = await myActor(req)
     if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
     const where = actor.modelName === 'producer' ? { producerId: actor.profile.id } : { cooperativeId: actor.profile.id }
-    const offers = await prisma.riceOffer.findMany({ where, orderBy: { createdAt: 'desc' } })
+    const offers = await prisma.riceOffer.findMany({
+      where, orderBy: { createdAt: 'desc' },
+      include: { ownerProducer: { select: { id: true, region: true, user: { select: { name: true } } } } },
+    })
     res.json({ offers })
   } catch (e) { sendError(res, e) }
 })
@@ -191,6 +194,7 @@ router.get('/offers/:id', async (req, res) => {
         // révèlent qu'après acceptation d'une demande de contact (b2bContact.js).
         producer: { select: { id: true, region: true, verification: true, user: { select: { id: true, name: true } } } },
         cooperative: { select: { id: true, name: true, region: true, verification: true, responsable: true, userId: true } },
+        ownerProducer: { select: { id: true, region: true, user: { select: { name: true } } } },
       },
     })
     if (!offer) return res.status(404).json({ error: 'Offre introuvable' })
@@ -198,8 +202,28 @@ router.get('/offers/:id', async (req, res) => {
   } catch (e) { sendError(res, e) }
 })
 
+// LOT AUDIT-OWN-01 (audit XXX RIZ) : ownerProducerId n'est accepté que pour
+// une offre COOPERATIVE, et seulement s'il référence un membre RÉEL et actif
+// de cette coopérative — jamais un producteur arbitraire (fuite d'attribution
+// vers un tiers sans lien réel avec la coopérative).
+async function resolveOwnerProducerId(actor, ownerProducerId) {
+  if (actor.modelName !== 'cooperative' || ownerProducerId === undefined || ownerProducerId === null || ownerProducerId === '') {
+    return null
+  }
+  const oid = Number(ownerProducerId)
+  const membership = await prisma.cooperativeMember.findUnique({
+    where: { cooperativeId_producerId: { cooperativeId: actor.profile.id, producerId: oid } },
+  })
+  if (!membership || !membership.active) {
+    const err = new Error("Le propriétaire doit être un membre actif de la coopérative")
+    err.status = 400
+    throw err
+  }
+  return oid
+}
+
 router.post('/offers', authenticate, requireRole(...OFFER_SELLER_ROLES), async (req, res) => {
-  const { product, variety, quantity, unit, region, availableFrom, quality, price, photos, status, minOrderQty } = req.body
+  const { product, variety, quantity, unit, region, availableFrom, quality, price, photos, status, minOrderQty, ownerProducerId } = req.body
   if (!product || !quantity || !unit || !region) return res.status(400).json({ error: 'Champs requis manquants' })
   const qty = Number(quantity)
   if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' })
@@ -221,10 +245,18 @@ router.post('/offers', authenticate, requireRole(...OFFER_SELLER_ROLES), async (
     if (!actor) return res.status(404).json({ error: 'Profil introuvable — complétez votre profil avant de publier' })
     if (actor.profile.verification === 'SUSPENDED') return res.status(403).json({ error: 'Votre profil est suspendu — contactez le support' })
 
+    let resolvedOwnerId
+    try {
+      resolvedOwnerId = await resolveOwnerProducerId(actor, ownerProducerId)
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message })
+    }
+
     const offer = await prisma.riceOffer.create({
       data: {
         producerId: actor.modelName === 'producer' ? actor.profile.id : null,
         cooperativeId: actor.modelName === 'cooperative' ? actor.profile.id : null,
+        ownerProducerId: resolvedOwnerId,
         product, variety: variety || null, quantity: qty, unit, region,
         availableFrom: availableFrom ? new Date(availableFrom) : null,
         quality: quality || null,
@@ -247,7 +279,7 @@ router.put('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), asyn
     const existing = await prisma.riceOffer.findFirst({ where: { id: Number(req.params.id), ...ownerWhere } })
     if (!existing) return res.status(404).json({ error: 'Offre introuvable' })
 
-    const EDITABLE = ['product', 'variety', 'quantity', 'minOrderQty', 'unit', 'region', 'availableFrom', 'quality', 'price', 'photos', 'status']
+    const EDITABLE = ['product', 'variety', 'quantity', 'minOrderQty', 'unit', 'region', 'availableFrom', 'quality', 'price', 'photos', 'status', 'ownerProducerId']
     const VALID_STATUS = ['DRAFT', 'AVAILABLE', 'RESERVED', 'SOLD', 'EXPIRED', 'DISABLED']
     const data = {}
     for (const field of EDITABLE) {
@@ -281,6 +313,12 @@ router.put('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), asyn
         data.availableFrom = req.body.availableFrom ? new Date(req.body.availableFrom) : null
       } else if (field === 'photos') {
         data.photos = JSON.stringify(req.body.photos || [])
+      } else if (field === 'ownerProducerId') {
+        try {
+          data.ownerProducerId = await resolveOwnerProducerId(actor, req.body.ownerProducerId)
+        } catch (err) {
+          return res.status(err.status || 400).json({ error: err.message })
+        }
       } else {
         data[field] = req.body[field]
       }

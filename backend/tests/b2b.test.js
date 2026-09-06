@@ -186,6 +186,89 @@ describe('B2B — offres', () => {
     expect(res.body.offers.some(o => o.id === soon.body.id)).toBe(true)
     expect(res.body.offers.some(o => o.id === later.body.id)).toBe(false)
   })
+
+  // LOT AUDIT-OWN-01 (audit XXX RIZ)
+  test('une coopérative peut attribuer une offre à un membre actif', async () => {
+    const memberEmail = uniqueEmail('own-member')
+    await registerB2B('PRODUCER', { region: 'Man' }, { email: memberEmail })
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Own', responsable: 'X', region: 'Man' })
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coop.body.token}`).send({ producerEmail: memberEmail })
+    const member = await prisma.user.findUnique({ where: { email: memberEmail }, include: { producer: true } })
+
+    const created = await request(app).post('/api/b2b/offers')
+      .set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 100, unit: 'sac', region: 'Man', ownerProducerId: member.producer.id })
+    expect(created.status).toBe(201)
+    expect(created.body.ownerProducerId).toBe(member.producer.id)
+  })
+
+  test('ownerProducerId absent = propriété de la coopérative (jamais ambigu)', async () => {
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Own2', responsable: 'X', region: 'Man' })
+    const created = await request(app).post('/api/b2b/offers')
+      .set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 100, unit: 'sac', region: 'Man' })
+    expect(created.status).toBe(201)
+    expect(created.body.ownerProducerId).toBeNull()
+  })
+
+  test('rejette un ownerProducerId qui n\'est pas membre de la coopérative', async () => {
+    const outsiderEmail = uniqueEmail('own-outsider')
+    await registerB2B('PRODUCER', { region: 'Man' }, { email: outsiderEmail })
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Own3', responsable: 'X', region: 'Man' })
+    const outsider = await prisma.user.findUnique({ where: { email: outsiderEmail }, include: { producer: true } })
+
+    const res = await request(app).post('/api/b2b/offers')
+      .set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 100, unit: 'sac', region: 'Man', ownerProducerId: outsider.producer.id })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/membre actif/)
+  })
+
+  test('rejette un ownerProducerId d\'un membre désactivé', async () => {
+    const memberEmail = uniqueEmail('own-inactive')
+    await registerB2B('PRODUCER', { region: 'Man' }, { email: memberEmail })
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Own4', responsable: 'X', region: 'Man' })
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coop.body.token}`).send({ producerEmail: memberEmail })
+    const member = await prisma.user.findUnique({ where: { email: memberEmail }, include: { producer: true } })
+    await request(app).put(`/api/b2b/cooperative/members/${member.producer.id}`)
+      .set('Authorization', `Bearer ${coop.body.token}`).send({ active: false })
+
+    const res = await request(app).post('/api/b2b/offers')
+      .set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 100, unit: 'sac', region: 'Man', ownerProducerId: member.producer.id })
+    expect(res.status).toBe(400)
+  })
+
+  test('un PRODUCER individuel ne peut pas fixer ownerProducerId (ignoré silencieusement)', async () => {
+    const reg = await registerB2B('PRODUCER', { region: 'Bouaké' })
+    const other = await registerB2B('PRODUCER', { region: 'Man' })
+    const res = await request(app).post('/api/b2b/offers')
+      .set('Authorization', `Bearer ${reg.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 10, unit: 'tonne', region: 'Bouaké', ownerProducerId: other.body.user.producer.id })
+    expect(res.status).toBe(201)
+    expect(res.body.ownerProducerId).toBeNull()
+  })
+
+  test('PUT /offers/:id peut réattribuer le propriétaire ou revenir à la coopérative', async () => {
+    const memberEmail = uniqueEmail('own-reassign')
+    await registerB2B('PRODUCER', { region: 'Man' }, { email: memberEmail })
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Own5', responsable: 'X', region: 'Man' })
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coop.body.token}`).send({ producerEmail: memberEmail })
+    const member = await prisma.user.findUnique({ where: { email: memberEmail }, include: { producer: true } })
+
+    const created = await request(app).post('/api/b2b/offers')
+      .set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 100, unit: 'sac', region: 'Man' })
+    expect(created.body.ownerProducerId).toBeNull()
+
+    const assigned = await request(app).put(`/api/b2b/offers/${created.body.id}`)
+      .set('Authorization', `Bearer ${coop.body.token}`).send({ ownerProducerId: member.producer.id })
+    expect(assigned.body.ownerProducerId).toBe(member.producer.id)
+
+    const reverted = await request(app).put(`/api/b2b/offers/${created.body.id}`)
+      .set('Authorization', `Bearer ${coop.body.token}`).send({ ownerProducerId: '' })
+    expect(reverted.body.ownerProducerId).toBeNull()
+  })
 })
 
 describe('B2B — demandes d\'achat', () => {

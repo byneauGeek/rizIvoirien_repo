@@ -116,6 +116,7 @@ model Producer {
 
   cooperativeMemberships CooperativeMember[]
   offers                 RiceOffer[]
+  ownedOffers            RiceOffer[] @relation("RiceOfferOwner")
 
   @@index([region])
   @@index([verification])
@@ -240,6 +241,18 @@ model RiceOffer {
   minOrderQty   Float?
   photos        String       @default("[]")
   status        String       @default("DRAFT") // DRAFT|AVAILABLE|RESERVED|SOLD|EXPIRED|DISABLED
+  // LOT AUDIT-OWN-01 (audit XXX RIZ) : gap confirmé — une offre publiée par
+  // une COOPERATIVE (cooperativeId renseigné) n'avait aucun moyen d'indiquer
+  // que la marchandise appartient en réalité à un membre précis plutôt qu'à
+  // la coopérative elle-même. Relation distincte de `producerId` (qui reste
+  // "auteur de l'offre" pour un producteur publiant en son nom propre) —
+  // `ownerProducerId` n'est utilisé QUE sur une offre à `cooperativeId` non
+  // nul. Null = propriété de la coopérative (règle explicite, jamais une
+  // absence ambiguë) ; non-null = doit référencer un membre réel de CETTE
+  // coopérative (vérifié en route, pas en contrainte DB — CooperativeMember
+  // n'est pas une simple FK 1:1).
+  ownerProducerId Int?
+  ownerProducer   Producer?    @relation("RiceOfferOwner", fields: [ownerProducerId], references: [id])
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
@@ -250,6 +263,7 @@ model RiceOffer {
   @@index([product])
   @@index([producerId])
   @@index([cooperativeId])
+  @@index([ownerProducerId])
 }
 
 model PurchaseRequest {

@@ -15,6 +15,7 @@ export default function ListingsTab({ effectiveRole }) {
   const endpoint = isOffer ? '/b2b/offers' : '/b2b/requests'
   const statusLabels = isOffer ? OFFER_STATUS_LABEL : REQUEST_STATUS_LABEL
 
+  const isCooperative = (effectiveRole || user.role) === 'COOPERATIVE'
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -23,6 +24,7 @@ export default function ListingsTab({ effectiveRole }) {
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const [members, setMembers] = useState([]) // LOT AUDIT-OWN-01 : membres actifs, pour le sélecteur de propriétaire
 
   const load = async () => {
     setLoading(true)
@@ -39,6 +41,11 @@ export default function ListingsTab({ effectiveRole }) {
   }
 
   useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (isCooperative && isOffer) {
+      api.get('/b2b/cooperative/members?active=true').then(d => setMembers(d.members || [])).catch(() => {})
+    }
+  }, [isCooperative, isOffer])
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -51,6 +58,7 @@ export default function ListingsTab({ effectiveRole }) {
         ...form,
         quantity: Number(form.quantity),
         minOrderQty: form.minOrderQty ? Number(form.minOrderQty) : undefined,
+        ownerProducerId: form.ownerProducerId ? Number(form.ownerProducerId) : undefined,
       })
       setShowForm(false)
       setForm({ product: 'Riz paddy', quantity: '', unit: 'tonne', region: '' })
@@ -145,6 +153,20 @@ export default function ListingsTab({ effectiveRole }) {
                   className="w-full bg-cream border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm" />
                 <p className="font-dm text-[11px] text-charcoal/40 mt-1">En {form.unit} — un acheteur ne peut pas commander moins que ce seuil.</p>
               </div>
+              {/* LOT AUDIT-OWN-01 (audit XXX RIZ) : gap confirmé — une offre
+                  coopérative n'avait aucun moyen d'indiquer qu'elle appartient
+                  à un membre précis plutôt qu'à la coopérative elle-même. */}
+              {isCooperative && (
+                <div className="sm:col-span-2">
+                  <label className="font-syne text-xs font-bold uppercase text-charcoal/50 block mb-1.5">Propriétaire de la marchandise</label>
+                  <select value={form.ownerProducerId || ''} onChange={e => setForm(f => ({ ...f, ownerProducerId: e.target.value }))}
+                    className="w-full bg-cream border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm">
+                    <option value="">Coopérative</option>
+                    {members.map(m => <option key={m.producer.id} value={m.producer.id}>{m.producer.user?.name} ({m.producer.region})</option>)}
+                  </select>
+                  <p className="font-dm text-[11px] text-charcoal/40 mt-1">Laissez "Coopérative" si la marchandise n'appartient pas à un membre en particulier.</p>
+                </div>
+              )}
             </div>
           ) : (
             <div>
@@ -184,6 +206,7 @@ export default function ListingsTab({ effectiveRole }) {
                 <p className="font-dm text-sm text-charcoal/40">
                   {item.region}
                   {item.minOrderQty != null && ` · MOQ ${fmt(item.minOrderQty)} ${item.unit}`}
+                  {isCooperative && isOffer && ` · Propriétaire : ${item.ownerProducer ? item.ownerProducer.user.name : 'Coopérative'}`}
                 </p>
               </div>
               <div className="flex items-center gap-3">

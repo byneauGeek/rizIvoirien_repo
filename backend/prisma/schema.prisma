@@ -96,6 +96,14 @@ model Producer {
   capacityKg   Float?
   photo        String?
   description  String?
+  // LOT AUDIT-G13 (audit XXX RIZ) : gap confirmé — l'admin pouvait passer un
+  // profil B2B en VERIFIED sans qu'aucune pièce (RCCM, identité...) n'ait
+  // jamais été fournie, la vérification reposant uniquement sur des champs
+  // texte déclarés. Même convention que Producer.photo/Driver.idPhoto :
+  // une URL (photo du document), pas un upload PDF dédié — éditable par le
+  // titulaire via PUT /b2b/my-profile, visible par l'admin (spread `...p`
+  // déjà existant dans GET /admin/b2b/verifications).
+  documentUrl  String?
   verification String   @default("UNVERIFIED") // UNVERIFIED|PENDING|VERIFIED|SUSPENDED
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -116,6 +124,7 @@ model Cooperative {
   region       String
   zone         String?
   description  String?
+  documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
   verification String   @default("UNVERIFIED")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -145,6 +154,7 @@ model Trader {
   companyName  String
   activity     String?
   zones        String?
+  documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
   verification String   @default("UNVERIFIED")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -160,6 +170,7 @@ model Processor {
   user         User     @relation(fields: [userId], references: [id])
   companyName  String
   zones        String?
+  documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
   verification String   @default("UNVERIFIED")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -176,6 +187,7 @@ model Exporter {
   companyName  String
   capacityKg   Float?
   zones        String?
+  documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
   verification String   @default("UNVERIFIED")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

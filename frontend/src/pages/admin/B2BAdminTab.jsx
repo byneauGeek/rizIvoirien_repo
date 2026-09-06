@@ -84,6 +84,13 @@ function VerificationsPanel() {
                 <div>
                   <p className="font-syne font-bold text-charcoal text-sm">{p.label} <span className="text-charcoal/30 font-normal">— {p.profileType}</span></p>
                   <p className="font-dm text-xs text-charcoal/40">{p.user.email} · {p.user.phone || 'pas de téléphone'} · statut : {p.verification}</p>
+                  {/* LOT AUDIT-G13 (audit XXX RIZ) : gap confirmé — l'admin décidait sans jamais voir aucune pièce justificative */}
+                  {p.documentUrl ? (
+                    <a href={p.documentUrl} target="_blank" rel="noreferrer"
+                      className="font-syne text-xs font-bold text-forest hover:underline">Voir la pièce justificative</a>
+                  ) : (
+                    <p className="font-dm text-xs text-red-500">Aucune pièce justificative fournie</p>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setStatus(p, 'VERIFIED')} disabled={busyKey === key}

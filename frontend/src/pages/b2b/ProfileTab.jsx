@@ -4,6 +4,7 @@ import { api } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { useB2BReferenceData } from '../../hooks/useB2BReferenceData'
 import { VERIFICATION_LABEL } from './roleMeta'
+import ImageDropZone from '../../components/ui/ImageDropZone'
 
 const FIELDS = {
   PRODUCER: [
@@ -73,7 +74,7 @@ export default function ProfileTab({ effectiveRole }) {
     setSaved(false)
     setError(null)
     try {
-      const data = {}
+      const data = { documentUrl: profile.documentUrl ?? '' }
       for (const f of fields) data[f.name] = profile[f.name] ?? ''
       const updated = await api.put('/b2b/my-profile', data)
       setProfile(updated)
@@ -156,6 +157,21 @@ export default function ProfileTab({ effectiveRole }) {
           </div>
         ))}
         <datalist id="regions">{CI_REGIONS.map(r => <option key={r} value={r} />)}</datalist>
+
+        <div>
+          <label className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50 block mb-1.5">
+            Pièce justificative (RCCM, identité...)
+          </label>
+          <p className="font-dm text-xs text-charcoal/40 mb-2">
+            Requise pour que l'admin puisse vérifier votre profil — sans elle, votre demande de vérification reste bloquée en attente.
+          </p>
+          <ImageDropZone
+            url={profile?.documentUrl || ''}
+            onUpload={(url) => setProfile(p => ({ ...p, documentUrl: url }))}
+            label="Déposer une photo du document"
+            aspect="h-44"
+          />
+        </div>
 
         <button type="submit" disabled={saving}
           className="flex items-center gap-2 bg-forest text-cream font-syne font-bold px-6 py-3 rounded-2xl hover:bg-forest-dark transition-colors disabled:opacity-50">

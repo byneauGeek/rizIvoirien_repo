@@ -24,12 +24,15 @@ const PROFILE_MODEL = {
   EXPORTER: 'exporter',
 }
 
+// LOT AUDIT-G13 (audit XXX RIZ) : documentUrl éditable sur les 5 profils —
+// permet au titulaire de fournir une pièce justificative (RCCM, identité...)
+// avant de demander la vérification admin (POST .../request-verification).
 const EDITABLE_FIELDS = {
-  PRODUCER: ['region', 'department', 'commune', 'locality', 'farmType', 'surfaceHa', 'capacityKg', 'photo', 'description'],
-  COOPERATIVE: ['name', 'responsable', 'region', 'zone', 'description'],
-  TRADER: ['companyName', 'activity', 'zones'],
-  PROCESSOR: ['companyName', 'zones'],
-  EXPORTER: ['companyName', 'capacityKg', 'zones'],
+  PRODUCER: ['region', 'department', 'commune', 'locality', 'farmType', 'surfaceHa', 'capacityKg', 'photo', 'description', 'documentUrl'],
+  COOPERATIVE: ['name', 'responsable', 'region', 'zone', 'description', 'documentUrl'],
+  TRADER: ['companyName', 'activity', 'zones', 'documentUrl'],
+  PROCESSOR: ['companyName', 'zones', 'documentUrl'],
+  EXPORTER: ['companyName', 'capacityKg', 'zones', 'documentUrl'],
 }
 
 const NUMERIC_FIELDS = new Set(['surfaceHa', 'capacityKg'])
@@ -97,6 +100,12 @@ router.post('/my-profile/request-verification', authenticate, requireB2BRole, as
     if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
     if (actor.profile.verification === 'VERIFIED') return res.status(400).json({ error: 'Ce profil est déjà vérifié' })
     if (actor.profile.verification === 'PENDING') return res.status(400).json({ error: 'Une demande est déjà en cours' })
+    // LOT AUDIT-G13 (audit XXX RIZ) : sans cette vérification, un profil
+    // pouvait demander (et obtenir) VERIFIED sans jamais avoir fourni de
+    // pièce justificative.
+    if (!actor.profile.documentUrl) {
+      return res.status(400).json({ error: 'Ajoutez une pièce justificative (RCCM, identité...) avant de demander la vérification' })
+    }
 
     const updated = await prisma[actor.modelName].update({
       where: { id: actor.profile.id },

@@ -268,9 +268,23 @@ describe('B2B — admin : vérification, modération, stats', () => {
     expect(res.status).toBe(403)
   })
 
-  test('un utilisateur peut demander sa vérification, un admin peut l\'approuver', async () => {
+  // LOT AUDIT-G13 (audit XXX RIZ) : une pièce justificative (documentUrl)
+  // est désormais requise avant de pouvoir demander la vérification.
+  test('demander sa vérification sans pièce justificative est refusé', async () => {
+    const seller = await registerB2B('PRODUCER', { region: 'Gagnoa' })
+    const res = await request(app).post('/api/b2b/my-profile/request-verification')
+      .set('Authorization', `Bearer ${seller.body.token}`)
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/pièce justificative/)
+  })
+
+  test('un utilisateur peut demander sa vérification (après ajout d\'une pièce), un admin peut l\'approuver', async () => {
     const seller = await registerB2B('PRODUCER', { region: 'Divo' })
     const admin = await createUser('ADMIN')
+
+    await request(app).put('/api/b2b/my-profile')
+      .set('Authorization', `Bearer ${seller.body.token}`)
+      .send({ documentUrl: 'https://res.cloudinary.com/test/rccm.jpg' })
 
     const requestVerif = await request(app).post('/api/b2b/my-profile/request-verification')
       .set('Authorization', `Bearer ${seller.body.token}`)

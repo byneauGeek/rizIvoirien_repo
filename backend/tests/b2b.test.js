@@ -59,6 +59,20 @@ describe('B2B — inscription & profils', () => {
     expect(res.body.companyName).toBe('Nouveau nom')
     expect(res.body.verification).toBe('UNVERIFIED')
   })
+
+  // LOT AUDIT-G13 (audit XXX RIZ)
+  test('PUT /api/b2b/my-profile accepte documentUrl (pièce justificative)', async () => {
+    const reg = await registerB2B('COOPERATIVE', { name: 'Coop Test', responsable: 'Kouassi', region: 'Man' })
+    const res = await request(app)
+      .put('/api/b2b/my-profile')
+      .set('Authorization', `Bearer ${reg.body.token}`)
+      .send({ documentUrl: 'https://res.cloudinary.com/test/rccm-coop.jpg' })
+    expect(res.status).toBe(200)
+    expect(res.body.documentUrl).toBe('https://res.cloudinary.com/test/rccm-coop.jpg')
+
+    const getRes = await request(app).get('/api/b2b/my-profile').set('Authorization', `Bearer ${reg.body.token}`)
+    expect(getRes.body.documentUrl).toBe('https://res.cloudinary.com/test/rccm-coop.jpg')
+  })
 })
 
 describe('B2B — offres', () => {

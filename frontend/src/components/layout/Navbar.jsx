@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ShoppingBag, Menu, X, Search, Bell, User, ChevronDown, Package, LogOut, Settings, Heart, MailWarning } from 'lucide-react'
+import { ShoppingBag, Menu, X, Search, Bell, User, ChevronDown, Package, LogOut, Settings, Heart, MailWarning, Star, Truck, AlertTriangle, Crown, FileText } from 'lucide-react'
 import { useCart } from '../../context/CartContext'
 import { useAuth } from '../../context/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -14,6 +14,38 @@ const NAV_LINKS = [
 ]
 
 const ROLE_DASHBOARD = { SELLER: '/vendor', DRIVER: '/driver', ADMIN: '/admin', COMMERCIAL: '/commercial' }
+
+// LOT AUDIT-G6 (audit XXX RIZ) : la cloche était 100% générique (même <div>
+// pour ~20 types distincts, aucune icône ni navigation) — gap confirmé par
+// grep exhaustif de tous les appels notify() du backend. `path` reçoit le
+// user courant pour cibler le bon tableau de bord selon son rôle ; les types
+// B2B_* renvoient vers /account (onglet "Capacités B2B", LOT B2B-2) plutôt
+// qu'une route de profil spécifique (producer/cooperative/trader/...), le
+// type de notification ne permettant pas de savoir laquelle sans requête
+// supplémentaire.
+const NOTIF_META = {
+  NEW_ORDER:                 { icon: Package,       path: (u) => ROLE_DASHBOARD[u.role] || '/' },
+  ORDER_VALIDATED:           { icon: Package,       path: () => '/orders' },
+  ORDER_CANCELLED:           { icon: Package,       path: () => '/orders' },
+  ORDER_PENDING_VALIDATION:  { icon: Package,       path: () => '/orders' },
+  DELIVERED:                 { icon: Truck,         path: () => '/orders' },
+  LOW_STOCK:                 { icon: AlertTriangle, path: (u) => ROLE_DASHBOARD[u.role] || '/' },
+  NEW_DISPUTE:               { icon: AlertTriangle, path: () => '/admin' },
+  DISPUTE_UPDATE:            { icon: AlertTriangle, path: () => '/orders' },
+  MANUAL_ASSIGNMENT:         { icon: Truck,         path: () => '/driver' },
+  PLAN_UPGRADE_REQUEST:      { icon: Crown,         path: () => '/admin' },
+  PLAN_UPGRADE_APPROVED:     { icon: Crown,         path: (u) => ROLE_DASHBOARD[u.role] || '/' },
+  PLAN_UPGRADE_REJECTED:     { icon: Crown,         path: (u) => ROLE_DASHBOARD[u.role] || '/' },
+  NEW_REVIEW:                { icon: Star,          path: () => '/vendor' },
+  DELIVERY_CONFIRMED:        { icon: Truck,         path: () => '/driver' },
+}
+const notifMetaFor = (type) => {
+  if (NOTIF_META[type]) return NOTIF_META[type]
+  if (type?.startsWith('SHOP_'))   return { icon: Package,  path: () => '/vendor' }
+  if (type?.startsWith('DRIVER_')) return { icon: Truck,    path: () => '/driver' }
+  if (type?.startsWith('B2B_'))    return { icon: FileText, path: () => '/account' }
+  return { icon: Bell, path: () => null }
+}
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false)
@@ -204,12 +236,30 @@ export default function Navbar() {
                         <div className="max-h-72 overflow-y-auto">
                           {notifs.notifications.length === 0
                             ? <p className="font-dm text-sm text-charcoal/40 text-center py-8">Aucune notification</p>
-                            : notifs.notifications.slice(0, 10).map(n => (
-                              <div key={n.id} className={`px-4 py-3 border-b border-charcoal/4 ${!n.read ? 'bg-forest/4' : ''}`}>
-                                <p className="font-syne text-xs font-bold text-charcoal">{n.title}</p>
-                                <p className="font-dm text-xs text-charcoal/60 mt-0.5">{n.message}</p>
-                              </div>
-                            ))
+                            : notifs.notifications.slice(0, 10).map(n => {
+                              const { icon: Icon, path } = notifMetaFor(n.type)
+                              const target = path(user)
+                              return (
+                                <button key={n.id} onClick={() => {
+                                  setNotifOpen(false)
+                                  if (!n.read) {
+                                    api.put(`/notifications/${n.id}/read`).catch(() => {})
+                                    setNotifs(prev => ({
+                                      unread: Math.max(0, prev.unread - 1),
+                                      notifications: prev.notifications.map(x => x.id === n.id ? { ...x, read: true } : x),
+                                    }))
+                                  }
+                                  if (target) navigate(target)
+                                }}
+                                  className={`w-full text-left flex items-start gap-3 px-4 py-3 border-b border-charcoal/4 hover:bg-charcoal/3 transition-colors ${!n.read ? 'bg-forest/4' : ''}`}>
+                                  <Icon size={15} className="text-forest shrink-0 mt-0.5" />
+                                  <div className="min-w-0">
+                                    <p className="font-syne text-xs font-bold text-charcoal">{n.title}</p>
+                                    <p className="font-dm text-xs text-charcoal/60 mt-0.5">{n.message}</p>
+                                  </div>
+                                </button>
+                              )
+                            })
                           }
                         </div>
                         <div className="px-4 py-2 text-center">

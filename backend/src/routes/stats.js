@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 
 // GET /api/stats — stats publiques pour la homepage
 router.get('/', async (req, res) => {
@@ -18,7 +19,7 @@ router.get('/', async (req, res) => {
       deliveries: totalDeliveriesAgg._sum.totalDeliveries || 0,
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 

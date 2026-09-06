@@ -17,7 +17,7 @@ export default function CommercialNotes({ entityType, entityId }) {
     setFetching(true)
     api.get(endpoint)
       .then(d => setNotes(d.notes || []))
-      .catch(() => {})
+      .catch(e => setError(e.message))
       .finally(() => setFetching(false))
   }, [endpoint])
 

@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 
 // GET /api/reviews/product/:id — public
@@ -13,7 +14,7 @@ router.get('/product/:id', async (req, res) => {
     const avg = reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0
     res.json({ reviews, avg: Math.round(avg * 10) / 10, total: reviews.length })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -62,7 +63,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
 
     res.status(201).json(review)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 

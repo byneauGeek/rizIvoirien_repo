@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 
 // POST /api/shop-reviews — Acheteur note une boutique (après livraison)
@@ -46,7 +47,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
     })
 
     res.status(201).json(review)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/shop-reviews/:shopId — Liste des avis d'une boutique
@@ -59,7 +60,7 @@ router.get('/:shopId', async (req, res) => {
       take: 20,
     })
     res.json(reviews)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/shop-reviews/my/:shopId — Vérifier si l'acheteur a déjà noté
@@ -69,7 +70,7 @@ router.get('/my/:shopId', authenticate, async (req, res) => {
       where: { shopId_userId: { shopId: Number(req.params.shopId), userId: req.user.id } },
     })
     res.json({ review })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

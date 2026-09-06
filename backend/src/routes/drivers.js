@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, authenticateSSE, requireRole } = require('../middleware/auth')
 const { getSettings, driverRate } = require('../lib/settings')
 const deliveryLifecycle = require('../services/deliveryLifecycle')
@@ -45,7 +46,7 @@ router.get('/offers', authenticate, requireRole('DRIVER'), async (req, res) => {
     const commission = driverRate(settings, driver.plan)
     res.json({ offers, commission })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -150,7 +151,7 @@ router.post('/offers/:id/accept', authenticate, requireRole('DRIVER'), async (re
 
     res.json({ success: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -181,7 +182,7 @@ router.post('/offers/:id/refuse', authenticate, requireRole('DRIVER'), async (re
 
     res.json({ success: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -194,7 +195,7 @@ router.get('/me', authenticate, requireRole('DRIVER'), async (req, res) => {
     })
     if (!driver) return res.status(404).json({ error: 'Profil introuvable' })
     res.json(driver)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/drivers/vehicle-types — LOT 12 (Espace livreur) : ProfileTab.jsx
@@ -211,7 +212,7 @@ router.get('/vehicle-types', authenticate, requireRole('DRIVER'), async (req, re
       where: { active: true }, orderBy: { capacityKg: 'asc' }, select: { code: true, label: true },
     })
     res.json({ vehicleTypes })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/drivers/me/remunerations — LOT 7 (arbitrage Décision 2) : le livreur
@@ -236,7 +237,7 @@ router.get('/me/remunerations', authenticate, requireRole('DRIVER'), async (req,
         paymentOrder: r.paymentOrder,
       })),
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // PUT /api/drivers/profile — mise à jour profil complet
@@ -263,7 +264,7 @@ router.put('/profile', authenticate, requireRole('DRIVER'), async (req, res) => 
       include: { user: { select: { name: true, email: true, phone: true } } },
     })
     res.json(driver)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // PUT /api/drivers/status — livreur passe online/offline
@@ -281,7 +282,7 @@ router.put('/status', authenticate, requireRole('DRIVER'), async (req, res) => {
       data: { online: Boolean(online), available: Boolean(online) },
     })
     res.json({ online: updated.online })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/drivers/active-delivery — livraison en cours
@@ -317,7 +318,7 @@ router.get('/active-delivery', authenticate, requireRole('DRIVER'), async (req, 
     const commission = driverRate(settings, driver.plan)
     res.json({ order: order || null, commission, shipmentStatus })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -335,7 +336,7 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
   // reste un chemin complet vers DELIVERED, indépendant de ces deux statuts
   // (fallback contrôlé, voir deliveryLifecycle.js).
   const ALLOWED = ['IN_TRANSIT', 'ARRIVED', 'QR_SCANNED', 'DELIVERED', 'FAILED']
-  if (!ALLOWED.includes(status)) return res.status(400).json({ error: 'Statut invalide' })
+  if (!ALLOWED.includes(status)) return res.status(400).json({ error: `Statut invalide : "${status}" (attendu : ${ALLOWED.join(', ')})` })
   if (status === 'FAILED' && !failureReason?.trim()) {
     return res.status(400).json({ error: 'Un motif est requis pour signaler un échec de livraison' })
   }
@@ -416,7 +417,7 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
     res.json({ success: true })
   } catch (e) {
     if (e.code === 'INVALID_OTP' || e.code === 'INVALID_QR') return res.status(400).json({ error: e.message })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -433,7 +434,7 @@ router.put('/delivery/:orderId/status', authenticate, requireRole('DRIVER'), asy
 router.put('/delivery/b2b/:transactionId/status', authenticate, requireRole('DRIVER'), async (req, res) => {
   const { status, note, otp, failureReason, qrToken } = req.body
   const ALLOWED = ['IN_TRANSIT', 'ARRIVED', 'QR_SCANNED', 'DELIVERED', 'FAILED']
-  if (!ALLOWED.includes(status)) return res.status(400).json({ error: 'Statut invalide' })
+  if (!ALLOWED.includes(status)) return res.status(400).json({ error: `Statut invalide : "${status}" (attendu : ${ALLOWED.join(', ')})` })
   if (status === 'FAILED' && !failureReason?.trim()) {
     return res.status(400).json({ error: 'Un motif est requis pour signaler un échec de livraison' })
   }
@@ -464,7 +465,7 @@ router.put('/delivery/b2b/:transactionId/status', authenticate, requireRole('DRI
     res.json({ success: true })
   } catch (e) {
     if (e.code === 'INVALID_OTP' || e.code === 'INVALID_QR') return res.status(400).json({ error: e.message })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -547,7 +548,7 @@ router.get('/earnings', authenticate, requireRole('DRIVER'), async (req, res) =>
 
     res.json({ earnings, total, commission, monthlyData, dowEarnings, monthEarnings, plan: driver.plan })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -630,7 +631,7 @@ router.get('/performance', authenticate, requireRole('DRIVER'), async (req, res)
       },
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -685,7 +686,7 @@ const lastPruneAt = new Map()
 router.post('/location', authenticate, requireRole('DRIVER'), async (req, res) => {
   const { lat, lng, accuracy, orderId } = req.body
   if (lat == null || lng == null) return res.status(400).json({ error: 'lat et lng requis' })
-  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return res.status(400).json({ error: 'Coordonnées invalides' })
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return res.status(400).json({ error: `Coordonnées invalides : lat=${lat}, lng=${lng} (attendu : |lat| ≤ 90, |lng| ≤ 180)` })
 
   try {
     const driver = await prisma.driver.findUnique({ where: { userId: req.user.id } })
@@ -704,7 +705,7 @@ router.post('/location', authenticate, requireRole('DRIVER'), async (req, res) =
     }
 
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 async function pruneDriverLocationHistory(driverId) {
@@ -728,7 +729,7 @@ router.get('/contract', authenticate, requireRole('DRIVER'), async (req, res) =>
     const driver = await prisma.driver.findUnique({ where: { userId: req.user.id }, include: { contract: true } })
     if (!driver) return res.status(404).json({ error: 'Profil introuvable' })
     res.json({ contract: driver.contract, contractSigned: driver.contractSigned })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // PUT /api/drivers/contract/sign
@@ -742,7 +743,7 @@ router.put('/contract/sign', authenticate, requireRole('DRIVER'), async (req, re
       prisma.driver.update({ where: { id: driver.id }, data: { contractSigned: true } }),
     ])
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/drivers/plan-info — tarifs et fonctionnalités des plans livreur (accessible sans admin)
@@ -762,7 +763,7 @@ router.get('/plan-info', authenticate, requireRole('DRIVER'), async (req, res) =
       driverBasicFeatures:     settings.driverBasicFeatures   ?? null,
       driverPremiumFeatures:   settings.driverPremiumFeatures ?? null,
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/drivers/my/plan-upgrade-request — dernière demande de montée en plan
@@ -775,7 +776,7 @@ router.get('/my/plan-upgrade-request', authenticate, requireRole('DRIVER'), asyn
       orderBy: { createdAt: 'desc' },
     })
     res.json({ request })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // POST /api/drivers/my/plan-upgrade-request — demander le plan PREMIUM
@@ -816,7 +817,7 @@ router.post('/my/plan-upgrade-request', authenticate, requireRole('DRIVER'), asy
         `Le livreur "${req.user.name}" demande à passer en plan Premium.`, { requestId: request.id }).catch(() => {})
     })
     res.status(201).json(request)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── LOT 7 (Arbitrage XXX RIZ) : tournées multi-arrêts (MVP) ────────────────
@@ -838,7 +839,7 @@ router.get('/routes/active', authenticate, requireRole('DRIVER'), async (req, re
     })
     res.json({ route })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -862,7 +863,7 @@ router.put('/routes/:routeId/stops/:stopId/arrive', authenticate, requireRole('D
     ])
     res.json({ stop: updatedStop })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -902,7 +903,7 @@ router.put('/routes/:routeId/stops/:stopId/complete', authenticate, requireRole(
     ])
     res.json({ stop: updatedStop, routeCompleted: otherStopsTerminal })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 

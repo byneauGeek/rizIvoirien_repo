@@ -14,6 +14,7 @@
 //   créer l'ordre     → accounting.payments.create
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { requirePermission } = require('../middleware/accounting')
 const { getSettings, driverRate } = require('../lib/settings')
@@ -147,7 +148,7 @@ router.post('/calculate', authenticate, requirePermission('accounting.payroll.cr
     })
     setImmediate(() => logAction(req.user.id, 'REMUNERATION_CALCULATE', 'Remuneration', remuneration.id, { beneficiaryUserId, beneficiaryType, netAmount }))
     res.status(201).json(remuneration)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Consultation ─────────────────────────────────────────────────────────────
@@ -168,7 +169,7 @@ router.get('/', authenticate, requirePermission('accounting.payroll.view'), asyn
       prisma.remuneration.count({ where }),
     ])
     res.json({ remunerations, total })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/:id', authenticate, requirePermission('accounting.payroll.view'), async (req, res) => {
@@ -177,7 +178,7 @@ router.get('/:id', authenticate, requirePermission('accounting.payroll.view'), a
     if (!remuneration) return res.status(404).json({ error: 'Rémunération introuvable' })
     const beneficiary = await prisma.user.findUnique({ where: { id: remuneration.beneficiaryUserId }, select: { id: true, name: true, email: true, phone: true } })
     res.json({ ...remuneration, calculationDetail: JSON.parse(remuneration.calculationDetail || '[]'), beneficiary })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Workflow ─────────────────────────────────────────────────────────────────
@@ -190,7 +191,7 @@ router.post('/:id/submit', authenticate, requirePermission('accounting.payroll.c
     const updated = await prisma.remuneration.update({ where: { id: remuneration.id }, data: { status: 'PENDING_VALIDATION' } })
     setImmediate(() => logAction(req.user.id, 'REMUNERATION_SUBMIT', 'Remuneration', remuneration.id, {}))
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/:id/validate', authenticate, requirePermission('accounting.payroll.validate'), async (req, res) => {
@@ -204,7 +205,7 @@ router.post('/:id/validate', authenticate, requirePermission('accounting.payroll
     })
     setImmediate(() => logAction(req.user.id, 'REMUNERATION_VALIDATE', 'Remuneration', remuneration.id, { netAmount: remuneration.netAmount }))
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/:id/reject', authenticate, requirePermission('accounting.payroll.validate'), async (req, res) => {
@@ -220,7 +221,7 @@ router.post('/:id/reject', authenticate, requirePermission('accounting.payroll.v
     })
     setImmediate(() => logAction(req.user.id, 'REMUNERATION_REJECT', 'Remuneration', remuneration.id, { reason: reason.trim() }))
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/:id/cancel', authenticate, requirePermission('accounting.payroll.create'), async (req, res) => {
@@ -233,7 +234,7 @@ router.post('/:id/cancel', authenticate, requirePermission('accounting.payroll.c
     const updated = await prisma.remuneration.update({ where: { id: remuneration.id }, data: { status: 'CANCELLED' } })
     setImmediate(() => logAction(req.user.id, 'REMUNERATION_CANCEL', 'Remuneration', remuneration.id, {}))
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // POST /:id/create-payment-order — dernière étape du LOT 3 : la validation
@@ -290,7 +291,7 @@ router.post('/:id/create-payment-order', authenticate, requirePermission('accoun
 
     setImmediate(() => logAction(req.user.id, 'PAYMENT_ORDER_CREATE', 'PaymentOrder', order.id, { remunerationId: remuneration.id, amount: order.amount }))
     res.status(201).json(order)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

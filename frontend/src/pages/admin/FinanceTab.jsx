@@ -9,14 +9,29 @@ const C = { forest: '#1B4332', safran: '#E8A217', terra: '#C4501A', grid: '#f0f0
 export default function FinanceTab() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
-  useEffect(() => {
-    api.get('/admin/finance').then(setData).catch(() => {}).finally(() => setLoading(false))
-  }, [])
+  const load = () => {
+    setLoading(true); setError(null)
+    api.get('/admin/finance').then(setData).catch(e => setError(e.message)).finally(() => setLoading(false))
+  }
+
+  useEffect(load, [])
 
   if (loading) return (
     <div className="flex justify-center py-16">
       <div className="w-8 h-8 border-2 border-forest/20 border-t-forest rounded-full animate-spin" />
+    </div>
+  )
+
+  // Un échec de chargement ne doit jamais afficher un GMV/commission à 0 —
+  // un admin pourrait croire, à tort, que la plateforme n'a réellement rien
+  // généré (au lieu de "les chiffres n'ont pas pu être récupérés").
+  if (error) return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <p className="font-playfair text-xl font-bold text-charcoal mb-2">Impossible de charger les données financières</p>
+      <p className="font-dm text-charcoal/50 mb-6">{error}</p>
+      <button onClick={load} className="bg-forest text-cream font-syne font-bold px-6 py-2.5 rounded-xl hover:bg-forest-light transition-colors">Réessayer</button>
     </div>
   )
 

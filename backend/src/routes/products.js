@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { uploadCsv } = require('../middleware/upload')
 const Papa = require('papaparse')
@@ -128,7 +129,7 @@ router.get('/', async (req, res) => {
 
     res.json({ products, total, limit: Number(limit), offset: Number(offset) })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -143,7 +144,7 @@ router.get('/categories', async (req, res) => {
     })
     res.json(raw.map(r => ({ category: r.category, count: r._count.id })))
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -172,7 +173,7 @@ router.get('/shop/mine', authenticate, requireRole('SELLER'), async (req, res) =
 
     res.json({ products, total, limit: Number(limit), offset: Number(offset) })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -186,7 +187,7 @@ router.get('/:slug', async (req, res) => {
     if (!product) return res.status(404).json({ error: 'Produit introuvable' })
     res.json(product)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -244,7 +245,7 @@ router.post('/', authenticate, requireRole('SELLER'), async (req, res) => {
     })
     res.status(201).json(product)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -355,7 +356,7 @@ router.put('/:id', authenticate, requireRole('SELLER'), async (req, res) => {
 
     res.json(updated)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -380,7 +381,7 @@ router.get('/:id/history', authenticate, requireRole('SELLER'), async (req, res)
       changes: JSON.parse(h.changes),
     })))
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -396,7 +397,7 @@ router.delete('/:id', authenticate, requireRole('SELLER'), async (req, res) => {
     await prisma.product.update({ where: { id: product.id }, data: { active: false } })
     res.json({ success: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -450,7 +451,7 @@ router.post('/import-csv', authenticate, requireRole('SELLER'), uploadCsv.single
 
     res.json({ created: created.length, failed: failed.length, errors: failed })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -487,7 +488,7 @@ router.post('/:id/adjust-stock', authenticate, requireRole('SELLER'), async (req
     res.status(201).json(result)
   } catch (e) {
     if (e instanceof stockEngine.InsufficientStockError) return res.status(400).json({ error: e.message })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -501,7 +502,7 @@ router.get('/:id/stock-movements', authenticate, requireRole('SELLER'), async (r
     const movements = await stockEngine.listMovements(prisma, { productId: product.id, limit: req.query.limit, offset: req.query.offset })
     res.json({ movements })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -524,7 +525,7 @@ router.post('/:id/inventory-count', authenticate, requireRole('SELLER'), async (
     })
     res.status(201).json(result)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 

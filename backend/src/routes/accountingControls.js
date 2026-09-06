@@ -12,6 +12,7 @@
 // le LOT 2, mais rien ne l'appliquait jusqu'ici).
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { requirePermission } = require('../middleware/accounting')
 const { logAction } = require('../services/adminLog')
@@ -27,7 +28,7 @@ router.get('/reconcilable-accounts', authenticate, requirePermission('accounting
       where: { active: true }, select: { id: true, name: true, type: true, balance: true }, orderBy: { name: 'asc' },
     })
     res.json({ accounts })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/treasury/accounts/:id/reconciliation', authenticate, requirePermission('accounting.reconciliation.view'), async (req, res) => {
@@ -55,7 +56,7 @@ router.get('/treasury/accounts/:id/reconciliation', authenticate, requirePermiss
       reconciledTotal: sum(reconciled),
       unreconciledTotal: sum(unreconciled),
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/treasury/accounts/:id/reconcile', authenticate, requirePermission('accounting.reconciliation.manage'), async (req, res) => {
@@ -78,7 +79,7 @@ router.post('/treasury/accounts/:id/reconcile', authenticate, requirePermission(
     })
     setImmediate(() => logAction(req.user.id, reconciled ? 'RECONCILE_TRANSACTIONS' : 'UNRECONCILE_TRANSACTIONS', 'TreasuryAccount', accountId, { count: ids.length }))
     res.json({ updated: result.count })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Contrôles (§29) ────────────────────────────────────────────────────────────
@@ -105,7 +106,7 @@ router.get('/controls/treasury-consistency', authenticate, requirePermission('ac
       }
     }))
     res.json({ accounts: results, anomalies: results.filter(r => !r.consistent).length })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/controls/overdue', authenticate, requirePermission('accounting.reconciliation.view'), async (req, res) => {
@@ -116,7 +117,7 @@ router.get('/controls/overdue', authenticate, requirePermission('accounting.reco
       prisma.receivable.findMany({ where: { status: { in: ['OPEN', 'PARTIALLY_PAID', 'OVERDUE'] }, dueDate: { lt: now } }, orderBy: { dueDate: 'asc' } }),
     ])
     res.json({ debts, receivables })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/controls/overdue/refresh', authenticate, requirePermission('accounting.reconciliation.manage'), async (req, res) => {
@@ -128,7 +129,7 @@ router.post('/controls/overdue/refresh', authenticate, requirePermission('accoun
     ])
     setImmediate(() => logAction(req.user.id, 'OVERDUE_REFRESH', null, null, { debts: debts.count, receivables: receivables.count }))
     res.json({ debtsFlagged: debts.count, receivablesFlagged: receivables.count })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // Un Payment en PROCESSING n'a jamais été confirmé (succès ou échec) — signe
@@ -144,7 +145,7 @@ router.get('/controls/stale-payments', authenticate, requirePermission('accounti
       orderBy: { createdAt: 'asc' },
     })
     res.json({ payments, thresholdHours: hoursThreshold })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

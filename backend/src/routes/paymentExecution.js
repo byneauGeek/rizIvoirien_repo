@@ -19,6 +19,7 @@
 // réellement sorti.
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { requirePermission } = require('../middleware/accounting')
 const { nextReference } = require('../services/accountingSequence')
@@ -60,7 +61,7 @@ router.get('/payable-accounts', authenticate, requirePermission('accounting.paym
       orderBy: { name: 'asc' },
     })
     res.json({ accounts })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Création manuelle d'un ordre (dette/dépense/divers) ─────────────────────
@@ -101,7 +102,7 @@ router.post('/payment-orders', authenticate, requirePermission('accounting.payme
     })
     setImmediate(() => logAction(req.user.id, 'PAYMENT_ORDER_CREATE', 'PaymentOrder', order.id, { sourceType, amount: amt }))
     res.status(201).json(order)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Contrôle (§19) ───────────────────────────────────────────────────────────
@@ -150,7 +151,7 @@ router.post('/payment-orders/:id/control', authenticate, requirePermission('acco
     })
     setImmediate(() => logAction(req.user.id, 'PAYMENT_ORDER_REJECT', 'PaymentOrder', order.id, { reason: reason.trim() }))
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Annulation ───────────────────────────────────────────────────────────────
@@ -171,7 +172,7 @@ router.post('/payment-orders/:id/cancel', authenticate, requirePermission('accou
     })
     setImmediate(() => logAction(req.user.id, 'PAYMENT_ORDER_CANCEL', 'PaymentOrder', order.id, { reason: reason?.trim() || null }))
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Exécution (§20) — initie le paiement, ne débite pas encore la caisse ────
@@ -206,7 +207,7 @@ router.post('/payment-orders/:id/execute', authenticate, requirePermission('acco
     ])
     setImmediate(() => logAction(req.user.id, 'PAYMENT_EXECUTE', 'Payment', payment.id, { paymentOrderId: order.id, amount: order.amount }))
     res.status(201).json({ order: updatedOrder, payment })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Confirmation (§20) — succès (débite la caisse) ou échec réel ────────────
@@ -259,7 +260,7 @@ router.post('/payments/:id/confirm', authenticate, requirePermission('accounting
     })
     setImmediate(() => logAction(req.user.id, 'PAYMENT_CONFIRM', 'Payment', payment.id, { amount: payment.amount }))
     res.json({ order: updatedOrder, payment: updatedPayment })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

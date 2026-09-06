@@ -38,7 +38,7 @@ export default function VendorContractTab() {
         setContract(d.contract)
         setSigned(d.contractSigned || d.contract?.status === 'SIGNED')
       })
-      .catch(() => {})
+      .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
 

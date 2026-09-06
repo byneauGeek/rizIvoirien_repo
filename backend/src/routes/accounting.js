@@ -5,6 +5,7 @@
 // lots suivants.
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { ACCOUNTING_PERMISSIONS, requireAccountingRole } = require('../middleware/accounting')
 
@@ -21,7 +22,7 @@ router.get('/me', authenticate, requireAccountingRole, async (req, res) => {
       select: { permission: true },
     })
     res.json({ role: 'ACCOUNTANT', permissions: granted.map(g => g.permission) })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

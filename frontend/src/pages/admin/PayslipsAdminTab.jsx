@@ -296,7 +296,7 @@ export default function PayslipsAdminTab() {
       api.get('/admin/shops?status=ACTIVE'),
     ])
       .then(([d, s]) => { setDrivers(d.drivers || []); setShops(s.shops || []) })
-      .catch(() => {})
+      .catch(e => setError(e.message))
       .finally(() => setLoadingList(false))
   }, [])
 

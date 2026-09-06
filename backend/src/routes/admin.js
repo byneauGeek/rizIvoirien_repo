@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { logAction } = require('../services/adminLog')
 const { notify } = require('../services/notifications')
@@ -149,7 +150,7 @@ router.get('/analytics', ...guard, async (req, res) => {
       topProducts,
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -182,7 +183,7 @@ router.get('/orders', ...guard, async (req, res) => {
     ])
     res.json({ orders, total })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -217,7 +218,7 @@ router.get('/orders/:id/candidates', ...guard, async (req, res) => {
       .sort((a, b) => b.score - a.score)
     res.json({ candidates: scored })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -283,7 +284,7 @@ router.post('/orders/assign-group', ...guard, async (req, res) => {
 
     res.json({ assigned: results.length, orderIds: results.map(o => o.id) })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -346,7 +347,7 @@ router.post('/orders/:id/assign', ...guard, async (req, res) => {
 
     res.json(updated)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -371,7 +372,7 @@ router.get('/shops', ...commercialGuard, async (req, res) => {
     const counts = await prisma.shop.groupBy({ by: ['status'], _count: { id: true } })
     res.json({ shops, counts })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -379,7 +380,7 @@ router.get('/shops', ...commercialGuard, async (req, res) => {
 router.put('/shops/:id/status', ...commercialGuard, async (req, res) => {
   const { status, note } = req.body
   const VALID = ['ACTIVE', 'SUSPENDED', 'REJECTED', 'PENDING']
-  if (!VALID.includes(status)) return res.status(400).json({ error: 'Statut invalide' })
+  if (!VALID.includes(status)) return res.status(400).json({ error: `Statut invalide : "${status}" (attendu : ${VALID.join(', ')})` })
   try {
     const shop = await prisma.shop.update({
       where: { id: Number(req.params.id) },
@@ -419,7 +420,7 @@ router.put('/shops/:id/status', ...commercialGuard, async (req, res) => {
     }
     setImmediate(() => logAction(req.user.id, 'SHOP_STATUS', 'SHOP', shop.id, { status, note, shopName: shop.name }))
     res.json(shop)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/shops/:id/certify', ...commercialGuard, async (req, res) => {
@@ -439,7 +440,7 @@ router.put('/shops/:id/certify', ...commercialGuard, async (req, res) => {
     }
     setImmediate(() => logAction(req.user.id, 'SHOP_CERTIFY', 'SHOP', shop.id, { certified: Boolean(certified), plan: shop.plan, shopName: shop.name }))
     res.json(shop)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Onglet 4 : Gestion livreurs ──────────────────────────────────────────
@@ -461,7 +462,7 @@ router.get('/drivers', ...commercialGuard, async (req, res) => {
     const counts = await prisma.driver.groupBy({ by: ['status'], _count: { id: true } })
     res.json({ drivers, counts })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -469,7 +470,7 @@ router.get('/drivers', ...commercialGuard, async (req, res) => {
 router.put('/drivers/:id/status', ...commercialGuard, async (req, res) => {
   const { status, note } = req.body
   const VALID = ['ACTIVE', 'SUSPENDED', 'REJECTED', 'PENDING']
-  if (!VALID.includes(status)) return res.status(400).json({ error: 'Statut invalide' })
+  if (!VALID.includes(status)) return res.status(400).json({ error: `Statut invalide : "${status}" (attendu : ${VALID.join(', ')})` })
   try {
     const driver = await prisma.driver.update({
       where: { id: Number(req.params.id) },
@@ -504,7 +505,7 @@ router.put('/drivers/:id/status', ...commercialGuard, async (req, res) => {
     }
     setImmediate(() => logAction(req.user.id, 'DRIVER_STATUS', 'DRIVER', driver.id, { status, note, driverName: driver.user?.name }))
     res.json(driver)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/drivers/:id/plan', ...commercialGuard, async (req, res) => {
@@ -514,7 +515,7 @@ router.put('/drivers/:id/plan', ...commercialGuard, async (req, res) => {
     const driver = await prisma.driver.update({ where: { id: Number(req.params.id) }, data: { plan } })
     setImmediate(() => logAction(req.user.id, 'DRIVER_PLAN', 'DRIVER', driver.id, { plan }))
     res.json(driver)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/drivers/:id/clear-penalties', ...guard, async (req, res) => {
@@ -547,7 +548,7 @@ router.put('/drivers/:id/clear-penalties', ...guard, async (req, res) => {
       { previousWarnings: driver.warningCount, wasAutoSuspended: driver.autoSuspended }))
 
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/drivers/:id', ...guard, async (req, res) => {
@@ -563,7 +564,7 @@ router.put('/drivers/:id', ...guard, async (req, res) => {
     setImmediate(() => logAction(req.user.id, 'DRIVER_UPDATE', 'DRIVER', driver.id, { rating, available }))
     res.json(driver)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -574,7 +575,7 @@ router.get('/invite-codes', ...commercialGuard, async (req, res) => {
     const codes = await prisma.inviteCode.findMany({ orderBy: { createdAt: 'desc' } })
     res.json(codes)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -589,7 +590,7 @@ router.post('/invite-codes', ...commercialGuard, async (req, res) => {
     }
     res.status(201).json(created)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -603,7 +604,7 @@ router.get('/subscriptions', ...commercialGuard, async (req, res) => {
     })
     res.json(subs)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -622,7 +623,7 @@ router.put('/subscriptions/:id', ...guard, async (req, res) => {
     })
     setImmediate(() => logAction(req.user.id, 'SUBSCRIPTION_UPDATE', 'SUBSCRIPTION', sub.id, { plan, status, endDate, amount }))
     res.json(sub)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/subscriptions', ...guard, async (req, res) => {
@@ -638,14 +639,14 @@ router.post('/subscriptions', ...guard, async (req, res) => {
     await prisma.shop.update({ where: { id: Number(shopId) }, data: { plan, certified: plan === 'CERTIFIED' } })
     setImmediate(() => logAction(req.user.id, 'SUBSCRIPTION_CREATE', 'SUBSCRIPTION', sub.id, { shopId, plan, amount: amount ?? defaultAmount }))
     res.status(201).json(sub)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.delete('/subscriptions/:id', ...guard, async (req, res) => {
   try {
     await prisma.subscription.update({ where: { id: Number(req.params.id) }, data: { status: 'CANCELLED' } })
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/settings/plans', ...guard, async (req, res) => {
@@ -660,7 +661,7 @@ router.get('/settings/plans', ...guard, async (req, res) => {
       driverBasicFeatures:  settings?.driverBasicFeatures  ?? null,
       driverPremiumFeatures: settings?.driverPremiumFeatures ?? null,
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Demandes de montée en plan ────────────────────────────────────────────
@@ -680,7 +681,7 @@ router.get('/plan-requests', ...commercialGuard, async (req, res) => {
       orderBy: { createdAt: 'desc' },
     })
     res.json({ requests })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/plan-requests/:id/approve', ...commercialGuard, async (req, res) => {
@@ -728,7 +729,7 @@ router.put('/plan-requests/:id/approve', ...commercialGuard, async (req, res) =>
     }
     setImmediate(() => logAction(req.user.id, 'PLAN_REQUEST_APPROVE', request.type, request.id, { adminNote }).catch(() => {}))
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/plan-requests/:id/reject', ...commercialGuard, async (req, res) => {
@@ -755,7 +756,7 @@ router.put('/plan-requests/:id/reject', ...commercialGuard, async (req, res) => 
     }
     setImmediate(() => logAction(req.user.id, 'PLAN_REQUEST_REJECT', request.type, request.id, { adminNote }).catch(() => {}))
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Contrats ──────────────────────────────────────────────────────────────
@@ -776,7 +777,7 @@ router.get('/contracts', ...commercialGuard, async (req, res) => {
       driverName: c.driver?.user?.name || null,
     }))
     res.json({ contracts: flat })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/contracts/regenerate/shop/:id', ...commercialGuard, async (req, res) => {
@@ -794,7 +795,7 @@ router.post('/contracts/regenerate/shop/:id', ...commercialGuard, async (req, re
     })
     await prisma.shop.update({ where: { id: shop.id }, data: { contractSigned: false } })
     res.json(contract)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/contracts/regenerate/driver/:id', ...commercialGuard, async (req, res) => {
@@ -814,7 +815,7 @@ router.post('/contracts/regenerate/driver/:id', ...commercialGuard, async (req, 
     })
     await prisma.driver.update({ where: { id: driver.id }, data: { contractSigned: false } })
     res.json(contract)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Onglet 7 : Paramètres plateforme ─────────────────────────────────────
@@ -824,7 +825,7 @@ router.get('/settings', ...guard, async (req, res) => {
     const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
     res.json(settings)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -849,7 +850,7 @@ router.put('/settings', ...guard, async (req, res) => {
     setImmediate(() => logAction(req.user.id, 'SETTINGS_UPDATE', 'SETTINGS', 1, data))
     res.json(settings)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -869,7 +870,7 @@ router.get('/audit-logs', ...guard, async (req, res) => {
     })
     const adminMap = Object.fromEntries(admins.map(a => [a.id, a.name]))
     res.json(logs.map(l => ({ ...l, adminName: adminMap[l.adminId] || 'Admin' })))
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Onglet 8 : Analytique globale ────────────────────────────────────────
@@ -925,7 +926,7 @@ router.get('/global-analytics', ...guard, async (req, res) => {
       },
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -952,7 +953,7 @@ router.get('/users', ...guard, async (req, res) => {
     ])
     res.json({ users, total })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -970,7 +971,7 @@ router.post('/users/create-commercial', ...guard, async (req, res) => {
     })
     setImmediate(() => logAction(req.user.id, 'CREATE_COMMERCIAL', 'USER', user.id, { name, email }))
     res.status(201).json(user)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.delete('/users/:id', ...guard, async (req, res) => {
@@ -991,7 +992,7 @@ router.delete('/users/:id', ...guard, async (req, res) => {
     }
     setImmediate(() => logAction(req.user.id, 'USER_DELETE', 'USER', Number(req.params.id), { name: target.name, role: target.role }))
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/users/:id/ban', ...guard, async (req, res) => {
@@ -1005,7 +1006,7 @@ router.put('/users/:id/ban', ...guard, async (req, res) => {
     setImmediate(() => logAction(req.user.id, banned ? 'USER_BAN' : 'USER_UNBAN', 'USER', user.id, { userName: user.name }))
     res.json(user)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1077,7 +1078,7 @@ router.get('/finance', ...guard, async (req, res) => {
       b2cDeliveryFees, b2bDeliveryFees, totalDeliveryFees,
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1185,7 +1186,7 @@ router.get('/drivers/:id/payslip', ...commercialGuard, async (req, res) => {
       })),
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1263,7 +1264,7 @@ router.get('/shops/:id/payslip', ...commercialGuard, async (req, res) => {
       })),
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1278,7 +1279,7 @@ router.get('/logistics/vehicle-types', ...guard, async (req, res) => {
     const vehicleTypes = await prisma.vehicleType.findMany({ orderBy: { capacityKg: 'asc' } })
     res.json({ vehicleTypes })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1298,7 +1299,7 @@ router.post('/logistics/vehicle-types', ...guard, async (req, res) => {
     res.status(201).json({ vehicleType })
   } catch (e) {
     if (e.code === 'P2002') return res.status(409).json({ error: 'Ce code existe déjà' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1318,7 +1319,7 @@ router.put('/logistics/vehicle-types/:id', ...guard, async (req, res) => {
     res.json({ vehicleType })
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Catégorie introuvable' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1329,7 +1330,7 @@ router.delete('/logistics/vehicle-types/:id', ...guard, async (req, res) => {
     res.status(204).end()
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Catégorie introuvable' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1341,7 +1342,7 @@ router.get('/logistics/zones', ...guard, async (req, res) => {
     })
     res.json({ zones })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1353,7 +1354,7 @@ router.post('/logistics/zones', ...guard, async (req, res) => {
     setImmediate(() => logAction(req.user.id, 'ZONE_CREATE', 'Zone', zone.id, { name, city }))
     res.status(201).json({ zone })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1372,7 +1373,7 @@ router.put('/logistics/zones/:id', ...guard, async (req, res) => {
     res.json({ zone })
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Zone introuvable' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1386,7 +1387,7 @@ router.delete('/logistics/zones/:id', ...guard, async (req, res) => {
     res.status(204).end()
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Zone introuvable' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1395,7 +1396,7 @@ router.get('/logistics/hubs', ...guard, async (req, res) => {
     const hubs = await prisma.hub.findMany({ orderBy: { name: 'asc' }, include: { zone: true } })
     res.json({ hubs })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1414,7 +1415,7 @@ router.post('/logistics/hubs', ...guard, async (req, res) => {
     setImmediate(() => logAction(req.user.id, 'HUB_CREATE', 'Hub', hub.id, { name, address, zoneId }))
     res.status(201).json({ hub })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1436,7 +1437,7 @@ router.put('/logistics/hubs/:id', ...guard, async (req, res) => {
     res.json({ hub })
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Hub introuvable' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1447,7 +1448,7 @@ router.delete('/logistics/hubs/:id', ...guard, async (req, res) => {
     res.status(204).end()
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Hub introuvable' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1469,7 +1470,7 @@ router.get('/logistics/pricing-rules', ...guard, async (req, res) => {
     })
     res.json({ pricingRules })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1514,7 +1515,7 @@ router.post('/logistics/pricing-rules', ...guard, async (req, res) => {
     res.status(201).json({ pricingRule })
   } catch (e) {
     if (e.code === 'P2002') return res.status(409).json({ error: 'Une règle existe déjà pour ce segment/niveau de service/corridor' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1542,7 +1543,7 @@ router.put('/logistics/pricing-rules/:id', ...guard, async (req, res) => {
     res.json({ pricingRule })
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Règle tarifaire introuvable' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1553,7 +1554,7 @@ router.delete('/logistics/pricing-rules/:id', ...guard, async (req, res) => {
     res.status(204).end()
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Règle tarifaire introuvable' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1579,7 +1580,7 @@ router.get('/logistics/routes', ...guard, async (req, res) => {
     })
     res.json({ routes })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1595,7 +1596,7 @@ router.get('/logistics/routes/:id', ...guard, async (req, res) => {
     if (!route) return res.status(404).json({ error: 'Tournée introuvable' })
     res.json({ route })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1609,7 +1610,7 @@ router.post('/logistics/routes', ...guard, async (req, res) => {
     setImmediate(() => logAction(req.user.id, 'ROUTE_CREATE', 'Route', route.id, { driverId }))
     res.status(201).json({ route })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1634,7 +1635,7 @@ router.post('/logistics/routes/:id/stops', ...guard, async (req, res) => {
     res.status(201).json({ stop })
   } catch (e) {
     if (e.code === 'P2002') return res.status(409).json({ error: 'Cette livraison est déjà dans une tournée, ou cet ordre est déjà pris sur cette tournée' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1651,7 +1652,7 @@ router.put('/logistics/routes/:id/stops/:stopId', ...guard, async (req, res) => 
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Arrêt introuvable' })
     if (e.code === 'P2002') return res.status(409).json({ error: 'Cet ordre est déjà pris sur cette tournée' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1664,7 +1665,7 @@ router.delete('/logistics/routes/:id/stops/:stopId', ...guard, async (req, res) 
     setImmediate(() => logAction(req.user.id, 'ROUTE_STOP_REMOVE', 'RouteStop', stop.id, {}))
     res.status(204).end()
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1677,7 +1678,7 @@ router.put('/logistics/routes/:id/cancel', ...guard, async (req, res) => {
     setImmediate(() => logAction(req.user.id, 'ROUTE_CANCEL', 'Route', route.id, {}))
     res.json({ route: updated })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1742,7 +1743,7 @@ router.get('/logistics/earnings-reconciliation', ...guard, async (req, res) => {
 
     res.json({ month, year, rows })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1781,7 +1782,7 @@ router.get('/logistics/shipments', ...guard, async (req, res) => {
     ])
     res.json({ shipments, total })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1818,7 +1819,7 @@ router.get('/logistics/dashboard', ...guard, async (req, res) => {
       escalatedAwaitingReassignment: escalatedCount,
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1867,7 +1868,7 @@ router.post('/logistics/b2b/:transactionId/assign', ...guard, async (req, res) =
 
     res.json(updated)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1894,7 +1895,7 @@ router.get('/logistics/shipments/:id/gps-trail', ...guard, async (req, res) => {
     })
     res.json({ trail, from, to })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -1940,7 +1941,7 @@ router.get('/logistics/risk-signals', ...guard, async (req, res) => {
 
     res.json({ flaggedDrivers })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 

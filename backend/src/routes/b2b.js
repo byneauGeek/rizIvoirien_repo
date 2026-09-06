@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 
 // ─── Listes de référence (régions, produits, unités) ─────────────────────────
@@ -10,7 +11,7 @@ router.get('/reference-data', async (req, res) => {
     const items = await prisma.b2BReferenceItem.findMany({ where: { active: true }, orderBy: { value: 'asc' } })
     const byType = (t) => items.filter(i => i.type === t).map(i => i.value)
     res.json({ regions: byType('REGION'), products: byType('PRODUCT'), units: byType('UNIT') })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Profils ────────────────────────────────────────────────────────────────
@@ -66,7 +67,7 @@ router.get('/my-profile', authenticate, requireB2BRole, async (req, res) => {
     const actor = await myActor(req)
     if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
     res.json(actor.profile)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/my-profile', authenticate, requireB2BRole, async (req, res) => {
@@ -85,7 +86,7 @@ router.put('/my-profile', authenticate, requireB2BRole, async (req, res) => {
 
     const updated = await prisma[actor.modelName].update({ where: { id: actor.profile.id }, data })
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // POST /api/b2b/my-profile/request-verification — passe le profil en file
@@ -102,7 +103,7 @@ router.post('/my-profile/request-verification', authenticate, requireB2BRole, as
       data: { verification: 'PENDING' },
     })
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Offres (Producteur / Coopérative) ───────────────────────────────────────
@@ -145,7 +146,7 @@ router.get('/offers', async (req, res) => {
       prisma.riceOffer.count({ where }),
     ])
     res.json({ offers, total })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/offers/mine', authenticate, requireRole(...OFFER_SELLER_ROLES), async (req, res) => {
@@ -155,7 +156,7 @@ router.get('/offers/mine', authenticate, requireRole(...OFFER_SELLER_ROLES), asy
     const where = actor.modelName === 'producer' ? { producerId: actor.profile.id } : { cooperativeId: actor.profile.id }
     const offers = await prisma.riceOffer.findMany({ where, orderBy: { createdAt: 'desc' } })
     res.json({ offers })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/offers/:id', async (req, res) => {
@@ -171,7 +172,7 @@ router.get('/offers/:id', async (req, res) => {
     })
     if (!offer) return res.status(404).json({ error: 'Offre introuvable' })
     res.json(offer)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/offers', authenticate, requireRole(...OFFER_SELLER_ROLES), async (req, res) => {
@@ -201,7 +202,7 @@ router.post('/offers', authenticate, requireRole(...OFFER_SELLER_ROLES), async (
       },
     })
     res.status(201).json(offer)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), async (req, res) => {
@@ -219,7 +220,7 @@ router.put('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), asyn
     for (const field of EDITABLE) {
       if (!(field in req.body)) continue
       if (field === 'status') {
-        if (!VALID_STATUS.includes(req.body.status)) return res.status(400).json({ error: 'Statut invalide' })
+        if (!VALID_STATUS.includes(req.body.status)) return res.status(400).json({ error: `Statut invalide : "${req.body.status}" (attendu : ${VALID_STATUS.join(', ')})` })
         data.status = req.body.status
       } else if (field === 'quantity') {
         const qty = Number(req.body.quantity)
@@ -244,7 +245,7 @@ router.put('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), asyn
 
     const updated = await prisma.riceOffer.update({ where: { id: existing.id }, data })
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.delete('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), async (req, res) => {
@@ -262,7 +263,7 @@ router.delete('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), a
       await prisma.riceOffer.update({ where: { id: existing.id }, data: { status: 'DISABLED' } })
     }
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Demandes (Acheteur / Transformateur / Exportateur) ─────────────────────
@@ -303,7 +304,7 @@ router.get('/requests', async (req, res) => {
       prisma.purchaseRequest.count({ where }),
     ])
     res.json({ requests, total })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/requests/mine', authenticate, requireRole(...REQUEST_BUYER_ROLES), async (req, res) => {
@@ -313,7 +314,7 @@ router.get('/requests/mine', authenticate, requireRole(...REQUEST_BUYER_ROLES), 
     const fk = REQUEST_ACTOR_FK[actor.modelName]
     const requests = await prisma.purchaseRequest.findMany({ where: { [fk]: actor.profile.id }, orderBy: { createdAt: 'desc' } })
     res.json({ requests })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/requests/:id', async (req, res) => {
@@ -329,7 +330,7 @@ router.get('/requests/:id', async (req, res) => {
     })
     if (!request) return res.status(404).json({ error: 'Demande introuvable' })
     res.json(request)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/requests', authenticate, requireRole(...REQUEST_BUYER_ROLES), async (req, res) => {
@@ -354,7 +355,7 @@ router.post('/requests', authenticate, requireRole(...REQUEST_BUYER_ROLES), asyn
       },
     })
     res.status(201).json(request)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/requests/:id', authenticate, requireRole(...REQUEST_BUYER_ROLES), async (req, res) => {
@@ -372,7 +373,7 @@ router.put('/requests/:id', authenticate, requireRole(...REQUEST_BUYER_ROLES), a
     for (const field of EDITABLE) {
       if (!(field in req.body)) continue
       if (field === 'status') {
-        if (!VALID_STATUS.includes(req.body.status)) return res.status(400).json({ error: 'Statut invalide' })
+        if (!VALID_STATUS.includes(req.body.status)) return res.status(400).json({ error: `Statut invalide : "${req.body.status}" (attendu : ${VALID_STATUS.join(', ')})` })
         data.status = req.body.status
       } else if (field === 'quantity') {
         const qty = Number(req.body.quantity)
@@ -385,7 +386,7 @@ router.put('/requests/:id', authenticate, requireRole(...REQUEST_BUYER_ROLES), a
 
     const updated = await prisma.purchaseRequest.update({ where: { id: existing.id }, data })
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.delete('/requests/:id', authenticate, requireRole(...REQUEST_BUYER_ROLES), async (req, res) => {
@@ -403,7 +404,7 @@ router.delete('/requests/:id', authenticate, requireRole(...REQUEST_BUYER_ROLES)
       await prisma.purchaseRequest.update({ where: { id: existing.id }, data: { status: 'CANCELLED' } })
     }
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Coopérative : membres (producteurs affiliés) ────────────────────────────
@@ -418,7 +419,7 @@ router.get('/cooperative/members', authenticate, requireRole('COOPERATIVE'), asy
       orderBy: { joinedAt: 'desc' },
     })
     res.json({ members })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/cooperative/members', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
@@ -437,7 +438,7 @@ router.post('/cooperative/members', authenticate, requireRole('COOPERATIVE'), as
     res.status(201).json(member)
   } catch (e) {
     if (e.code === 'P2002') return res.status(409).json({ error: 'Ce producteur est déjà membre de la coopérative' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -449,7 +450,7 @@ router.delete('/cooperative/members/:producerId', authenticate, requireRole('COO
       where: { cooperativeId: actor.profile.id, producerId: Number(req.params.producerId) },
     })
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

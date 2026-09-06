@@ -5,6 +5,7 @@
 // pas de nouveau champ pour une notion qui existe déjà pour tous les rôles.
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { ACCOUNTING_PERMISSIONS } = require('../middleware/accounting')
 const { logAction } = require('../services/adminLog')
@@ -28,7 +29,7 @@ router.get('/accountants', ...guard, async (req, res) => {
       orderBy: { createdAt: 'desc' },
     })
     res.json({ accountants })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // POST /api/admin/accounting/accountants/create — nouveau compte dédié,
@@ -47,7 +48,7 @@ router.post('/accountants/create', ...guard, async (req, res) => {
     })
     setImmediate(() => logAction(req.user.id, 'ACCOUNTANT_CREATE', 'USER', user.id, { name, email }))
     res.status(201).json(user)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // POST /api/admin/accounting/accountants/:userId/promote — attribue le rôle
@@ -67,7 +68,7 @@ router.post('/accountants/:userId/promote', ...guard, async (req, res) => {
     })
     setImmediate(() => logAction(req.user.id, 'ACCOUNTANT_PROMOTE', 'USER', updated.id, { previousRole, newRole: 'ACCOUNTANT' }))
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // POST /api/admin/accounting/accountants/:userId/demote — retire le rôle.
@@ -86,7 +87,7 @@ router.post('/accountants/:userId/demote', ...guard, async (req, res) => {
     ])
     setImmediate(() => logAction(req.user.id, 'ACCOUNTANT_DEMOTE', 'USER', target.id, { previousRole: 'ACCOUNTANT', newRole: 'BUYER' }))
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // PUT /api/admin/accounting/accountants/:userId/permissions — remplace
@@ -118,7 +119,7 @@ router.put('/accountants/:userId/permissions', ...guard, async (req, res) => {
       after: permissions,
     }))
     res.json({ permissions })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

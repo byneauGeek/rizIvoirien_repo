@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 
 // POST /api/promo/validate — valider un code promo (acheteur)
@@ -20,7 +21,7 @@ router.post('/validate', authenticate, async (req, res) => {
 
     res.json({ valid: true, promo, discount })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -30,7 +31,7 @@ router.get('/', authenticate, requireRole('ADMIN'), async (req, res) => {
     const codes = await prisma.promoCode.findMany({ orderBy: { createdAt: 'desc' } })
     res.json(codes)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -54,7 +55,7 @@ router.post('/', authenticate, requireRole('ADMIN'), async (req, res) => {
     res.status(201).json(promo)
   } catch (e) {
     if (e.code === 'P2002') return res.status(409).json({ error: 'Code déjà existant' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -73,7 +74,7 @@ router.put('/:id', authenticate, requireRole('ADMIN'), async (req, res) => {
     })
     res.json(updated)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -83,7 +84,7 @@ router.delete('/:id', authenticate, requireRole('ADMIN'), async (req, res) => {
     await prisma.promoCode.delete({ where: { id: Number(req.params.id) } })
     res.json({ success: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 

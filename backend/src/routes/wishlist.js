@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 
 // GET /api/wishlist — ma wishlist
@@ -16,7 +17,7 @@ router.get('/', authenticate, requireRole('BUYER'), async (req, res) => {
     })
     res.json(items)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -30,7 +31,7 @@ router.post('/:productId', authenticate, requireRole('BUYER'), async (req, res) 
     })
     res.status(201).json(item)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -42,7 +43,7 @@ router.delete('/:productId', authenticate, requireRole('BUYER'), async (req, res
     })
     res.json({ success: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 

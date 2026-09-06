@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { logAction } = require('../services/adminLog')
 const { notify } = require('../services/notifications')
@@ -25,7 +26,7 @@ router.get('/kpis', ...guard, async (req, res) => {
     ])
     res.json({ pendingApplications, pendingContracts, pendingUpgrades, expiringSubs, pendingValidation })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -45,7 +46,7 @@ router.get('/orders/pending-validation', ...guard, async (req, res) => {
     })
     res.json({ orders })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -74,7 +75,7 @@ router.get('/orders', ...guard, async (req, res) => {
     ])
     res.json({ orders, total })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -121,7 +122,7 @@ router.post('/orders/:id/validate', ...guard, async (req, res) => {
 
     res.json({ ok: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -169,7 +170,7 @@ router.post('/orders/:id/cancel', ...guard, async (req, res) => {
 
     res.json({ ok: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -218,7 +219,7 @@ router.get('/pipeline', ...guard, async (req, res) => {
 
     res.json({ shops: result })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -251,7 +252,7 @@ router.get('/driver-pipeline', ...guard, async (req, res) => {
 
     res.json({ drivers: result })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -278,7 +279,7 @@ router.get('/renewals', ...guard, async (req, res) => {
     }))
     res.json({ renewals: result })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -338,7 +339,7 @@ router.get('/shops/:id', ...guard, async (req, res) => {
       },
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -417,7 +418,7 @@ router.get('/drivers/:id', ...guard, async (req, res) => {
       },
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -432,7 +433,7 @@ router.get('/shops/:id/notes', ...guard, async (req, res) => {
     })
     res.json({ notes })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -446,7 +447,7 @@ router.post('/shops/:id/notes', ...guard, async (req, res) => {
     })
     res.status(201).json(note)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -461,7 +462,7 @@ router.get('/drivers/:id/notes', ...guard, async (req, res) => {
     })
     res.json({ notes })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -475,7 +476,7 @@ router.post('/drivers/:id/notes', ...guard, async (req, res) => {
     })
     res.status(201).json(note)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -502,7 +503,7 @@ router.post('/shops/:id/remind-contract', ...guard, async (req, res) => {
     )
     res.json({ ok: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -529,7 +530,7 @@ router.post('/drivers/:id/remind-contract', ...guard, async (req, res) => {
     )
     res.json({ ok: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 

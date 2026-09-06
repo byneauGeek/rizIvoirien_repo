@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const crypto = require('crypto')
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { sendMail } = require('../services/mailer')
 
@@ -35,7 +36,7 @@ router.post('/register', async (req, res) => {
     })
     setImmediate(() => sendMail(email, 'verifyEmail', { name, token: verifyToken }))
     res.status(201).json({ token: sign(user), user: safeUser(user), emailNotVerified: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Vendeur ──────────────────────────────────────────────────────────────────
@@ -90,7 +91,7 @@ router.post('/register-vendor', async (req, res) => {
     await prisma.user.update({ where: { id: user.id }, data: { emailVerifyToken: verifyToken } })
     setImmediate(() => sendMail(email, 'verifyEmail', { name, token: verifyToken }))
     res.status(201).json({ token: sign(user), user: safeUser(user), emailNotVerified: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Livreur ──────────────────────────────────────────────────────────────────
@@ -104,7 +105,7 @@ router.post('/check-invite', async (req, res) => {
     if (!code) return res.status(404).json({ error: 'Code d\'invitation invalide' })
     if (code.used) return res.status(400).json({ error: 'Code déjà utilisé' })
     res.json({ valid: true, code: code.code })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // Étape 2 : inscription complète
@@ -161,7 +162,7 @@ router.post('/register-driver', async (req, res) => {
     await prisma.user.update({ where: { id: user.id }, data: { emailVerifyToken: verifyToken } })
     setImmediate(() => sendMail(email, 'verifyEmail', { name, token: verifyToken }))
     res.status(201).json({ token: sign(user), user: safeUser(user), emailNotVerified: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Commercial ───────────────────────────────────────────────────────────────
@@ -186,7 +187,7 @@ router.post('/register-commercial', async (req, res) => {
       data: { used: true, usedById: user.id },
     })
     res.status(201).json({ token: sign(user), user: safeUser(user) })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── B2B (filière riz) ──────────────────────────────────────────────────────
@@ -262,7 +263,7 @@ router.post('/register-b2b', async (req, res) => {
     })
     setImmediate(() => sendMail(email, 'verifyEmail', { name, token: verifyToken }))
     res.status(201).json({ token: sign(user), user: safeUser(user), emailNotVerified: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // POST /api/auth/capabilities — LOT 2 (Arbitrage XXX RIZ) : active une
@@ -305,7 +306,7 @@ router.post('/capabilities', authenticate, async (req, res) => {
     ])
 
     res.status(201).json({ profile: createdProfile, capabilities: [...new Set([...(req.user.capabilities || []), spec.role])] })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Login ────────────────────────────────────────────────────────────────────
@@ -337,7 +338,7 @@ router.post('/login', async (req, res) => {
       user: safeUser(user),
       ...(user.emailVerified === false && { emailNotVerified: true }),
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Vérification email ───────────────────────────────────────────────────────
@@ -353,7 +354,7 @@ router.get('/verify-email', async (req, res) => {
       data: { emailVerified: true, emailVerifyToken: null },
     })
     res.json({ success: true, message: 'Email vérifié avec succès' })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/resend-verification', authenticate, async (req, res) => {
@@ -364,7 +365,7 @@ router.post('/resend-verification', authenticate, async (req, res) => {
     await prisma.user.update({ where: { id: user.id }, data: { emailVerifyToken: verifyToken } })
     setImmediate(() => sendMail(user.email, 'verifyEmail', { name: user.name, token: verifyToken }))
     res.json({ success: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Mot de passe oublié ──────────────────────────────────────────────────────
@@ -385,7 +386,7 @@ router.post('/forgot-password', async (req, res) => {
       setImmediate(() => sendMail(email, 'resetPassword', { name: user.name, token }))
     }
     res.json({ success: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/reset-password', async (req, res) => {
@@ -403,7 +404,7 @@ router.post('/reset-password', async (req, res) => {
       data: { password: hash, resetToken: null, resetTokenExpiry: null },
     })
     res.json({ success: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Profil ───────────────────────────────────────────────────────────────────
@@ -417,7 +418,7 @@ router.put('/profile', authenticate, async (req, res) => {
       include: { shop: true, driver: true },
     })
     res.json(safeUser(user))
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/change-password', authenticate, async (req, res) => {
@@ -433,7 +434,7 @@ router.put('/change-password', authenticate, async (req, res) => {
     const hash = await bcrypt.hash(newPassword, 10)
     await prisma.user.update({ where: { id: req.user.id }, data: { password: hash } })
     res.json({ success: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/change-email', authenticate, async (req, res) => {
@@ -451,7 +452,7 @@ router.put('/change-email', authenticate, async (req, res) => {
       include: { shop: true, driver: true },
     })
     res.json({ token: sign(updated), user: safeUser(updated) })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/me', authenticate, async (req, res) => {
@@ -469,7 +470,7 @@ router.get('/me', authenticate, async (req, res) => {
       },
     })
     res.json(safeUser(user))
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

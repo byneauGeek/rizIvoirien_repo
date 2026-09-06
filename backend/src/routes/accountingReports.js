@@ -15,6 +15,7 @@
 // créances : pas de permission dédiée non prévue par le référentiel).
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { requirePermission, requireAccountingRole, hasPermission } = require('../middleware/accounting')
 const { uploadDocument, fileUrl } = require('../middleware/upload')
@@ -107,7 +108,7 @@ router.get('/reports/summary', authenticate, requirePermission('accounting.repor
         settled: { count: recvSettled._count._all, total: recvSettled._sum.receivedAmount || 0 },
       },
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 const EXPORTS = {
@@ -164,7 +165,7 @@ router.get('/reports/export', authenticate, requirePermission('accounting.docume
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
     res.setHeader('Content-Disposition', `attachment; filename="${type}-${new Date().toISOString().slice(0, 10)}.csv"`)
     res.send('﻿' + csv) // BOM — Excel FR ouvre l'UTF-8 correctement
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Documents (§27) ───────────────────────────────────────────────────────────
@@ -181,7 +182,7 @@ router.get('/documents', authenticate, requirePermission('accounting.documents.v
       prisma.accountingDocument.count({ where }),
     ])
     res.json({ documents, total })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // requireAccountingRole avant multer : un rôle hors comptabilité ne doit
@@ -206,7 +207,7 @@ router.post('/documents', authenticate, requireAccountingRole, uploadDocument.si
     })
     setImmediate(() => logAction(req.user.id, 'DOCUMENT_UPLOAD', targetType, id, { docType, documentId: document.id }))
     res.status(201).json(document)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

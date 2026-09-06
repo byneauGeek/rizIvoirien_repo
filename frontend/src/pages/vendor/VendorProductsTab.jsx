@@ -69,7 +69,7 @@ function StockAdjustModal({ product, onClose, onSaved }) {
   useEffect(() => {
     api.get(`/products/${product.id}/stock-movements?limit=10`)
       .then(d => setMovements(d.movements || []))
-      .catch(() => {})
+      .catch(e => setError(e.message))
       .finally(() => setLoadingHistory(false))
   }, [product.id])
 

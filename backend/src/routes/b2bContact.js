@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { notify } = require('../services/notifications')
 
@@ -90,7 +91,7 @@ router.post('/contacts', authenticate, async (req, res) => {
     ))
 
     res.status(201).json(contact)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/b2b/contacts — mes contacts (envoyés + reçus), coordonnées révélées si ACCEPTED
@@ -120,7 +121,7 @@ router.get('/contacts', authenticate, async (req, res) => {
     }))
 
     res.json({ contacts: shaped })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/contacts/:id/accept', authenticate, async (req, res) => {
@@ -136,7 +137,7 @@ router.post('/contacts/:id/accept', authenticate, async (req, res) => {
       `${req.user.name} a accepté votre demande de contact.`, { contactId: contact.id }
     ))
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/contacts/:id/reject', authenticate, async (req, res) => {
@@ -152,7 +153,7 @@ router.post('/contacts/:id/reject', authenticate, async (req, res) => {
       `${req.user.name} a décliné votre demande de contact.`, { contactId: contact.id }
     ))
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Transaction déclarée ─────────────────────────────────────────────────────
@@ -218,7 +219,7 @@ router.post('/transactions', authenticate, async (req, res) => {
     ))
 
     res.status(201).json(tx)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/transactions', authenticate, async (req, res) => {
@@ -236,7 +237,7 @@ router.get('/transactions', authenticate, async (req, res) => {
       orderBy: { createdAt: 'desc' },
     })
     res.json({ transactions })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/b2b/transactions/:id/track — LOT 11 (Arbitrage XXX RIZ) :
@@ -272,7 +273,7 @@ router.get('/transactions/:id/track', authenticate, async (req, res) => {
     }))?.token || null
 
     res.json({ shipmentStatus: shipment.status, deliveryCode: shipment.deliveryCode || null, qrToken })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // PUT /api/b2b/transactions/:id/request-logistics — LOT 2 : le TRADER (ou
@@ -343,7 +344,7 @@ router.put('/transactions/:id/request-logistics', authenticate, async (req, res)
       `${req.user.name} a demandé une livraison pour la transaction #${tx.id}.`, { transactionId: tx.id }
     ))
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // POST /api/b2b/transactions/:id/confirm-receipt — LOT 5 (Arbitrage XXX RIZ,
@@ -376,7 +377,7 @@ router.post('/transactions/:id/confirm-receipt', authenticate, async (req, res) 
     res.json({ success: true })
   } catch (e) {
     if (e.code === 'CONFIRMATION_NOT_READY') return res.status(400).json({ error: e.message })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -392,7 +393,7 @@ router.post('/transactions/:id/cancel', authenticate, async (req, res) => {
     if (!tx) return res.status(404).json({ error: 'Transaction introuvable' })
     const updated = await prisma.b2BTransaction.update({ where: { id: tx.id }, data: { status: 'CANCELLED' } })
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Signalement ──────────────────────────────────────────────────────────────
@@ -407,7 +408,7 @@ router.post('/reports', authenticate, async (req, res) => {
       data: { reporterId: req.user.id, targetType, targetId: Number(targetId), reason },
     })
     res.status(201).json(report)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

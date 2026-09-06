@@ -4,6 +4,7 @@
 // nouveau domaine complet — même garde ADMIN-only, même conventions.
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { logAction } = require('../services/adminLog')
 const { notify } = require('../services/notifications')
@@ -41,7 +42,7 @@ router.get('/verifications', ...guard, async (req, res) => {
       ...exporters.map(p => ({ profileType: 'EXPORTER', label: p.companyName, ...p })),
     ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     res.json({ profiles })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // PUT /api/admin/b2b/verifications/:profileType/:id — VERIFIED | REJECTED (→ retour UNVERIFIED) | SUSPENDED | PENDING
@@ -53,7 +54,7 @@ router.put('/verifications/:profileType/:id', ...guard, async (req, res) => {
   // REJECTED n'est pas un statut stocké (le cahier de cadrage n'en définit que 4) —
   // un refus renvoie simplement le compte à UNVERIFIED, avec notification du motif.
   const nextStatus = verification === 'REJECTED' ? 'UNVERIFIED' : verification
-  if (!VALID_VERIFICATION.includes(nextStatus)) return res.status(400).json({ error: 'Statut invalide' })
+  if (!VALID_VERIFICATION.includes(nextStatus)) return res.status(400).json({ error: `Statut invalide : "${verification}" (attendu : ${VALID_VERIFICATION.join(', ')}, ou REJECTED)` })
 
   try {
     const profile = await prisma[modelName].update({
@@ -72,7 +73,7 @@ router.put('/verifications/:profileType/:id', ...guard, async (req, res) => {
     setImmediate(() => notify(profile.user.id, 'B2B_VERIFICATION', 'Statut de vérification', messages[nextStatus] || '', { profileType }))
 
     res.json(profile)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Modération des annonces ──────────────────────────────────────────────────
@@ -107,27 +108,27 @@ router.get('/listings', ...guard, async (req, res) => {
       offers: offers.map(o => ({ ...o, listingType: 'OFFER' })),
       requests: requests.map(r => ({ ...r, listingType: 'REQUEST' })),
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/listings/offers/:id/moderate', ...guard, async (req, res) => {
   const { status } = req.body
-  if (!['AVAILABLE', 'DISABLED'].includes(status)) return res.status(400).json({ error: 'Statut invalide' })
+  if (!['AVAILABLE', 'DISABLED'].includes(status)) return res.status(400).json({ error: `Statut invalide : "${status}" (attendu : AVAILABLE, DISABLED)` })
   try {
     const offer = await prisma.riceOffer.update({ where: { id: Number(req.params.id) }, data: { status } })
     setImmediate(() => logAction(req.user.id, 'B2B_OFFER_MODERATE', 'RiceOffer', offer.id, { status }))
     res.json(offer)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/listings/requests/:id/moderate', ...guard, async (req, res) => {
   const { status } = req.body
-  if (!['ACTIVE', 'CANCELLED'].includes(status)) return res.status(400).json({ error: 'Statut invalide' })
+  if (!['ACTIVE', 'CANCELLED'].includes(status)) return res.status(400).json({ error: `Statut invalide : "${status}" (attendu : ACTIVE, CANCELLED)` })
   try {
     const request = await prisma.purchaseRequest.update({ where: { id: Number(req.params.id) }, data: { status } })
     setImmediate(() => logAction(req.user.id, 'B2B_REQUEST_MODERATE', 'PurchaseRequest', request.id, { status }))
     res.json(request)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Signalements ─────────────────────────────────────────────────────────────
@@ -141,17 +142,17 @@ router.get('/reports', ...guard, async (req, res) => {
       orderBy: { createdAt: 'desc' },
     })
     res.json({ reports })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/reports/:id', ...guard, async (req, res) => {
   const { status } = req.body
-  if (!['PENDING', 'REVIEWING', 'RESOLVED', 'REJECTED'].includes(status)) return res.status(400).json({ error: 'Statut invalide' })
+  if (!['PENDING', 'REVIEWING', 'RESOLVED', 'REJECTED'].includes(status)) return res.status(400).json({ error: `Statut invalide : "${status}" (attendu : PENDING, REVIEWING, RESOLVED, REJECTED)` })
   try {
     const report = await prisma.b2BReport.update({ where: { id: Number(req.params.id) }, data: { status } })
     setImmediate(() => logAction(req.user.id, 'B2B_REPORT_UPDATE', 'B2BReport', report.id, { status }))
     res.json(report)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Statistiques (cahier de cadrage §11) ────────────────────────────────────
@@ -200,7 +201,7 @@ router.get('/stats', ...guard, async (req, res) => {
       reportsPending,
       volumeOfferedTotal: volumeAgg._sum.quantity || 0,
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Listes de référence (§16 : "gestion des catégories, régions, produits et unités") ──
@@ -211,7 +212,7 @@ router.get('/reference-data', ...guard, async (req, res) => {
   try {
     const items = await prisma.b2BReferenceItem.findMany({ orderBy: [{ type: 'asc' }, { value: 'asc' }] })
     res.json({ items })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/reference-data', ...guard, async (req, res) => {
@@ -224,7 +225,7 @@ router.post('/reference-data', ...guard, async (req, res) => {
     res.status(201).json(item)
   } catch (e) {
     if (e.code === 'P2002') return res.status(409).json({ error: 'Cette valeur existe déjà pour ce type' })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -235,7 +236,7 @@ router.put('/reference-data/:id', ...guard, async (req, res) => {
     const item = await prisma.b2BReferenceItem.update({ where: { id: Number(req.params.id) }, data: { active } })
     setImmediate(() => logAction(req.user.id, 'B2B_REFDATA_UPDATE', 'B2BReferenceItem', item.id, { active }))
     res.json(item)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.delete('/reference-data/:id', ...guard, async (req, res) => {
@@ -243,7 +244,7 @@ router.delete('/reference-data/:id', ...guard, async (req, res) => {
     await prisma.b2BReferenceItem.delete({ where: { id: Number(req.params.id) } })
     setImmediate(() => logAction(req.user.id, 'B2B_REFDATA_DELETE', 'B2BReferenceItem', Number(req.params.id), {}))
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

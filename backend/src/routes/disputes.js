@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma  = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { notify }   = require('../services/notifications')
 const { sendMail } = require('../services/mailer')
@@ -49,7 +50,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
       `Commande #${order.id} — ${REASONS[reason]}`, { disputeId: dispute.id, orderId: order.id }))
 
     res.status(201).json(dispute)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ── Acheteur : voir ses litiges ───────────────────────────────────────────────
@@ -61,7 +62,7 @@ router.get('/my', authenticate, requireRole('BUYER'), async (req, res) => {
       orderBy: { createdAt: 'desc' },
     })
     res.json(disputes)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ── Admin : liste tous les litiges ────────────────────────────────────────────
@@ -78,7 +79,7 @@ router.get('/', authenticate, requireRole('ADMIN'), async (req, res) => {
       orderBy: { createdAt: 'desc' },
     })
     res.json({ disputes })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ── Admin : résoudre un litige ────────────────────────────────────────────────
@@ -162,7 +163,7 @@ router.put('/:id/resolve', authenticate, requireRole('ADMIN'), async (req, res) 
     })
 
     res.json(dispute)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

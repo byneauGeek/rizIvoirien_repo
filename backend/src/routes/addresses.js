@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 
 // GET /api/addresses
@@ -11,7 +12,7 @@ router.get('/', authenticate, async (req, res) => {
     })
     res.json(addresses)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -29,7 +30,7 @@ router.post('/', authenticate, async (req, res) => {
     })
     res.status(201).json(created)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -49,7 +50,7 @@ router.put('/:id', authenticate, async (req, res) => {
     })
     res.json(updated)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -61,7 +62,7 @@ router.delete('/:id', authenticate, async (req, res) => {
     await prisma.address.delete({ where: { id: existing.id } })
     res.json({ success: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -75,7 +76,7 @@ router.put('/:id/default', authenticate, async (req, res) => {
     const updated = await prisma.address.update({ where: { id: existing.id }, data: { isDefault: true } })
     res.json(updated)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 

@@ -174,7 +174,7 @@ function DriverPlanTab() {
         setPlans(planData)
         setUpgrade(reqData.request)
       })
-      .catch(() => {})
+      .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }
 
@@ -406,7 +406,7 @@ function ContractViewTab() {
         setContract(d.contract)
         setSigned(d.contractSigned || d.contract?.status === 'SIGNED')
       })
-      .catch(() => {})
+      .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
 

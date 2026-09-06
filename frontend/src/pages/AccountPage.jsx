@@ -102,7 +102,7 @@ function AddressesTab() {
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
 
   useEffect(() => {
-    api.get('/addresses').then(setAddresses).catch(() => {}).finally(() => setLoading(false))
+    api.get('/addresses').then(setAddresses).catch(err => setAddrError(err.message)).finally(() => setLoading(false))
   }, [])
 
   const handleCreate = async (e) => {
@@ -264,7 +264,7 @@ function WishlistTab() {
   const [wishError, setWishError] = useState(null)
 
   useEffect(() => {
-    api.get('/wishlist').then(setItems).catch(() => {}).finally(() => setLoading(false))
+    api.get('/wishlist').then(setItems).catch(err => setWishError(err.message)).finally(() => setLoading(false))
   }, [])
 
   const handleRemove = async (productId) => {
@@ -278,6 +278,16 @@ function WishlistTab() {
   if (loading) return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
       {[...Array(6)].map((_, i) => <div key={i} className="h-56 rounded-3xl bg-white animate-pulse shadow-card" />)}
+    </div>
+  )
+
+  if (wishError && items.length === 0) return (
+    <div className="text-center py-20">
+      <AlertCircle size={40} className="mx-auto text-red-300 mb-4" />
+      <h3 className="font-playfair text-xl font-bold text-charcoal mb-2">Impossible de charger la wishlist</h3>
+      <p className="font-dm text-charcoal/50 mb-6">{wishError}</p>
+      <button onClick={() => { setWishError(null); setLoading(true); api.get('/wishlist').then(setItems).catch(err => setWishError(err.message)).finally(() => setLoading(false)) }}
+        className="btn-primary">Réessayer</button>
     </div>
   )
 

@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { notify } = require('../services/notifications')
 const { getSettings } = require('../lib/settings')
@@ -27,7 +28,7 @@ router.get('/', async (req, res) => {
       prisma.shop.count({ where }),
     ])
     res.json({ shops, total })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Vendeur ──────────────────────────────────────────────────────────────────
@@ -42,7 +43,7 @@ router.get('/my', authenticate, requireRole('SELLER'), async (req, res) => {
     })
     if (!shop) return res.status(404).json({ error: 'Boutique introuvable' })
     res.json(shop)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Public /:id ──────────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Boutique introuvable' })
     }
     res.json(shop)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/my/dashboard', authenticate, requireRole('SELLER'), async (req, res) => {
@@ -145,7 +146,7 @@ router.get('/my/dashboard', authenticate, requireRole('SELLER'), async (req, res
       recentOrders,
       products,
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/shops/my/analytics — statistiques détaillées vendeur
@@ -273,7 +274,7 @@ router.get('/my/analytics', authenticate, requireRole('SELLER'), async (req, res
       ordersByDow,
       stockVelocity,
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/shops/my/subscription-info — tarifs + abonnement actuel
@@ -304,7 +305,7 @@ router.get('/my/subscription-info', authenticate, requireRole('SELLER'), async (
         shopCertifiedFeatures: settings?.shopCertifiedFeatures ?? null,
       },
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // POST /api/shops/my/subscription — souscrire à un plan
@@ -344,7 +345,7 @@ router.post('/my/subscription', authenticate, requireRole('SELLER'), async (req,
     await prisma.shop.update({ where: { id: shop.id }, data: { plan } })
 
     res.json({ subscription: sub, plan })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/my/certify', authenticate, requireRole('SELLER'), async (req, res) => {
@@ -366,7 +367,7 @@ router.post('/my/certify', authenticate, requireRole('SELLER'), async (req, res)
       }),
     ])
     res.json(updatedShop)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/shops/my/plan-upgrade-request — dernière demande de montée en plan
@@ -379,7 +380,7 @@ router.get('/my/plan-upgrade-request', authenticate, requireRole('SELLER'), asyn
       orderBy: { createdAt: 'desc' },
     })
     res.json({ request })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/shops/my/remunerations — LOT 7 logistique (arbitrage Décision 2) :
@@ -401,7 +402,7 @@ router.get('/my/remunerations', authenticate, requireRole('SELLER'), async (req,
         paymentOrder: r.paymentOrder,
       })),
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // POST /api/shops/my/plan-upgrade-request — demander la montée en plan CERTIFIED
@@ -441,7 +442,7 @@ router.post('/my/plan-upgrade-request', authenticate, requireRole('SELLER'), asy
         `La boutique "${shop.name}" demande à passer en plan Certifié.`, { requestId: request.id }).catch(() => {})
     })
     res.status(201).json(request)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/my', authenticate, requireRole('SELLER'), async (req, res) => {
@@ -495,7 +496,7 @@ router.put('/my', authenticate, requireRole('SELLER'), async (req, res) => {
       include: { subscription: true },
     })
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // GET /api/shops/my/contract
@@ -504,7 +505,7 @@ router.get('/my/contract', authenticate, requireRole('SELLER'), async (req, res)
     const shop = await prisma.shop.findUnique({ where: { userId: req.user.id }, include: { contract: true } })
     if (!shop) return res.status(404).json({ error: 'Boutique introuvable' })
     res.json({ contract: shop.contract, contractSigned: shop.contractSigned })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // PUT /api/shops/my/contract/sign
@@ -518,7 +519,7 @@ router.put('/my/contract/sign', authenticate, requireRole('SELLER'), async (req,
       prisma.shop.update({ where: { id: shop.id }, data: { contractSigned: true } }),
     ])
     res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

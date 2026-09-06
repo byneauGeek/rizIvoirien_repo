@@ -11,6 +11,7 @@
 // nouvelles clés de permission non prévues par le LOT 1.
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { requirePermission } = require('../middleware/accounting')
 const { nextReference } = require('../services/accountingSequence')
@@ -31,7 +32,7 @@ router.get('/beneficiaries/search', authenticate, requirePermission('accounting.
     if (q) where.OR = [{ name: { contains: q } }, { email: { contains: q } }]
     const users = await prisma.user.findMany({ where, select: { id: true, name: true, email: true }, take: 10 })
     res.json({ users })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -81,7 +82,7 @@ router.get('/dashboard', authenticate, requirePermission('accounting.view'), asy
         decaissements: todayOut._sum.amount || 0,
       },
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Transactions (grand livre, §9) ───────────────────────────────────────────
@@ -108,7 +109,7 @@ router.get('/financial-transactions', authenticate, requirePermission('accountin
       prisma.financialTransaction.count({ where }),
     ])
     res.json({ transactions, total })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/financial-transactions/:id', authenticate, requirePermission('accounting.transactions.view'), async (req, res) => {
@@ -116,7 +117,7 @@ router.get('/financial-transactions/:id', authenticate, requirePermission('accou
     const tx = await prisma.financialTransaction.findUnique({ where: { id: Number(req.params.id) } })
     if (!tx) return res.status(404).json({ error: 'Transaction introuvable' })
     res.json(tx)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Ordres de paiement (boîte de réception, §17) ────────────────────────────
@@ -137,7 +138,7 @@ router.get('/payment-orders', authenticate, requirePermission('accounting.paymen
       prisma.paymentOrder.count({ where }),
     ])
     res.json({ orders, total })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/payment-orders/:id', authenticate, requirePermission('accounting.payments.view'), async (req, res) => {
@@ -148,7 +149,7 @@ router.get('/payment-orders/:id', authenticate, requirePermission('accounting.pa
     })
     if (!order) return res.status(404).json({ error: 'Ordre de paiement introuvable' })
     res.json(order)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Dettes (§22) ─────────────────────────────────────────────────────────────
@@ -164,7 +165,7 @@ router.get('/debts', authenticate, requirePermission('accounting.transactions.vi
       prisma.debt.count({ where }),
     ])
     res.json({ debts, total })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/debts', authenticate, requirePermission('accounting.transactions.create'), async (req, res) => {
@@ -186,7 +187,7 @@ router.post('/debts', authenticate, requirePermission('accounting.transactions.c
     })
     setImmediate(() => logAction(req.user.id, 'DEBT_CREATE', 'Debt', debt.id, { initialAmount: amount }))
     res.status(201).json(debt)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // Enregistrement manuel d'un règlement contre une dette — crée aussi la
@@ -228,7 +229,7 @@ router.post('/debts/:id/record-payment', authenticate, requirePermission('accoun
 
     setImmediate(() => logAction(req.user.id, 'DEBT_RECORD_PAYMENT', 'Debt', debt.id, { amount: paid, newStatus }))
     res.json(updatedDebt)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Créances (§23) — miroir des dettes ──────────────────────────────────────
@@ -244,7 +245,7 @@ router.get('/receivables', authenticate, requirePermission('accounting.transacti
       prisma.receivable.count({ where }),
     ])
     res.json({ receivables, total })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/receivables', authenticate, requirePermission('accounting.transactions.create'), async (req, res) => {
@@ -266,7 +267,7 @@ router.post('/receivables', authenticate, requirePermission('accounting.transact
     })
     setImmediate(() => logAction(req.user.id, 'RECEIVABLE_CREATE', 'Receivable', receivable.id, { amount: amt }))
     res.status(201).json(receivable)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/receivables/:id/record-payment', authenticate, requirePermission('accounting.transactions.create'), async (req, res) => {
@@ -302,7 +303,7 @@ router.post('/receivables/:id/record-payment', authenticate, requirePermission('
 
     setImmediate(() => logAction(req.user.id, 'RECEIVABLE_RECORD_PAYMENT', 'Receivable', receivable.id, { amount: received, newStatus }))
     res.json(updated)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // ─── Trésorerie (§21) ─────────────────────────────────────────────────────────
@@ -311,7 +312,7 @@ router.get('/treasury/accounts', authenticate, requirePermission('accounting.tre
   try {
     const accounts = await prisma.treasuryAccount.findMany({ orderBy: { createdAt: 'asc' } })
     res.json({ accounts })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.post('/treasury/accounts', authenticate, requirePermission('accounting.treasury.manage'), async (req, res) => {
@@ -323,7 +324,7 @@ router.post('/treasury/accounts', authenticate, requirePermission('accounting.tr
     const account = await prisma.treasuryAccount.create({ data: { name, type, currency: currency || 'XOF' } })
     setImmediate(() => logAction(req.user.id, 'TREASURY_ACCOUNT_CREATE', 'TreasuryAccount', account.id, { name, type }))
     res.status(201).json(account)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.get('/treasury/accounts/:id', authenticate, requirePermission('accounting.treasury.view'), async (req, res) => {
@@ -334,7 +335,7 @@ router.get('/treasury/accounts/:id', authenticate, requirePermission('accounting
       where: { accountId: account.id }, orderBy: { date: 'desc' }, take: 50,
     })
     res.json({ ...account, transactions })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 router.put('/treasury/accounts/:id', authenticate, requirePermission('accounting.treasury.manage'), async (req, res) => {
@@ -344,7 +345,7 @@ router.put('/treasury/accounts/:id', authenticate, requirePermission('accounting
     const account = await prisma.treasuryAccount.update({ where: { id: Number(req.params.id) }, data: { active } })
     setImmediate(() => logAction(req.user.id, 'TREASURY_ACCOUNT_UPDATE', 'TreasuryAccount', account.id, { active }))
     res.json(account)
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 module.exports = router

@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { assignOrder } = require('../services/assignmentEngine')
 const { notify } = require('../services/notifications')
@@ -69,7 +70,7 @@ router.post('/estimate-delivery', authenticate, async (req, res) => {
       additionalPickupFee: settings?.additionalPickupFee ?? 500,
     })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -93,7 +94,11 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
       where: { id: { in: productIds }, active: true },
       include: { shop: { select: { id: true, name: true, latitude: true, longitude: true, location: true, userId: true, notifyEmail: true, zoneId: true } } },
     })
-    if (products.length !== productIds.length) return res.status(400).json({ error: 'Produit(s) invalide(s)' })
+    if (products.length !== productIds.length) {
+      const foundIds = new Set(products.map(p => p.id))
+      const missingIds = productIds.filter(id => !foundIds.has(id))
+      return res.status(400).json({ error: `Produit(s) introuvable(s) ou inactif(s) : ${missingIds.join(', ')}` })
+    }
 
     // Vérifier le stock
     for (const item of items) {
@@ -308,7 +313,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
     if (e instanceof stockEngine.InsufficientStockError) {
       return res.status(400).json({ error: 'Stock insuffisant (concurrent). Veuillez actualiser votre panier.' })
     }
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -327,7 +332,7 @@ router.get('/my', authenticate, requireRole('BUYER'), async (req, res) => {
     })
     res.json(orders)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -358,7 +363,7 @@ router.get('/shop/list', authenticate, requireRole('SELLER'), async (req, res) =
     ])
     res.json({ orders, total })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -381,7 +386,7 @@ router.get('/driver/assigned', authenticate, requireRole('DRIVER'), async (req, 
     })
     res.json(orders)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -416,7 +421,7 @@ router.get('/:id', authenticate, async (req, res) => {
 
     res.json(order)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -491,7 +496,7 @@ router.put('/:id/status', authenticate, async (req, res) => {
 
     res.json(updated)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -537,7 +542,7 @@ router.delete('/:id', authenticate, requireRole('BUYER'), async (req, res) => {
 
     res.json({ success: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -569,7 +574,7 @@ router.post('/:id/rate-driver', authenticate, requireRole('BUYER'), async (req, 
 
     res.json({ success: true, newRating })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -642,7 +647,7 @@ router.get('/:id/track', authenticate, async (req, res) => {
       shipmentStatus: shipment?.status || null,
       qrToken,
     })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  } catch (e) { sendError(res, e) }
 })
 
 // POST /api/orders/:id/confirm-receipt — LOT 4 (Arbitrage XXX RIZ) : action
@@ -695,7 +700,7 @@ router.post('/:id/confirm-receipt', authenticate, async (req, res) => {
     res.json({ success: true })
   } catch (e) {
     if (e.code === 'CONFIRMATION_NOT_READY') return res.status(400).json({ error: e.message })
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 

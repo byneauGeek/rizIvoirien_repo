@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const prisma = require('../lib/prisma')
+const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 
 // GET /api/carousel — public: slides actifs
@@ -11,7 +12,7 @@ router.get('/', async (req, res) => {
     })
     res.json(slides)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -21,7 +22,7 @@ router.get('/all', authenticate, requireRole('ADMIN'), async (req, res) => {
     const slides = await prisma.carouselSlide.findMany({ orderBy: { position: 'asc' } })
     res.json(slides)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -35,7 +36,7 @@ router.post('/', authenticate, requireRole('ADMIN'), async (req, res) => {
     })
     res.status(201).json(slide)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -66,7 +67,7 @@ router.get('/suggestions', authenticate, requireRole('ADMIN'), async (req, res) 
     ])
     res.json({ shops, products })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -85,7 +86,7 @@ router.put('/:id', authenticate, requireRole('ADMIN'), async (req, res) => {
     })
     res.json(slide)
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 
@@ -95,7 +96,7 @@ router.delete('/:id', authenticate, requireRole('ADMIN'), async (req, res) => {
     await prisma.carouselSlide.delete({ where: { id: Number(req.params.id) } })
     res.json({ success: true })
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    sendError(res, e)
   }
 })
 

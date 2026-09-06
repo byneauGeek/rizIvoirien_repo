@@ -117,6 +117,7 @@ model Producer {
   cooperativeMemberships CooperativeMember[]
   offers                 RiceOffer[]
   ownedOffers            RiceOffer[] @relation("RiceOfferOwner")
+  ownedTransactions      B2BTransaction[] @relation("B2BTransactionOwner")
 
   @@index([region])
   @@index([verification])
@@ -341,6 +342,15 @@ model B2BTransaction {
   // changement de comportement pour l'usage B2B existant.
   status       String          @default("DECLARED") // DECLARED|CANCELLED|IN_TRANSIT|DELIVERED|ESCALATED
   notes        String?
+  // LOT AUDIT-OWN-03 (audit XXX RIZ) : gap confirmé — structurellement
+  // impossible jusqu'ici de savoir à quel membre une vente devait être
+  // attribuée (aucun champ n'existait). Snapshot au moment de la déclaration
+  // depuis RiceOffer.ownerProducerId — jamais recalculé depuis l'offre
+  // ensuite : "une fois la vente terminée, ne pas dépendre du stock courant
+  // pour retrouver le propriétaire" (l'offre peut changer de propriétaire ou
+  // être modifiée après coup, la transaction doit rester figée).
+  ownerProducerId Int?
+  ownerProducer   Producer?     @relation("B2BTransactionOwner", fields: [ownerProducerId], references: [id])
   createdAt    DateTime        @default(now())
 
   // Logistique B2B (LOT 2) — renseignés uniquement si needsLogistics=true.

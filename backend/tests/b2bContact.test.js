@@ -228,6 +228,142 @@ describe('B2B — transaction déclarée', () => {
       .send({ contactId: contact.body.id, quantity: 10 })
     expect(tx.status).toBe(201) // pas de MOQ sur une demande, rien à rejeter
   })
+
+  // LOT AUDIT-OWN-02/OWN-03 (audit XXX RIZ)
+  test('une transaction décrémente réellement RiceOffer.quantity et snapshot le propriétaire', async () => {
+    const memberEmail = uniqueEmail('own-tx-member')
+    await registerB2B('PRODUCER', { region: 'Man' }, { email: memberEmail })
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop TX', responsable: 'X', region: 'Man' })
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coop.body.token}`).send({ producerEmail: memberEmail })
+    const member = await prisma.user.findUnique({ where: { email: memberEmail }, include: { producer: true } })
+
+    const offer = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 100, unit: 'sac', region: 'Man', ownerProducerId: member.producer.id })
+
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME' })
+    const contact = await request(app).post('/api/b2b/contacts')
+      .set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: offer.body.id })
+    await request(app).post(`/api/b2b/contacts/${contact.body.id}/accept`).set('Authorization', `Bearer ${coop.body.token}`)
+
+    const tx = await request(app).post('/api/b2b/transactions')
+      .set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 40 })
+    expect(tx.status).toBe(201)
+    expect(tx.body.ownerProducerId).toBe(member.producer.id)
+
+    const refreshedOffer = await prisma.riceOffer.findUnique({ where: { id: offer.body.id } })
+    expect(refreshedOffer.quantity).toBe(60)
+    expect(refreshedOffer.status).toBe('RESERVED')
+  })
+
+  test('rejette une transaction dépassant le stock disponible de l\'offre', async () => {
+    const seller = await registerB2B('PRODUCER', { region: 'Bouaké' })
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME2' })
+    const offer = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${seller.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 50, unit: 'sac', region: 'Bouaké' })
+    const contact = await request(app).post('/api/b2b/contacts')
+      .set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: offer.body.id })
+    await request(app).post(`/api/b2b/contacts/${contact.body.id}/accept`).set('Authorization', `Bearer ${seller.body.token}`)
+
+    const tx = await request(app).post('/api/b2b/transactions')
+      .set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 60 })
+    expect(tx.status).toBe(400)
+    expect(tx.body.error).toMatch(/stock disponible/)
+  })
+
+  test('épuiser tout le stock d\'une offre la passe en SOLD', async () => {
+    const seller = await registerB2B('PRODUCER', { region: 'Bouaké' })
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME3' })
+    const offer = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${seller.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 20, unit: 'sac', region: 'Bouaké' })
+    const contact = await request(app).post('/api/b2b/contacts')
+      .set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: offer.body.id })
+    await request(app).post(`/api/b2b/contacts/${contact.body.id}/accept`).set('Authorization', `Bearer ${seller.body.token}`)
+
+    const tx = await request(app).post('/api/b2b/transactions')
+      .set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 20 })
+    expect(tx.status).toBe(201)
+
+    const refreshedOffer = await prisma.riceOffer.findUnique({ where: { id: offer.body.id } })
+    expect(refreshedOffer.quantity).toBe(0)
+    expect(refreshedOffer.status).toBe('SOLD')
+  })
+
+  // Section 27 du cahier de cadrage : "test multi-propriétaires" — deux lots
+  // (deux offres, chacune avec un propriétaire membre différent) du même
+  // produit catalogue, vendus partiellement, doivent attribuer les revenus
+  // au bon membre indépendamment l'un de l'autre.
+  test('multi-propriétaires : deux offres du même produit, deux membres, ventes partielles indépendantes', async () => {
+    const emailA = uniqueEmail('own-multi-a')
+    const emailB = uniqueEmail('own-multi-b')
+    await registerB2B('PRODUCER', { region: 'Man' }, { email: emailA, name: 'Membre A' })
+    await registerB2B('PRODUCER', { region: 'Man' }, { email: emailB, name: 'Membre B' })
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Multi', responsable: 'X', region: 'Man' })
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coop.body.token}`).send({ producerEmail: emailA })
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coop.body.token}`).send({ producerEmail: emailB })
+    const memberA = await prisma.user.findUnique({ where: { email: emailA }, include: { producer: true } })
+    const memberB = await prisma.user.findUnique({ where: { email: emailB }, include: { producer: true } })
+
+    const lotA = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz 25kg', quantity: 100, unit: 'sac', region: 'Man', ownerProducerId: memberA.producer.id })
+    const lotB = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz 25kg', quantity: 100, unit: 'sac', region: 'Man', ownerProducerId: memberB.producer.id })
+
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME Multi' })
+    const contactA = await request(app).post('/api/b2b/contacts').set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: lotA.body.id })
+    await request(app).post(`/api/b2b/contacts/${contactA.body.id}/accept`).set('Authorization', `Bearer ${coop.body.token}`)
+    const contactB = await request(app).post('/api/b2b/contacts').set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: lotB.body.id })
+    await request(app).post(`/api/b2b/contacts/${contactB.body.id}/accept`).set('Authorization', `Bearer ${coop.body.token}`)
+
+    // 50 sacs du Lot A, 30 sacs du Lot B
+    const txA = await request(app).post('/api/b2b/transactions').set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contactA.body.id, quantity: 50, amount: 500000 })
+    const txB = await request(app).post('/api/b2b/transactions').set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contactB.body.id, quantity: 30, amount: 300000 })
+
+    expect(txA.body.ownerProducerId).toBe(memberA.producer.id)
+    expect(txA.body.quantity).toBe(50)
+    expect(txB.body.ownerProducerId).toBe(memberB.producer.id)
+    expect(txB.body.quantity).toBe(30)
+
+    const refreshedA = await prisma.riceOffer.findUnique({ where: { id: lotA.body.id } })
+    const refreshedB = await prisma.riceOffer.findUnique({ where: { id: lotB.body.id } })
+    expect(refreshedA.quantity).toBe(50) // 100 - 50
+    expect(refreshedB.quantity).toBe(70) // 100 - 30
+
+    // La somme attribuable à chaque membre se retrouve exclusivement via
+    // ownerProducerId — jamais mélangée entre A et B.
+    const salesForA = await prisma.b2BTransaction.findMany({ where: { ownerProducerId: memberA.producer.id } })
+    const salesForB = await prisma.b2BTransaction.findMany({ where: { ownerProducerId: memberB.producer.id } })
+    expect(salesForA).toHaveLength(1)
+    expect(salesForA[0].quantity).toBe(50)
+    expect(salesForB).toHaveLength(1)
+    expect(salesForB[0].quantity).toBe(30)
+  })
+
+  test('modifier l\'offre après la vente ne change jamais le propriétaire déjà figé sur la transaction', async () => {
+    const emailA = uniqueEmail('own-frozen-a')
+    await registerB2B('PRODUCER', { region: 'Man' }, { email: emailA })
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Frozen', responsable: 'X', region: 'Man' })
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coop.body.token}`).send({ producerEmail: emailA })
+    const memberA = await prisma.user.findUnique({ where: { email: emailA }, include: { producer: true } })
+
+    const offer = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 100, unit: 'sac', region: 'Man', ownerProducerId: memberA.producer.id })
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME Frozen' })
+    const contact = await request(app).post('/api/b2b/contacts').set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: offer.body.id })
+    await request(app).post(`/api/b2b/contacts/${contact.body.id}/accept`).set('Authorization', `Bearer ${coop.body.token}`)
+    const tx = await request(app).post('/api/b2b/transactions').set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 10 })
+
+    // Le producteur repasse le propriétaire de l'offre à "coopérative" après coup.
+    await request(app).put(`/api/b2b/offers/${offer.body.id}`).set('Authorization', `Bearer ${coop.body.token}`).send({ ownerProducerId: '' })
+
+    const frozenTx = await prisma.b2BTransaction.findUnique({ where: { id: tx.body.id } })
+    expect(frozenTx.ownerProducerId).toBe(memberA.producer.id) // inchangé malgré l'édition de l'offre
+  })
 })
 
 describe('B2B — admin : vérification, modération, stats', () => {

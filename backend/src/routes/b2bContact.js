@@ -191,6 +191,15 @@ router.post('/transactions', authenticate, async (req, res) => {
         error: `Quantité (${qty}) inférieure au MOQ de l'offre (${contact.offer.minOrderQty} ${contact.offer.unit})`,
       })
     }
+    // LOT AUDIT-OWN-02 (audit XXX RIZ) : RiceOffer.quantity n'était jamais
+    // décrémenté par une transaction (restait un total statique jamais lié
+    // aux ventes réelles) — une transaction pouvait donc être déclarée
+    // au-delà du stock réellement disponible sur l'offre.
+    if (contact.offer && qty > contact.offer.quantity) {
+      return res.status(400).json({
+        error: `Quantité (${qty}) supérieure au stock disponible sur l'offre (${contact.offer.quantity} ${contact.offer.unit})`,
+      })
+    }
 
     // L'offre est publiée par le vendeur (destinataire du contact) ; une demande
     // est publiée par l'acheteur (destinataire du contact) — dans les deux cas
@@ -207,33 +216,54 @@ router.post('/transactions', authenticate, async (req, res) => {
     }
 
     const source = contact.offer || contact.request
-    const tx = await prisma.b2BTransaction.create({
-      data: {
-        contactId: contact.id,
-        buyerUserId,
-        sellerUserId,
-        product: product || source?.product || 'Riz',
-        quantity: qty,
-        unit: unit || source?.unit || 'tonne',
-        region: region || source?.region || '',
-        amount: amount != null && amount !== '' ? Number(amount) : null,
-        notes: notes || null,
-      },
-    })
 
-    // LOT AUDIT-G12 (audit XXX RIZ) : RiceOffer.status prévoit RESERVED/SOLD
-    // mais rien ne l'appliquait jamais automatiquement — deux acheteurs
-    // pouvaient négocier la même offre sans qu'aucun compteur ne s'épuise.
-    // Uniquement depuis AVAILABLE (jamais depuis SOLD/DISABLED/EXPIRED, qui
-    // restent des décisions manuelles du producteur) ; le passage définitif en
-    // SOLD reste un geste manuel du producteur (une transaction déclarée est
-    // un constat, pas un paiement confirmé — cf. commentaire ci-dessus).
-    if (contact.offerId) {
-      await prisma.riceOffer.updateMany({
-        where: { id: contact.offerId, status: 'AVAILABLE' },
-        data: { status: 'RESERVED' },
+    // LOT AUDIT-G12/OWN-02/OWN-03 (audit XXX RIZ) : tout dans une seule
+    // transaction DB — si le décrément atomique de l'offre échoue (stock
+    // changé entre-temps par une déclaration concurrente sur le même
+    // contact.offer), la création de B2BTransaction doit être annulée avec
+    // lui, sinon on obtient une transaction "fantôme" sans décrément
+    // correspondant (vente déclarée au-delà du stock réellement restant).
+    const tx = await prisma.$transaction(async (db) => {
+      const created = await db.b2BTransaction.create({
+        data: {
+          contactId: contact.id,
+          buyerUserId,
+          sellerUserId,
+          product: product || source?.product || 'Riz',
+          quantity: qty,
+          unit: unit || source?.unit || 'tonne',
+          region: region || source?.region || '',
+          amount: amount != null && amount !== '' ? Number(amount) : null,
+          notes: notes || null,
+          // LOT AUDIT-OWN-03 : snapshot au moment de la déclaration, jamais
+          // recalculé depuis l'offre par la suite (voir commentaire schema.prisma).
+          ownerProducerId: contact.offer?.ownerProducerId ?? null,
+        },
       })
-    }
+
+      if (contact.offerId && contact.offer) {
+        // Décrément conditionnel (quantity >= qty) plutôt qu'un recalcul
+        // depuis la lecture faite plus haut : deux transactions déclarées en
+        // parallèle sur la même offre ne doivent jamais la faire passer sous
+        // zéro (même classe de garde que stockEngine.js côté B2C).
+        const decremented = await db.riceOffer.updateMany({
+          where: { id: contact.offerId, status: { in: ['AVAILABLE', 'RESERVED'] }, quantity: { gte: qty } },
+          data: { quantity: { decrement: qty } },
+        })
+        if (decremented.count === 0) {
+          const err = new Error('Le stock de cette offre a changé entre-temps — réessayez.')
+          err.status = 409
+          throw err
+        }
+        const refreshed = await db.riceOffer.findUnique({ where: { id: contact.offerId }, select: { quantity: true } })
+        await db.riceOffer.update({
+          where: { id: contact.offerId },
+          data: { status: refreshed.quantity <= 0 ? 'SOLD' : 'RESERVED' },
+        })
+      }
+
+      return created
+    })
 
     const otherPartyId = req.user.id === buyerUserId ? sellerUserId : buyerUserId
     setImmediate(() => notify(
@@ -242,7 +272,10 @@ router.post('/transactions', authenticate, async (req, res) => {
     ))
 
     res.status(201).json(tx)
-  } catch (e) { sendError(res, e) }
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
+    sendError(res, e)
+  }
 })
 
 router.get('/transactions', authenticate, async (req, res) => {

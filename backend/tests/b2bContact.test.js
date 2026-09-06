@@ -536,3 +536,87 @@ describe('B2B — admin : vérification, modération, stats', () => {
     expect(res.body.status).toBe('DISABLED')
   })
 })
+
+// LOT AUDIT-ACC-01 (audit XXX RIZ) — factures coopérative
+describe('B2B — factures coopérative', () => {
+  async function setupCoopSaleTx() {
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Facture', responsable: 'X', region: 'Man' })
+    const offer = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 100, unit: 'sac', region: 'Man' })
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME Facture' })
+    const contact = await request(app).post('/api/b2b/contacts').set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: offer.body.id })
+    await request(app).post(`/api/b2b/contacts/${contact.body.id}/accept`).set('Authorization', `Bearer ${coop.body.token}`)
+    const tx = await request(app).post('/api/b2b/transactions').set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 40, amount: 400000 })
+    return { coop, buyer, tx }
+  }
+
+  test('le vendeur (coopérative) peut générer une facture pour sa transaction', async () => {
+    const { coop, tx } = await setupCoopSaleTx()
+    const res = await request(app).post(`/api/b2b/transactions/${tx.body.id}/invoice`)
+      .set('Authorization', `Bearer ${coop.body.token}`)
+    expect(res.status).toBe(201)
+    expect(res.body.invoiceNumber).toContain('FACT-COOP')
+    expect(res.body.content).toContain('Riz paddy')
+    expect(res.body.content).toMatch(/400.000/)
+  })
+
+  test('une seconde génération pour la même transaction est refusée', async () => {
+    const { coop, tx } = await setupCoopSaleTx()
+    await request(app).post(`/api/b2b/transactions/${tx.body.id}/invoice`).set('Authorization', `Bearer ${coop.body.token}`)
+    const second = await request(app).post(`/api/b2b/transactions/${tx.body.id}/invoice`).set('Authorization', `Bearer ${coop.body.token}`)
+    expect(second.status).toBe(409)
+  })
+
+  test('l\'acheteur peut consulter la facture (GET), mais pas en générer une nouvelle', async () => {
+    const { coop, buyer, tx } = await setupCoopSaleTx()
+    await request(app).post(`/api/b2b/transactions/${tx.body.id}/invoice`).set('Authorization', `Bearer ${coop.body.token}`)
+
+    const asBuyer = await request(app).get(`/api/b2b/transactions/${tx.body.id}/invoice`).set('Authorization', `Bearer ${buyer.body.token}`)
+    expect(asBuyer.status).toBe(200)
+
+    const genAsBuyer = await request(app).post(`/api/b2b/transactions/${tx.body.id}/invoice`).set('Authorization', `Bearer ${buyer.body.token}`)
+    expect(genAsBuyer.status).toBe(404) // sellerUserId ne correspond pas à l'acheteur
+  })
+
+  test('un vendeur qui n\'est pas une coopérative ne peut pas facturer', async () => {
+    const seller = await registerB2B('PRODUCER', { region: 'Bouaké' })
+    const offer = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${seller.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 50, unit: 'sac', region: 'Bouaké' })
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME NoCoop' })
+    const contact = await request(app).post('/api/b2b/contacts').set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: offer.body.id })
+    await request(app).post(`/api/b2b/contacts/${contact.body.id}/accept`).set('Authorization', `Bearer ${seller.body.token}`)
+    const tx = await request(app).post('/api/b2b/transactions').set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 10, amount: 50000 })
+
+    const res = await request(app).post(`/api/b2b/transactions/${tx.body.id}/invoice`).set('Authorization', `Bearer ${seller.body.token}`)
+    expect(res.status).toBe(403)
+  })
+
+  test('GET /cooperative/invoices liste et permet la recherche par numéro', async () => {
+    const { coop, tx } = await setupCoopSaleTx()
+    const created = await request(app).post(`/api/b2b/transactions/${tx.body.id}/invoice`).set('Authorization', `Bearer ${coop.body.token}`)
+
+    const list = await request(app).get('/api/b2b/cooperative/invoices').set('Authorization', `Bearer ${coop.body.token}`)
+    expect(list.status).toBe(200)
+    expect(list.body.invoices).toHaveLength(1)
+    expect(list.body.invoices[0].transaction.product).toBe('Riz paddy')
+
+    const searched = await request(app).get(`/api/b2b/cooperative/invoices?search=${created.body.invoiceNumber}`)
+      .set('Authorization', `Bearer ${coop.body.token}`)
+    expect(searched.body.invoices).toHaveLength(1)
+
+    const notFound = await request(app).get('/api/b2b/cooperative/invoices?search=INEXISTANT')
+      .set('Authorization', `Bearer ${coop.body.token}`)
+    expect(notFound.body.invoices).toHaveLength(0)
+  })
+
+  test('sécurité : une coopérative ne voit pas les factures d\'une autre coopérative', async () => {
+    const { coop: coopA, tx: txA } = await setupCoopSaleTx()
+    await request(app).post(`/api/b2b/transactions/${txA.body.id}/invoice`).set('Authorization', `Bearer ${coopA.body.token}`)
+    const { coop: coopB } = await setupCoopSaleTx()
+
+    const list = await request(app).get('/api/b2b/cooperative/invoices').set('Authorization', `Bearer ${coopB.body.token}`)
+    expect(list.body.invoices).toHaveLength(0)
+  })
+})

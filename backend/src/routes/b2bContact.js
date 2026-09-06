@@ -3,6 +3,7 @@ const prisma = require('../lib/prisma')
 const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { notify } = require('../services/notifications')
+const { generateTransactionInvoice, nextInvoiceNumber } = require('../services/invoiceGenerator')
 
 // ─── Visibilité des coordonnées ──────────────────────────────────────────────
 // Règle centralisée (cahier de cadrage §5/§24) : un téléphone n'est visible
@@ -477,6 +478,62 @@ router.post('/transactions/:id/cancel', authenticate, async (req, res) => {
     if (!tx) return res.status(404).json({ error: 'Transaction introuvable' })
     const updated = await prisma.b2BTransaction.update({ where: { id: tx.id }, data: { status: 'CANCELLED' } })
     res.json(updated)
+  } catch (e) { sendError(res, e) }
+})
+
+// ─── Factures coopérative (LOT AUDIT-ACC-01) ─────────────────────────────────
+// Réservé aux transactions dont le VENDEUR est une coopérative (une facture
+// coopérative n'a de sens que dans cet espace comptable — cf. section
+// dédiée du cahier de cadrage). Même pattern que Contract : HTML généré et
+// stocké une fois, jamais régénéré (une facture ISSUED est un document figé).
+
+router.post('/transactions/:id/invoice', authenticate, async (req, res) => {
+  try {
+    const tx = await prisma.b2BTransaction.findFirst({
+      where: { id: Number(req.params.id), sellerUserId: req.user.id },
+      include: { buyer: { select: { name: true, email: true } }, seller: { select: { email: true } }, invoice: true },
+    })
+    if (!tx) return res.status(404).json({ error: 'Transaction introuvable' })
+    if (tx.invoice) return res.status(409).json({ error: 'Une facture existe déjà pour cette transaction' })
+
+    const cooperative = await prisma.cooperative.findUnique({ where: { userId: req.user.id } })
+    if (!cooperative) return res.status(403).json({ error: 'Facturation réservée aux coopératives' })
+
+    const invoiceNumber = nextInvoiceNumber(cooperative.id, tx.id)
+    const content = generateTransactionInvoice({ tx, cooperative, seller: tx.seller, buyer: tx.buyer, invoiceNumber })
+    const invoice = await prisma.cooperativeInvoice.create({
+      data: { cooperativeId: cooperative.id, transactionId: tx.id, invoiceNumber, content },
+    })
+    res.status(201).json(invoice)
+  } catch (e) { sendError(res, e) }
+})
+
+router.get('/transactions/:id/invoice', authenticate, async (req, res) => {
+  try {
+    const tx = await prisma.b2BTransaction.findFirst({
+      where: { id: Number(req.params.id), OR: [{ buyerUserId: req.user.id }, { sellerUserId: req.user.id }] },
+      include: { invoice: true },
+    })
+    if (!tx || !tx.invoice) return res.status(404).json({ error: 'Facture introuvable' })
+    res.json(tx.invoice)
+  } catch (e) { sendError(res, e) }
+})
+
+// GET /cooperative/invoices — liste + recherche, réservé à la coopérative émettrice.
+router.get('/cooperative/invoices', authenticate, async (req, res) => {
+  const { search } = req.query
+  try {
+    const cooperative = await prisma.cooperative.findUnique({ where: { userId: req.user.id } })
+    if (!cooperative) return res.status(403).json({ error: 'Réservé aux coopératives' })
+
+    const where = { cooperativeId: cooperative.id }
+    if (search?.trim()) where.invoiceNumber = { contains: search.trim() }
+    const invoices = await prisma.cooperativeInvoice.findMany({
+      where,
+      include: { transaction: { select: { product: true, quantity: true, unit: true, amount: true, buyer: { select: { name: true } } } } },
+      orderBy: { createdAt: 'desc' },
+    })
+    res.json({ invoices })
   } catch (e) { sendError(res, e) }
 })
 

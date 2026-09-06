@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, DollarSign, Truck, CheckCircle, MapPin } from 'lucide-react'
+import { AlertCircle, DollarSign, Truck, CheckCircle, MapPin, FileText, Download } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
+import DOMPurify from 'dompurify'
 import { api } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 
@@ -142,6 +143,65 @@ function ShipmentTracking({ tx, onConfirmed }) {
   )
 }
 
+const downloadInvoice = async (invoice) => {
+  const { default: html2pdf } = await import('html2pdf.js')
+  await html2pdf()
+    .set({
+      margin: [15, 15, 15, 15],
+      filename: `${invoice.invoiceNumber}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    })
+    .from(DOMPurify.sanitize(invoice.content))
+    .save()
+}
+
+// LOT AUDIT-ACC-01 (audit XXX RIZ) : "la coopérative doit pouvoir gérer les
+// factures dans son espace comptabilité... accéder à la commande/vente
+// concernée" — directement satisfait ici, pas un onglet séparé (c'est déjà
+// la vue de la vente). Réservé au vendeur (jamais visible côté acheteur en
+// génération, seulement en consultation une fois émise).
+function InvoiceAction({ tx }) {
+  const [invoice, setInvoice] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.get(`/b2b/transactions/${tx.id}/invoice`)
+      .then(setInvoice)
+      .catch(() => {}) // pas de facture encore émise — état normal, pas une erreur
+      .finally(() => setLoading(false))
+  }, [tx.id])
+
+  const generate = async () => {
+    setError(''); setLoading(true)
+    try {
+      const created = await api.post(`/b2b/transactions/${tx.id}/invoice`)
+      setInvoice(created)
+    } catch (err) { setError(err.message) }
+    finally { setLoading(false) }
+  }
+
+  if (loading) return null
+  return (
+    <div className="mt-3 pt-3 border-t border-charcoal/8 flex items-center gap-2">
+      {error && <p className="font-dm text-xs text-red-600">{error}</p>}
+      {invoice ? (
+        <button onClick={() => downloadInvoice(invoice)}
+          className="flex items-center gap-1.5 font-syne text-xs font-bold text-forest hover:underline">
+          <Download size={12} /> Télécharger la facture ({invoice.invoiceNumber})
+        </button>
+      ) : (
+        <button onClick={generate}
+          className="flex items-center gap-1.5 font-syne text-xs font-bold text-charcoal/60 hover:text-forest">
+          <FileText size={12} /> Générer la facture
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function TransactionsTab() {
   const { user } = useAuth()
   const [transactions, setTransactions] = useState([])
@@ -241,6 +301,7 @@ export default function TransactionsTab() {
 
                 {canRequestLogistics && <RequestLogisticsForm tx={tx} onDone={load} />}
                 {hasActiveLogistics && <ShipmentTracking tx={tx} onConfirmed={load} />}
+                {!iAmBuyer && tx.amount != null && tx.status !== 'CANCELLED' && <InvoiceAction tx={tx} />}
               </div>
             )
           })}

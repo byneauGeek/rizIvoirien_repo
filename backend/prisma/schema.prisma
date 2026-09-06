@@ -148,6 +148,7 @@ model Cooperative {
   members CooperativeMember[]
   offers  RiceOffer[]
   ledgerEntries CooperativeLedgerEntry[]
+  invoices      CooperativeInvoice[]
 
   @@index([region])
   @@index([verification])
@@ -181,6 +182,25 @@ model CooperativeLedgerEntry {
 
   @@index([cooperativeId, producerId])
   @@index([sourceType, sourceId])
+}
+
+// LOT AUDIT-ACC-01 (audit XXX RIZ) : gap confirmé — aucun modèle Invoice/
+// Facture n'existait (recherche exhaustive du schéma). Une seule facture par
+// transaction (contrainte @unique) — même pattern que Contract
+// (contractGenerator.js) : HTML généré et stocké côté serveur, rendu +
+// export PDF côté client (html2pdf.js), pas de moteur de facturation
+// parallèle ni de PDF stocké côté serveur.
+model CooperativeInvoice {
+  id            Int             @id @default(autoincrement())
+  cooperativeId Int
+  cooperative   Cooperative     @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  transactionId Int             @unique
+  transaction   B2BTransaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  invoiceNumber String          @unique
+  content       String
+  createdAt     DateTime        @default(now())
+
+  @@index([cooperativeId])
 }
 
 model CooperativeMember {
@@ -409,6 +429,7 @@ model B2BTransaction {
   deliveryInternalCost Float?
   deliveryMargin       Float?
   shipment             Shipment?
+  invoice              CooperativeInvoice?
 
   @@index([buyerUserId])
   @@index([sellerUserId])

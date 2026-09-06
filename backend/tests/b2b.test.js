@@ -513,6 +513,37 @@ describe('B2B — ledger membre coopérative', () => {
     expect(myLedger.body.entries).toHaveLength(1)
   })
 
+  // LOT AUDIT-ACC-04/ACC-05 (audit XXX RIZ)
+  test('GET /cooperative/accounting agrège tous les membres, jamais mélangé avec une autre coopérative', async () => {
+    const { coop, member, buyer, contact } = await setupMemberOfferContact({ commissionRate: 10 })
+    await request(app).post('/api/b2b/transactions').set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 40, amount: 400000 })
+    await request(app).post(`/api/b2b/cooperative/members/${member.producer.id}/payments`)
+      .set('Authorization', `Bearer ${coop.body.token}`).send({ amount: 100000 })
+
+    // Une autre coopérative, avec sa propre activité — ne doit jamais fuiter ici.
+    const other = await setupMemberOfferContact({ commissionRate: 20 })
+    await request(app).post('/api/b2b/transactions').set('Authorization', `Bearer ${other.buyer.body.token}`)
+      .send({ contactId: other.contact.body.id, quantity: 40, amount: 999999 })
+
+    const accounting = await request(app).get('/api/b2b/cooperative/accounting')
+      .set('Authorization', `Bearer ${coop.body.token}`)
+    expect(accounting.status).toBe(200)
+    expect(accounting.body.totalSales).toBe(400000)
+    expect(accounting.body.totalCommissions).toBe(-40000)
+    expect(accounting.body.totalPayments).toBe(-100000)
+    expect(accounting.body.totalDue).toBe(260000) // 400000 - 40000 - 100000
+    expect(accounting.body.byMember).toHaveLength(1)
+    expect(accounting.body.byMember[0].producerId).toBe(member.producer.id)
+    expect(accounting.body.byMember[0].balance).toBe(260000)
+  })
+
+  test('un TRADER (pas COOPERATIVE) ne peut pas accéder à /cooperative/accounting', async () => {
+    const trader = await registerB2B('TRADER', { companyName: 'Not A Coop' })
+    const res = await request(app).get('/api/b2b/cooperative/accounting').set('Authorization', `Bearer ${trader.body.token}`)
+    expect(res.status).toBe(403)
+  })
+
   test('sécurité : un membre ne peut pas voir le ledger d\'un autre membre', async () => {
     const emailA = uniqueEmail('ledger-sec-a')
     const emailB = uniqueEmail('ledger-sec-b')

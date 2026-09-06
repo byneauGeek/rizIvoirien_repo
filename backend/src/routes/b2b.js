@@ -673,6 +673,50 @@ router.get('/my-ledger', authenticate, requireRole('PRODUCER'), async (req, res)
   } catch (e) { sendError(res, e) }
 })
 
+// ─── Coopérative : comptabilité agrégée (LOT AUDIT-ACC-05/ACC-04) ────────────
+// GET /cooperative/accounting — gap confirmé : aucun accès comptable scopé à
+// UNE coopérative n'existait (le module accounting*.js est exclusivement
+// ADMIN/COMMERCIAL, sur des données plateforme). Agrège les mouvements de
+// TOUS les membres de la coopérative appelante — jamais les données d'une
+// autre coopérative (scope systématique par cooperativeId = actor.profile.id).
+router.get('/cooperative/accounting', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+
+    const entries = await prisma.cooperativeLedgerEntry.findMany({
+      where: { cooperativeId: actor.profile.id },
+      include: { producer: { select: { id: true, user: { select: { name: true } } } } },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    const totals = { SALE_CREDIT: 0, COMMISSION: 0, PAYMENT: 0, ADJUSTMENT: 0 }
+    for (const e of entries) totals[e.type] = (totals[e.type] || 0) + e.amount
+
+    const byMember = {}
+    for (const e of entries) {
+      const key = e.producerId
+      if (!byMember[key]) byMember[key] = { producerId: key, name: e.producer.user.name, balance: 0, sales: 0, commissions: 0, payments: 0 }
+      byMember[key].balance += e.amount
+      if (e.type === 'SALE_CREDIT') byMember[key].sales += e.amount
+      if (e.type === 'COMMISSION') byMember[key].commissions += e.amount
+      if (e.type === 'PAYMENT') byMember[key].payments += e.amount
+    }
+
+    res.json({
+      totalSales: totals.SALE_CREDIT,
+      totalCommissions: totals.COMMISSION, // négatif
+      totalPayments: totals.PAYMENT, // négatif
+      totalAdjustments: totals.ADJUSTMENT,
+      // "montants dus aux membres" = solde global de la coopérative envers
+      // l'ensemble de ses membres ; ce qui a déjà été versé apparaît
+      // séparément (totalPayments, négatif par convention du ledger).
+      totalDue: entries.reduce((sum, e) => sum + e.amount, 0),
+      byMember: Object.values(byMember).sort((a, b) => b.balance - a.balance),
+    })
+  } catch (e) { sendError(res, e) }
+})
+
 router.post('/cooperative/members', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
   const { producerEmail } = req.body
   if (!producerEmail) return res.status(400).json({ error: 'Email du producteur requis' })

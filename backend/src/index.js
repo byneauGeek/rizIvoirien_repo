@@ -232,6 +232,8 @@ function start() {
     try { startEngine() } catch (e) { logger.error({ err: e }, '❌ Moteur assignation') }
     const { startB2BExpiryEngine } = require('./services/b2bExpiry')
     try { startB2BExpiryEngine() } catch (e) { logger.error({ err: e }, '❌ Moteur expiration B2B') }
+    const { startOrderValidationExpiryEngine } = require('./services/orderValidationExpiry')
+    try { startOrderValidationExpiryEngine() } catch (e) { logger.error({ err: e }, '❌ Moteur expiration commandes') }
   })
 
   process.on('SIGTERM', async () => {

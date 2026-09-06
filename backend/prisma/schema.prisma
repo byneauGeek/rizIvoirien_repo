@@ -547,6 +547,11 @@ model Order {
   idempotencyKey       String?
   paymentMethod        String   @default("CASH_ON_DELIVERY")
   driverRated          Boolean  @default(false)
+  // LOT AUDIT-G11 (audit XXX RIZ) : PENDING_VALIDATION bloquait le stock
+  // indéfiniment si personne ne traitait la commande. orderValidationExpiry.js
+  // avertit le staff commercial à 24h puis annule+restocke à 48h ; ce champ
+  // évite de renvoyer l'alerte à chaque passage du moteur (horaire).
+  expiryWarnedAt       DateTime?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 

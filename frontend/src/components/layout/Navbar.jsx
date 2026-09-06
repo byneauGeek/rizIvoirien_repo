@@ -38,6 +38,7 @@ const NOTIF_META = {
   PLAN_UPGRADE_REJECTED:     { icon: Crown,         path: (u) => ROLE_DASHBOARD[u.role] || '/' },
   NEW_REVIEW:                { icon: Star,          path: () => '/vendor' },
   DELIVERY_CONFIRMED:        { icon: Truck,         path: () => '/driver' },
+  ORDER_VALIDATION_EXPIRING: { icon: AlertTriangle, path: (u) => ROLE_DASHBOARD[u.role] || '/' },
 }
 const notifMetaFor = (type) => {
   if (NOTIF_META[type]) return NOTIF_META[type]

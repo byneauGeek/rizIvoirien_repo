@@ -47,7 +47,11 @@ export default function ListingsTab({ effectiveRole }) {
     if (!form.region) return setFormError('La région est requise.')
     setSubmitting(true)
     try {
-      await api.post(endpoint, { ...form, quantity: Number(form.quantity) })
+      await api.post(endpoint, {
+        ...form,
+        quantity: Number(form.quantity),
+        minOrderQty: form.minOrderQty ? Number(form.minOrderQty) : undefined,
+      })
       setShowForm(false)
       setForm({ product: 'Riz paddy', quantity: '', unit: 'tonne', region: '' })
       load()
@@ -134,6 +138,13 @@ export default function ListingsTab({ effectiveRole }) {
                 <input type="number" min="0" value={form.price || ''} onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
                   className="w-full bg-cream border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm" />
               </div>
+              <div>
+                <label className="font-syne text-xs font-bold uppercase text-charcoal/50 block mb-1.5">MOQ — quantité minimale de commande (optionnel)</label>
+                <input type="number" min="0" step="0.1" value={form.minOrderQty || ''} onChange={e => setForm(f => ({ ...f, minOrderQty: e.target.value }))}
+                  placeholder={`Ex : 500`}
+                  className="w-full bg-cream border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm" />
+                <p className="font-dm text-[11px] text-charcoal/40 mt-1">En {form.unit} — un acheteur ne peut pas commander moins que ce seuil.</p>
+              </div>
             </div>
           ) : (
             <div>
@@ -170,7 +181,10 @@ export default function ListingsTab({ effectiveRole }) {
             <div key={item.id} className="bg-white border border-charcoal/10 rounded-2xl p-4 flex items-center justify-between gap-4 flex-wrap">
               <div>
                 <p className="font-syne font-bold text-charcoal">{item.product} — {fmt(item.quantity)} {item.unit}</p>
-                <p className="font-dm text-sm text-charcoal/40">{item.region}</p>
+                <p className="font-dm text-sm text-charcoal/40">
+                  {item.region}
+                  {item.minOrderQty != null && ` · MOQ ${fmt(item.minOrderQty)} ${item.unit}`}
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 <span className="font-syne text-xs font-bold px-3 py-1.5 rounded-full bg-charcoal/5 text-charcoal/60">

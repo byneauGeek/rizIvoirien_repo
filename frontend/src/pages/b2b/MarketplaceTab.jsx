@@ -188,6 +188,9 @@ export default function MarketplaceTab() {
                 {view === 'offers' && item.price != null && (
                   <p className="font-dm text-sm text-charcoal/60 mt-1">{fmt(item.price)} FCFA / {item.unit}</p>
                 )}
+                {view === 'offers' && item.minOrderQty != null && (
+                  <p className="font-dm text-xs text-charcoal/40 mt-0.5">MOQ : {fmt(item.minOrderQty)} {item.unit}</p>
+                )}
                 {user && (
                   <div className="mt-3 flex items-center gap-4">
                     {contactedIds.has(item.id) ? (

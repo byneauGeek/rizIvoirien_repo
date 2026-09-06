@@ -195,6 +195,12 @@ model RiceOffer {
   availableFrom DateTime?
   quality       String?
   price         Float?
+  // LOT B2B-7 (audit XXX RIZ) : MOQ (quantité minimale de commande) —
+  // absente jusqu'ici, `quantity` ne représentait que le stock total
+  // disponible, jamais un seuil minimum d'achat par commande. Nullable :
+  // une offre sans MOQ reste vendable à l'unité, comportement inchangé pour
+  // les offres existantes.
+  minOrderQty   Float?
   photos        String       @default("[]")
   status        String       @default("DRAFT") // DRAFT|AVAILABLE|RESERVED|SOLD|EXPIRED|DISABLED
   createdAt     DateTime     @default(now())

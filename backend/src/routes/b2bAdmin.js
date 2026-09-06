@@ -62,7 +62,12 @@ router.put('/verifications/:profileType/:id', ...guard, async (req, res) => {
       data: { verification: nextStatus },
       include: { user: { select: { id: true, name: true } } },
     })
-    setImmediate(() => logAction(req.user.id, 'B2B_VERIFICATION', profileType, profile.id, { verification: nextStatus }))
+    // LOT B2B-8 : même correctif que pour notify() ci-dessous — attendu
+    // directement plutôt qu'en setImmediate. C'est cette même course qui a
+    // rendu tests/accounting.test.js:62 intermittent une fois plus tôt dans
+    // ce projet (déjà signalé séparément) ; corrigée ici plutôt que
+    // contournée dans le test, puisqu'on touche déjà cette ligne.
+    await logAction(req.user.id, 'B2B_VERIFICATION', profileType, profile.id, { verification: nextStatus })
 
     const messages = {
       VERIFIED: 'Votre profil a été vérifié ✅',
@@ -70,7 +75,12 @@ router.put('/verifications/:profileType/:id', ...guard, async (req, res) => {
       UNVERIFIED: verification === 'REJECTED' ? 'Votre demande de vérification a été refusée.' : 'Votre profil est repassé au statut non vérifié.',
       PENDING: 'Votre demande de vérification est en cours de traitement.',
     }
-    setImmediate(() => notify(profile.user.id, 'B2B_VERIFICATION', 'Statut de vérification', messages[nextStatus] || '', { profileType }))
+    // LOT B2B-8 (audit XXX RIZ) : notification in-app attendue directement,
+    // pas en setImmediate (seuls les e-mails suivent ce fire-and-forget dans
+    // ce projet, cf. correctif équivalent LOT4/orders.js) — sinon un client
+    // qui lit l'état juste après cette réponse peut ne rien trouver, la
+    // notification n'ayant pas encore fini de s'écrire.
+    await notify(profile.user.id, 'B2B_VERIFICATION', 'Statut de vérification', messages[nextStatus] || '', { profileType })
 
     res.json(profile)
   } catch (e) { sendError(res, e) }

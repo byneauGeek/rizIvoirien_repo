@@ -127,6 +127,7 @@ CREATE TABLE "RiceOffer" (
     "availableFrom" TIMESTAMP(3),
     "quality" TEXT,
     "price" DOUBLE PRECISION,
+    "minOrderQty" DOUBLE PRECISION,
     "photos" TEXT NOT NULL DEFAULT '[]',
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

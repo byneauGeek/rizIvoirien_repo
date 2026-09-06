@@ -176,12 +176,21 @@ router.get('/offers/:id', async (req, res) => {
 })
 
 router.post('/offers', authenticate, requireRole(...OFFER_SELLER_ROLES), async (req, res) => {
-  const { product, variety, quantity, unit, region, availableFrom, quality, price, photos, status } = req.body
+  const { product, variety, quantity, unit, region, availableFrom, quality, price, photos, status, minOrderQty } = req.body
   if (!product || !quantity || !unit || !region) return res.status(400).json({ error: 'Champs requis manquants' })
   const qty = Number(quantity)
   if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' })
   if (price !== undefined && price !== null && price !== '' && (!Number.isFinite(Number(price)) || Number(price) < 0)) {
     return res.status(400).json({ error: 'Prix invalide' })
+  }
+  // LOT B2B-7 : le MOQ ne peut jamais dépasser le stock total offert (qty) —
+  // une offre "minimum 500 kg" avec seulement 200 kg disponibles serait
+  // trompeuse, jamais honorable telle quelle.
+  let moq = null
+  if (minOrderQty !== undefined && minOrderQty !== null && minOrderQty !== '') {
+    moq = Number(minOrderQty)
+    if (!Number.isFinite(moq) || moq <= 0) return res.status(400).json({ error: 'MOQ invalide (doit être positif)' })
+    if (moq > qty) return res.status(400).json({ error: `MOQ (${moq}) ne peut pas dépasser la quantité disponible (${qty})` })
   }
 
   try {
@@ -197,6 +206,7 @@ router.post('/offers', authenticate, requireRole(...OFFER_SELLER_ROLES), async (
         availableFrom: availableFrom ? new Date(availableFrom) : null,
         quality: quality || null,
         price: price !== undefined && price !== null && price !== '' ? Number(price) : null,
+        minOrderQty: moq,
         photos: JSON.stringify(photos || []),
         status: ['DRAFT', 'AVAILABLE'].includes(status) ? status : 'AVAILABLE',
       },
@@ -214,7 +224,7 @@ router.put('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), asyn
     const existing = await prisma.riceOffer.findFirst({ where: { id: Number(req.params.id), ...ownerWhere } })
     if (!existing) return res.status(404).json({ error: 'Offre introuvable' })
 
-    const EDITABLE = ['product', 'variety', 'quantity', 'unit', 'region', 'availableFrom', 'quality', 'price', 'photos', 'status']
+    const EDITABLE = ['product', 'variety', 'quantity', 'minOrderQty', 'unit', 'region', 'availableFrom', 'quality', 'price', 'photos', 'status']
     const VALID_STATUS = ['DRAFT', 'AVAILABLE', 'RESERVED', 'SOLD', 'EXPIRED', 'DISABLED']
     const data = {}
     for (const field of EDITABLE) {
@@ -226,6 +236,16 @@ router.put('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), asyn
         const qty = Number(req.body.quantity)
         if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' })
         data.quantity = qty
+      } else if (field === 'minOrderQty') {
+        const raw = req.body.minOrderQty
+        if (raw === null || raw === '') data.minOrderQty = null
+        else {
+          const moq = Number(raw)
+          const finalQty = data.quantity ?? existing.quantity
+          if (!Number.isFinite(moq) || moq <= 0) return res.status(400).json({ error: 'MOQ invalide (doit être positif)' })
+          if (moq > finalQty) return res.status(400).json({ error: `MOQ (${moq}) ne peut pas dépasser la quantité disponible (${finalQty})` })
+          data.minOrderQty = moq
+        }
       } else if (field === 'price') {
         const p = req.body.price
         if (p === null || p === '') data.price = null
@@ -240,6 +260,17 @@ router.put('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), asyn
         data.photos = JSON.stringify(req.body.photos || [])
       } else {
         data[field] = req.body[field]
+      }
+    }
+
+    // Si la quantité baisse SANS que minOrderQty ne soit touché dans cette
+    // même requête, le MOQ existant peut devenir incohérent (ex. MOQ 500 kg
+    // pour un stock réduit à 300 kg) — vérifié après coup, une seule fois,
+    // plutôt que de dupliquer la logique ci-dessus.
+    if (data.quantity !== undefined && data.minOrderQty === undefined) {
+      const effectiveMoq = existing.minOrderQty
+      if (effectiveMoq != null && effectiveMoq > data.quantity) {
+        return res.status(400).json({ error: `La quantité disponible (${data.quantity}) ne peut pas passer sous le MOQ actuel (${effectiveMoq}) — mettez aussi à jour le MOQ` })
       }
     }
 

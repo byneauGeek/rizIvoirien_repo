@@ -463,16 +463,65 @@ router.delete('/requests/:id', authenticate, requireRole(...REQUEST_BUYER_ROLES)
 
 // ─── Coopérative : membres (producteurs affiliés) ────────────────────────────
 
+// LOT AUDIT-ORG-02 (audit XXX RIZ) : ?search (nom/région) et ?active
+// (true|false, omis = tous) — absents jusqu'ici, aucun moyen de retrouver un
+// membre dans une coopérative en comptant beaucoup.
 router.get('/cooperative/members', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
+  const { search, active } = req.query
   try {
     const actor = await myActor(req)
     if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const where = { cooperativeId: actor.profile.id }
+    if (active === 'true' || active === 'false') where.active = active === 'true'
+    if (search?.trim()) {
+      where.producer = {
+        OR: [
+          { region: { contains: search.trim() } },
+          { user: { name: { contains: search.trim() } } },
+        ],
+      }
+    }
     const members = await prisma.cooperativeMember.findMany({
-      where: { cooperativeId: actor.profile.id },
+      where,
       include: { producer: { select: { id: true, region: true, verification: true, user: { select: { name: true, phone: true } } } } },
       orderBy: { joinedAt: 'desc' },
     })
     res.json({ members })
+  } catch (e) { sendError(res, e) }
+})
+
+// GET /cooperative/members/:producerId — fiche détail d'un membre (LOT ORG-02)
+router.get('/cooperative/members/:producerId', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const member = await prisma.cooperativeMember.findUnique({
+      where: { cooperativeId_producerId: { cooperativeId: actor.profile.id, producerId: Number(req.params.producerId) } },
+      include: { producer: { select: { id: true, region: true, department: true, commune: true, farmType: true, surfaceHa: true, capacityKg: true, verification: true, user: { select: { name: true, email: true, phone: true } } } } },
+    })
+    if (!member) return res.status(404).json({ error: 'Membre introuvable' })
+    res.json(member)
+  } catch (e) { sendError(res, e) }
+})
+
+// PUT /cooperative/members/:producerId — activer/désactiver, note interne (LOT ORG-02)
+router.put('/cooperative/members/:producerId', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
+  const { active, note } = req.body
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const data = {}
+    if (typeof active === 'boolean') data.active = active
+    if (note !== undefined) data.note = note || null
+    const result = await prisma.cooperativeMember.updateMany({
+      where: { cooperativeId: actor.profile.id, producerId: Number(req.params.producerId) },
+      data,
+    })
+    if (result.count === 0) return res.status(404).json({ error: 'Membre introuvable' })
+    const member = await prisma.cooperativeMember.findUnique({
+      where: { cooperativeId_producerId: { cooperativeId: actor.profile.id, producerId: Number(req.params.producerId) } },
+    })
+    res.json(member)
   } catch (e) { sendError(res, e) }
 })
 

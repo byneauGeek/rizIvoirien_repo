@@ -150,8 +150,17 @@ model CooperativeMember {
   producerId    Int
   producer      Producer    @relation(fields: [producerId], references: [id], onDelete: Cascade)
   joinedAt      DateTime    @default(now())
+  // LOT AUDIT-ORG-02 (audit XXX RIZ) : gap confirmé — seuls list/add/delete
+  // (suppression définitive) existaient, aucune désactivation réversible ni
+  // note interne à la coopérative sur ce membre. `active=false` retire le
+  // membre des ventes/attributions courantes sans perdre l'historique
+  // d'adhésion (joinedAt) ni ses ventes passées — contrairement à DELETE,
+  // qui reste disponible pour un retrait définitif (ex. erreur de saisie).
+  active        Boolean     @default(true)
+  note          String?
 
   @@unique([cooperativeId, producerId])
+  @@index([cooperativeId, active])
 }
 
 model Trader {

@@ -405,3 +405,142 @@ describe('B2B — membres de coopérative', () => {
     expect(res.status).toBe(404)
   })
 })
+
+// LOT AUDIT-ACC-05 (audit XXX RIZ) — ledger membre coopérative
+describe('B2B — ledger membre coopérative', () => {
+  async function setupMemberOfferContact({ commissionRate } = {}) {
+    const memberEmail = uniqueEmail('ledger-member')
+    const memberReg = await registerB2B('PRODUCER', { region: 'Man' }, { email: memberEmail })
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Ledger', responsable: 'X', region: 'Man' })
+    if (commissionRate != null) {
+      await request(app).put('/api/b2b/my-profile').set('Authorization', `Bearer ${coop.body.token}`).send({ commissionRate })
+    }
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coop.body.token}`).send({ producerEmail: memberEmail })
+    const member = await prisma.user.findUnique({ where: { email: memberEmail }, include: { producer: true } })
+
+    const offer = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 100, unit: 'sac', region: 'Man', ownerProducerId: member.producer.id })
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME Ledger' })
+    const contact = await request(app).post('/api/b2b/contacts').set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: offer.body.id })
+    await request(app).post(`/api/b2b/contacts/${contact.body.id}/accept`).set('Authorization', `Bearer ${coop.body.token}`)
+
+    return { coop, member, memberToken: memberReg.body.token, offer, buyer, contact }
+  }
+
+  test('une vente avec montant crédite automatiquement le membre (SALE_CREDIT), sans commission par défaut', async () => {
+    const { coop, member, buyer, contact } = await setupMemberOfferContact()
+    const tx = await request(app).post('/api/b2b/transactions')
+      .set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 40, amount: 400000 })
+    expect(tx.status).toBe(201)
+
+    const ledger = await request(app).get(`/api/b2b/cooperative/members/${member.producer.id}/ledger`)
+      .set('Authorization', `Bearer ${coop.body.token}`)
+    expect(ledger.status).toBe(200)
+    expect(ledger.body.entries).toHaveLength(1)
+    expect(ledger.body.entries[0].type).toBe('SALE_CREDIT')
+    expect(ledger.body.entries[0].amount).toBe(400000)
+    expect(ledger.body.entries[0].sourceId).toBe(tx.body.id)
+    expect(ledger.body.balance).toBe(400000)
+  })
+
+  test('un taux de commission configuré génère une écriture COMMISSION négative', async () => {
+    const { coop, member, buyer, contact } = await setupMemberOfferContact({ commissionRate: 10 })
+    const tx = await request(app).post('/api/b2b/transactions')
+      .set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 40, amount: 400000 })
+    expect(tx.status).toBe(201)
+
+    const ledger = await request(app).get(`/api/b2b/cooperative/members/${member.producer.id}/ledger`)
+      .set('Authorization', `Bearer ${coop.body.token}`)
+    expect(ledger.body.entries).toHaveLength(2)
+    const commission = ledger.body.entries.find(e => e.type === 'COMMISSION')
+    expect(commission.amount).toBe(-40000) // 10% de 400000
+    expect(ledger.body.balance).toBe(360000) // 400000 - 40000
+  })
+
+  test('une transaction sans montant déclaré ne crédite rien', async () => {
+    const { coop, member, buyer, contact } = await setupMemberOfferContact()
+    const tx = await request(app).post('/api/b2b/transactions')
+      .set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 40 })
+    expect(tx.status).toBe(201)
+
+    const ledger = await request(app).get(`/api/b2b/cooperative/members/${member.producer.id}/ledger`)
+      .set('Authorization', `Bearer ${coop.body.token}`)
+    expect(ledger.body.entries).toHaveLength(0)
+    expect(ledger.body.balance).toBe(0)
+  })
+
+  test('la coopérative peut enregistrer un paiement, qui réduit le solde', async () => {
+    const { coop, member, buyer, contact } = await setupMemberOfferContact()
+    await request(app).post('/api/b2b/transactions').set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 40, amount: 400000 })
+
+    const payment = await request(app).post(`/api/b2b/cooperative/members/${member.producer.id}/payments`)
+      .set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ amount: 150000, reference: 'MTN-XYZ-001' })
+    expect(payment.status).toBe(201)
+    expect(payment.body.amount).toBe(-150000)
+
+    const ledger = await request(app).get(`/api/b2b/cooperative/members/${member.producer.id}/ledger`)
+      .set('Authorization', `Bearer ${coop.body.token}`)
+    expect(ledger.body.balance).toBe(250000) // 400000 - 150000
+  })
+
+  test('un ajustement manuel requiert un motif', async () => {
+    const { coop, member } = await setupMemberOfferContact()
+    const res = await request(app).post(`/api/b2b/cooperative/members/${member.producer.id}/adjustments`)
+      .set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ amount: 5000 })
+    expect(res.status).toBe(400)
+
+    const withReason = await request(app).post(`/api/b2b/cooperative/members/${member.producer.id}/adjustments`)
+      .set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ amount: 5000, description: 'Bonus qualité exceptionnelle' })
+    expect(withReason.status).toBe(201)
+    expect(withReason.body.amount).toBe(5000)
+  })
+
+  test('un membre (PRODUCER) voit son propre solde via /my-ledger', async () => {
+    const { memberToken, buyer, contact } = await setupMemberOfferContact()
+    await request(app).post('/api/b2b/transactions').set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 40, amount: 400000 })
+
+    const myLedger = await request(app).get('/api/b2b/my-ledger').set('Authorization', `Bearer ${memberToken}`)
+    expect(myLedger.status).toBe(200)
+    expect(myLedger.body.balance).toBe(400000)
+    expect(myLedger.body.entries).toHaveLength(1)
+  })
+
+  test('sécurité : un membre ne peut pas voir le ledger d\'un autre membre', async () => {
+    const emailA = uniqueEmail('ledger-sec-a')
+    const emailB = uniqueEmail('ledger-sec-b')
+    const regA = await registerB2B('PRODUCER', { region: 'Man' }, { email: emailA })
+    await registerB2B('PRODUCER', { region: 'Man' }, { email: emailB })
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Sec', responsable: 'X', region: 'Man' })
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coop.body.token}`).send({ producerEmail: emailA })
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coop.body.token}`).send({ producerEmail: emailB })
+    const memberB = await prisma.user.findUnique({ where: { email: emailB }, include: { producer: true } })
+
+    // regA (membre A, rôle PRODUCER) tente de consulter le ledger via la
+    // route coopérative — refusé par requireRole('COOPERATIVE'), pas par
+    // ownership : un PRODUCER n'a structurellement pas accès à cette route.
+    const res = await request(app).get(`/api/b2b/cooperative/members/${memberB.producer.id}/ledger`)
+      .set('Authorization', `Bearer ${regA.body.token}`)
+    expect(res.status).toBe(403)
+  })
+
+  test('sécurité : une coopérative ne peut pas accéder au ledger d\'un membre d\'une autre coopérative', async () => {
+    const email = uniqueEmail('ledger-sec-cross')
+    await registerB2B('PRODUCER', { region: 'Man' }, { email })
+    const coopOwner = await registerB2B('COOPERATIVE', { name: 'Coop Sec Owner', responsable: 'X', region: 'Man' })
+    const coopStranger = await registerB2B('COOPERATIVE', { name: 'Coop Sec Stranger', responsable: 'Y', region: 'Man' })
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coopOwner.body.token}`).send({ producerEmail: email })
+    const member = await prisma.user.findUnique({ where: { email }, include: { producer: true } })
+
+    const res = await request(app).get(`/api/b2b/cooperative/members/${member.producer.id}/ledger`)
+      .set('Authorization', `Bearer ${coopStranger.body.token}`)
+    expect(res.status).toBe(404)
+  })
+})

@@ -118,6 +118,7 @@ model Producer {
   offers                 RiceOffer[]
   ownedOffers            RiceOffer[] @relation("RiceOfferOwner")
   ownedTransactions      B2BTransaction[] @relation("B2BTransactionOwner")
+  ledgerEntries          CooperativeLedgerEntry[]
 
   @@index([region])
   @@index([verification])
@@ -135,14 +136,51 @@ model Cooperative {
   documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
   verification String   @default("UNVERIFIED")
   rejectionReason String? // LOT AUDIT-B2B-03 — cf. commentaire sur Producer.rejectionReason
+  // LOT AUDIT-ACC-05 (audit XXX RIZ) : taux de commission que la coopérative
+  // prélève sur chaque vente d'un membre (%), configurable par la coopérative
+  // elle-même — jamais un taux plateforme (la plateforme n'encaisse jamais
+  // l'argent des transactions B2B, cf. remuneration.js). 0 par défaut : pas de
+  // commission tant que la coopérative ne configure rien explicitement.
+  commissionRate Float    @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   members CooperativeMember[]
   offers  RiceOffer[]
+  ledgerEntries CooperativeLedgerEntry[]
 
   @@index([region])
   @@index([verification])
+}
+
+// LOT AUDIT-ACC-05 (audit XXX RIZ) : gap confirmé — aucun modèle financier
+// ne référençait Producer/CooperativeMember (Debt/Receivable/FinancialTransaction
+// pointent exclusivement vers User/Driver/Shop), et remuneration.js documente
+// lui-même que la plateforme n'encaisse jamais l'argent des transactions B2B.
+// Ledger DÉCLARATIF interne à la coopérative (jamais un pipeline de paiement
+// de plateforme) : SALE_CREDIT/COMMISSION générés automatiquement à la
+// déclaration d'une transaction (LOT OWN-03), PAYMENT/ADJUSTMENT saisis
+// manuellement par le responsable — append-only, jamais modifié après coup
+// (une correction s'ajoute comme un nouveau mouvement ADJUSTMENT, ne réécrit
+// jamais un mouvement passé). Solde = somme signée de amount (positif =
+// crédit au membre, négatif = débit), même convention que StockMovement.
+model CooperativeLedgerEntry {
+  id            Int         @id @default(autoincrement())
+  cooperativeId Int
+  cooperative   Cooperative @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  producerId    Int
+  producer      Producer    @relation(fields: [producerId], references: [id], onDelete: Cascade)
+  type          String // SALE_CREDIT|COMMISSION|PAYMENT|ADJUSTMENT
+  amount        Float // signé : positif = crédit membre, négatif = débit
+  sourceType    String? // B2B_TRANSACTION|MANUAL
+  sourceId      Int?
+  reference     String?
+  description   String?
+  authorUserId  Int?
+  createdAt     DateTime    @default(now())
+
+  @@index([cooperativeId, producerId])
+  @@index([sourceType, sourceId])
 }
 
 model CooperativeMember {

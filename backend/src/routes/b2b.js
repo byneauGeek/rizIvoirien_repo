@@ -30,13 +30,15 @@ const PROFILE_MODEL = {
 // avant de demander la vérification admin (POST .../request-verification).
 const EDITABLE_FIELDS = {
   PRODUCER: ['region', 'department', 'commune', 'locality', 'farmType', 'surfaceHa', 'capacityKg', 'photo', 'description', 'documentUrl'],
-  COOPERATIVE: ['name', 'responsable', 'region', 'zone', 'description', 'documentUrl'],
+  // LOT AUDIT-ACC-05 : commissionRate éditable — taux que LA COOPÉRATIVE
+  // (pas la plateforme) prélève sur les ventes de ses membres.
+  COOPERATIVE: ['name', 'responsable', 'region', 'zone', 'description', 'documentUrl', 'commissionRate'],
   TRADER: ['companyName', 'activity', 'zones', 'documentUrl'],
   PROCESSOR: ['companyName', 'zones', 'documentUrl'],
   EXPORTER: ['companyName', 'capacityKg', 'zones', 'documentUrl'],
 }
 
-const NUMERIC_FIELDS = new Set(['surfaceHa', 'capacityKg'])
+const NUMERIC_FIELDS = new Set(['surfaceHa', 'capacityKg', 'commissionRate'])
 
 const B2B_ROLES = Object.keys(PROFILE_MODEL)
 
@@ -86,6 +88,9 @@ router.put('/my-profile', authenticate, requireB2BRole, async (req, res) => {
       data[field] = NUMERIC_FIELDS.has(field) && req.body[field] !== '' && req.body[field] != null
         ? Number(req.body[field])
         : req.body[field]
+    }
+    if (data.commissionRate !== undefined && (!Number.isFinite(data.commissionRate) || data.commissionRate < 0 || data.commissionRate > 100)) {
+      return res.status(400).json({ error: 'Taux de commission invalide (0 à 100)' })
     }
 
     const updated = await prisma[actor.modelName].update({ where: { id: actor.profile.id }, data })
@@ -560,6 +565,99 @@ router.put('/cooperative/members/:producerId', authenticate, requireRole('COOPER
       where: { cooperativeId_producerId: { cooperativeId: actor.profile.id, producerId: Number(req.params.producerId) } },
     })
     res.json(member)
+  } catch (e) { sendError(res, e) }
+})
+
+// ─── Coopérative : ledger membre (LOT AUDIT-ACC-05) ──────────────────────────
+// Ledger DÉCLARATIF interne à la coopérative — SALE_CREDIT/COMMISSION générés
+// automatiquement à la déclaration d'une transaction (b2bContact.js), jamais
+// ici. Cette route ne permet que PAYMENT (paiement effectué au membre, hors
+// plateforme) et ADJUSTMENT (correction motivée) — jamais SALE_CREDIT ni
+// COMMISSION en saisie manuelle, qui resteraient alors non traçables vers une
+// vente réelle.
+router.get('/cooperative/members/:producerId/ledger', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const producerId = Number(req.params.producerId)
+    const membership = await prisma.cooperativeMember.findUnique({
+      where: { cooperativeId_producerId: { cooperativeId: actor.profile.id, producerId } },
+    })
+    if (!membership) return res.status(404).json({ error: 'Membre introuvable' })
+
+    const entries = await prisma.cooperativeLedgerEntry.findMany({
+      where: { cooperativeId: actor.profile.id, producerId },
+      orderBy: { createdAt: 'desc' },
+    })
+    const balance = entries.reduce((sum, e) => sum + e.amount, 0)
+    res.json({ entries, balance })
+  } catch (e) { sendError(res, e) }
+})
+
+router.post('/cooperative/members/:producerId/payments', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
+  const { amount, reference, description } = req.body
+  const amt = Number(amount)
+  if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'Montant invalide' })
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const producerId = Number(req.params.producerId)
+    const membership = await prisma.cooperativeMember.findUnique({
+      where: { cooperativeId_producerId: { cooperativeId: actor.profile.id, producerId } },
+    })
+    if (!membership) return res.status(404).json({ error: 'Membre introuvable' })
+
+    const entry = await prisma.cooperativeLedgerEntry.create({
+      data: {
+        cooperativeId: actor.profile.id, producerId,
+        type: 'PAYMENT', amount: -amt,
+        sourceType: 'MANUAL', reference: reference || null,
+        description: description || 'Paiement au membre',
+        authorUserId: req.user.id,
+      },
+    })
+    res.status(201).json(entry)
+  } catch (e) { sendError(res, e) }
+})
+
+router.post('/cooperative/members/:producerId/adjustments', authenticate, requireRole('COOPERATIVE'), async (req, res) => {
+  const { amount, description } = req.body
+  const amt = Number(amount)
+  if (!Number.isFinite(amt) || amt === 0) return res.status(400).json({ error: 'Montant invalide (différent de zéro)' })
+  if (!description?.trim()) return res.status(400).json({ error: 'Motif requis pour un ajustement' })
+  try {
+    const actor = await myActor(req)
+    if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
+    const producerId = Number(req.params.producerId)
+    const membership = await prisma.cooperativeMember.findUnique({
+      where: { cooperativeId_producerId: { cooperativeId: actor.profile.id, producerId } },
+    })
+    if (!membership) return res.status(404).json({ error: 'Membre introuvable' })
+
+    const entry = await prisma.cooperativeLedgerEntry.create({
+      data: {
+        cooperativeId: actor.profile.id, producerId,
+        type: 'ADJUSTMENT', amount: amt,
+        sourceType: 'MANUAL', description: description.trim(),
+        authorUserId: req.user.id,
+      },
+    })
+    res.status(201).json(entry)
+  } catch (e) { sendError(res, e) }
+})
+
+// GET /my-ledger — self-service, un PRODUCER consulte SON PROPRE solde/ledger,
+// jamais celui d'un autre membre (permission MEMBRE, LOT AUDIT-PERM).
+router.get('/my-ledger', authenticate, requireRole('PRODUCER'), async (req, res) => {
+  try {
+    const producer = await prisma.producer.findUnique({ where: { userId: req.user.id } })
+    if (!producer) return res.status(404).json({ error: 'Profil introuvable' })
+    const entries = await prisma.cooperativeLedgerEntry.findMany({
+      where: { producerId: producer.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    const balance = entries.reduce((sum, e) => sum + e.amount, 0)
+    res.json({ entries, balance })
   } catch (e) { sendError(res, e) }
 })
 

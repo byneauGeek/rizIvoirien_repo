@@ -262,6 +262,34 @@ router.post('/transactions', authenticate, async (req, res) => {
         })
       }
 
+      // LOT AUDIT-ACC-05 (audit XXX RIZ) : gap confirmé — aucun crédit n'était
+      // jamais généré pour le membre propriétaire d'une vente. Uniquement si
+      // un montant a été déclaré (amount optionnel) — pas de crédit inventé
+      // sur un simple constat sans valeur chiffrée.
+      if (created.ownerProducerId && created.amount) {
+        const cooperativeId = contact.offer.cooperativeId
+        await db.cooperativeLedgerEntry.create({
+          data: {
+            cooperativeId, producerId: created.ownerProducerId,
+            type: 'SALE_CREDIT', amount: created.amount,
+            sourceType: 'B2B_TRANSACTION', sourceId: created.id,
+            description: `Vente ${created.quantity} ${created.unit} de ${created.product}`,
+          },
+        })
+        const cooperative = await db.cooperative.findUnique({ where: { id: cooperativeId }, select: { commissionRate: true } })
+        const commission = created.amount * (cooperative.commissionRate || 0) / 100
+        if (commission > 0) {
+          await db.cooperativeLedgerEntry.create({
+            data: {
+              cooperativeId, producerId: created.ownerProducerId,
+              type: 'COMMISSION', amount: -commission,
+              sourceType: 'B2B_TRANSACTION', sourceId: created.id,
+              description: `Commission coopérative (${cooperative.commissionRate}%)`,
+            },
+          })
+        }
+      }
+
       return created
     })
 

@@ -32,8 +32,8 @@ export default function UsersTab() {
     if (roleFilter) qs.set('role', roleFilter)
     if (query) qs.set('search', query)
     api.get(`/admin/users?${qs}`)
-      .then(d => { setUsers(d.users ?? []); setTotal(d.total ?? 0) })
-      .catch(() => {})
+      .then(d => { setUsers(d.users ?? []); setTotal(d.total ?? 0); setBanError(null) })
+      .catch(e => setBanError(e.message))
       .finally(() => setLoading(false))
   }, [roleFilter, query, page])
 

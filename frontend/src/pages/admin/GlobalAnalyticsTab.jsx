@@ -47,14 +47,28 @@ function InsightCard({ icon, type, title, body }) {
 export default function GlobalAnalyticsTab() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
-  useEffect(() => {
-    api.get('/admin/global-analytics').then(setData).catch(() => {}).finally(() => setLoading(false))
-  }, [])
+  const load = () => {
+    setLoading(true); setError(null)
+    api.get('/admin/global-analytics').then(setData).catch(e => setError(e.message)).finally(() => setLoading(false))
+  }
+  useEffect(load, [])
 
   if (loading) return (
     <div className="flex justify-center py-16">
       <div className="w-8 h-8 border-2 border-forest/20 border-t-forest rounded-full animate-spin" />
+    </div>
+  )
+
+  // Un échec de chargement ne doit jamais se traduire par un "Taux de
+  // livraison faible (0%)" — les insights ci-dessous liraient sinon un vrai
+  // signal d'alarme là où il n'y a en réalité qu'une panne de chargement.
+  if (error) return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <p className="font-playfair text-xl font-bold text-charcoal mb-2">Impossible de charger l'analytique globale</p>
+      <p className="font-dm text-charcoal/50 mb-6">{error}</p>
+      <button onClick={load} className="bg-forest text-cream font-syne font-bold px-6 py-2.5 rounded-xl hover:bg-forest-light transition-colors">Réessayer</button>
     </div>
   )
 

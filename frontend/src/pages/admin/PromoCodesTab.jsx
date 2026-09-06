@@ -17,7 +17,7 @@ export default function PromoCodesTab() {
   const [actionError, setActionError] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
 
-  const load = () => api.get('/promo').then(setPromos).catch(() => {}).finally(() => setLoading(false))
+  const load = () => api.get('/promo').then(setPromos).catch(e => setActionError(e.message)).finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const handleSave = async (e) => {

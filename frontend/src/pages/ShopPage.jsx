@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { SlidersHorizontal, X, ChevronDown, Search } from 'lucide-react'
+import { SlidersHorizontal, X, ChevronDown, Search, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
@@ -35,17 +35,21 @@ export default function ShopPage() {
   const [products, setProducts] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [page, setPage] = useState(0)
   const LIMIT = 20
 
-  // Charger catégories
+  // Charger catégories — best-effort : un échec dégrade juste le filtre
+  // catégorie (liste vide), sans empêcher la page de fonctionner.
   useEffect(() => {
     api.get('/products/categories').then(setCategories).catch(() => {})
   }, [])
 
-  // Charger produits avec filtres
+  // Charger produits avec filtres — un échec ici NE doit jamais ressembler à
+  // "Aucun produit" (l'état vide légitime, filtres trop restrictifs) : les
+  // deux étaient auparavant indiscernables pour le visiteur.
   const load = useCallback(() => {
-    setLoading(true)
+    setLoading(true); setError(null)
     const search = params.get('search') || ''
     const qs = new URLSearchParams({
       limit: LIMIT,
@@ -58,7 +62,7 @@ export default function ShopPage() {
     })
     api.get(`/products?${qs}`)
       .then(d => { setProducts(d.products || []); setTotal(d.total || 0) })
-      .catch(() => {})
+      .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [activeCategory, certifiedOnly, priceMax, sort, page, params])
 
@@ -191,6 +195,13 @@ export default function ShopPage() {
             {loading ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 auto-rows-[320px]">
                 {[...Array(6)].map((_, i) => <ProductCardSkeleton key={i} />)}
+              </div>
+            ) : error ? (
+              <div className="text-center py-24">
+                <AlertCircle size={48} className="mx-auto text-red-300 mb-4" />
+                <h3 className="font-playfair text-2xl font-bold text-charcoal mb-2">Impossible de charger les produits</h3>
+                <p className="font-dm text-charcoal/50 mb-6">{error}</p>
+                <button onClick={load} className="btn-primary">Réessayer</button>
               </div>
             ) : products.length === 0 ? (
               <div className="text-center py-24">

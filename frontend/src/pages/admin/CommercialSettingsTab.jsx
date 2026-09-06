@@ -375,9 +375,12 @@ function GeneralSettingsSection() {
   const [settingsError, setSettingsError] = useState(null)
 
   useEffect(() => {
+    // Un échec ici laisse le toggle sur sa valeur par défaut (true) sans que
+    // l'admin sache qu'elle peut ne pas refléter le réglage réel du serveur
+    // — risque concret de le faire basculer par erreur vers l'état inverse.
     api.get('/admin/settings')
       .then(d => { if (d?.autoValidateOrders != null) setAutoValidate(d.autoValidateOrders) })
-      .catch(() => {})
+      .catch(e => setSettingsError(`Valeur affichée potentiellement incorrecte — ${e.message}`))
   }, [])
 
   const toggle = async () => {

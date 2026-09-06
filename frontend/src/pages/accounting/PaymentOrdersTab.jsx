@@ -258,7 +258,7 @@ export default function PaymentOrdersTab({ permissions = [] }) {
   }
   useEffect(() => { load() }, [status]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (canExecute) api.get('/accounting/payable-accounts').then(d => setAccounts(d.accounts || [])).catch(() => {})
+    if (canExecute) api.get('/accounting/payable-accounts').then(d => setAccounts(d.accounts || [])).catch(e => setError(e.message))
   }, [canExecute])
 
   const loadDetail = async (id) => {

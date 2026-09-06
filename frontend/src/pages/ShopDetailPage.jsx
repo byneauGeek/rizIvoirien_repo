@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Star, MapPin, Package, Clock, Truck, ShoppingBag, Phone, Mail,
-         MessageCircle, Facebook, Instagram, CalendarDays, AlertTriangle, Megaphone } from 'lucide-react'
+         MessageCircle, Facebook, Instagram, CalendarDays, AlertTriangle, AlertCircle, Megaphone } from 'lucide-react'
 import { api } from '../api/client'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
@@ -23,17 +23,32 @@ export default function ShopDetailPage() {
   const { id } = useParams()
   const [shop, setShop]     = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true); setError(null)
     api.get(`/shops/${id}`)
       .then(setShop)
-      .catch(() => {})
+      .catch(e => setError(e.message))
       .finally(() => setLoading(false))
-  }, [id])
+  }
+  useEffect(load, [id])
 
   if (loading) return (
     <div className="min-h-screen bg-cream flex items-center justify-center">
       <div className="w-8 h-8 border-2 border-forest/20 border-t-forest rounded-full animate-spin" />
+    </div>
+  )
+
+  // "Boutique introuvable" (ci-dessous) est réservé au vrai 404 — une panne
+  // réseau/serveur affichait auparavant EXACTEMENT le même message, laissant
+  // croire à tort que la boutique n'existe pas.
+  if (error) return (
+    <div className="min-h-screen bg-cream flex flex-col items-center justify-center gap-4">
+      <AlertCircle size={48} className="text-red-300" />
+      <p className="font-playfair text-2xl font-bold text-charcoal">Impossible de charger cette boutique</p>
+      <p className="font-dm text-charcoal/50">{error}</p>
+      <button onClick={load} className="btn-primary">Réessayer</button>
     </div>
   )
 

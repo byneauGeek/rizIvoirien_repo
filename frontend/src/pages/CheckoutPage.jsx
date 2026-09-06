@@ -19,6 +19,7 @@ export default function CheckoutPage() {
   const navigate = useNavigate()
 
   const [addresses, setAddresses]       = useState([])
+  const [loadAddrError, setLoadAddrError] = useState(null)
   const [selectedAddr, setSelectedAddr] = useState(null)
   const [newAddr, setNewAddr]           = useState({ label: '', address: '', city: 'Abidjan' })
   const [showNewAddr, setShowNewAddr]   = useState(false)
@@ -44,11 +45,16 @@ export default function CheckoutPage() {
     if (user.role !== 'BUYER') { navigate('/'); return }
     if (items.length === 0) { navigate('/cart'); return }
 
+    // Sans adresse chargée, "Confirmer la commande" reste désactivé
+    // (!selectedAddr) sans qu'aucune explication ne soit jamais montrée à
+    // l'acheteur — indiscernable pour lui de "vous n'avez pas encore
+    // d'adresse enregistrée".
     api.get('/addresses').then(list => {
       setAddresses(list)
       const def = list.find(a => a.isDefault) || list[0]
       if (def) setSelectedAddr(def.id)
-    }).catch(() => {})
+      setLoadAddrError(null)
+    }).catch(e => setLoadAddrError(e.message))
   }, [user, items])
 
   // Recalcule les frais à chaque changement d'adresse
@@ -145,6 +151,12 @@ export default function CheckoutPage() {
               <h2 className="font-playfair text-xl font-bold text-charcoal mb-5 flex items-center gap-2">
                 <MapPin size={18} className="text-forest" /> Adresse de livraison
               </h2>
+              {loadAddrError && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3 mb-3">
+                  <p className="font-dm text-sm text-red-600 flex-1">Impossible de charger vos adresses : {loadAddrError}</p>
+                  <button onClick={() => window.location.reload()} className="font-syne text-xs font-bold text-red-600 underline shrink-0">Réessayer</button>
+                </div>
+              )}
               <div className="space-y-3">
                 {addresses.map(addr => (
                   <label key={addr.id} className={`flex items-start gap-4 p-4 rounded-2xl border-2 cursor-pointer transition-all ${selectedAddr === addr.id ? 'border-forest bg-forest/4' : 'border-charcoal/10 hover:border-charcoal/20'}`}>

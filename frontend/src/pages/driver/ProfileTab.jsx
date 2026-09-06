@@ -11,6 +11,7 @@ export default function ProfileTab() {
   const { user } = useAuth()
   const [driver, setDriver] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   // LOT 12 (Espace livreur) : catégories chargées depuis le catalogue
   // VehicleType administré (LOT4) — avant ce lot, une liste codée en dur ici
   // ne reflétait jamais ce qu'un admin ajoutait ou renommait.
@@ -40,15 +41,23 @@ export default function ProfileTab() {
     avatar: d.avatar || '',
   })
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true); setLoadError(null)
+    // Best-effort : un échec ici dégrade juste le menu de catégorie de
+    // véhicule (liste vide), sans empêcher le reste du profil de s'afficher.
     api.get('/drivers/vehicle-types').then(({ vehicleTypes }) => setVehicleTypes(vehicleTypes || [])).catch(() => {})
+    // Celui-ci, en revanche, n'avait AUCUN catch — un échec laissait
+    // `driver` à null, et le rendu principal accède directement à
+    // `driver.plan` (jamais `driver?.plan`) : la page plantait purement et
+    // simplement plutôt que d'afficher un message.
     api.get('/drivers/me').then(d => {
       setDriver(d)
       const f = buildForm(d)
       setForm(f)
       setInitialForm(f)
-    }).finally(() => setLoading(false))
-  }, [])
+    }).catch(e => setLoadError(e.message)).finally(() => setLoading(false))
+  }
+  useEffect(load, [])
 
   const isDirty = useMemo(() => {
     if (!initialForm) return false
@@ -91,6 +100,15 @@ export default function ProfileTab() {
   if (loading) return (
     <div className="flex justify-center py-16">
       <div className="w-8 h-8 border-2 border-forest/30 border-t-forest rounded-full animate-spin" />
+    </div>
+  )
+
+  if (loadError || !driver) return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <AlertCircle size={40} className="text-red-300 mb-4" />
+      <p className="font-playfair text-xl font-bold text-charcoal mb-2">Impossible de charger votre profil</p>
+      <p className="font-dm text-charcoal/50 mb-6">{loadError}</p>
+      <button onClick={load} className="bg-forest text-cream font-syne font-bold px-6 py-2.5 rounded-xl hover:bg-forest-light transition-colors">Réessayer</button>
     </div>
   )
 

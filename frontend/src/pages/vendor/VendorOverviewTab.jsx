@@ -18,14 +18,16 @@ const STATUS_LABEL = {
 export default function VendorOverviewTab({ shopStatus }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
-  useEffect(() => {
-    setLoading(true)
+  const load = () => {
+    setLoading(true); setError(null)
     api.get('/shops/my/dashboard')
       .then(setData)
-      .catch(() => {})
+      .catch(e => setError(e.message))
       .finally(() => setLoading(false))
-  }, [shopStatus])
+  }
+  useEffect(load, [shopStatus])
 
   if (loading) return (
     <div className="flex justify-center py-20">
@@ -33,8 +35,11 @@ export default function VendorOverviewTab({ shopStatus }) {
     </div>
   )
 
-  if (!data) return (
-    <div className="py-20 text-center font-dm text-charcoal/40">Impossible de charger le tableau de bord.</div>
+  if (error || !data) return (
+    <div className="py-20 text-center font-dm text-charcoal/40 space-y-3">
+      <p>Impossible de charger le tableau de bord{error ? ` : ${error}` : '.'}</p>
+      <button onClick={load} className="text-[#E8A217] font-syne font-bold text-sm underline">Réessayer</button>
+    </div>
   )
 
   const { kpis, topProducts, monthlyRevenue, recentOrders, shop } = data

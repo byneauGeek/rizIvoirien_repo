@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Sprout, Users, Building2, Factory, Ship, ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react'
 import Navbar from '../components/layout/Navbar'
@@ -49,7 +49,13 @@ export default function B2BRegisterPage() {
   const navigate = useNavigate()
   const { setSession } = useAuth()
   const { regions: CI_REGIONS } = useB2BReferenceData()
-  const [profileType, setProfileType] = useState(null)
+  // LOT AUDIT-ORG-01 (audit XXX RIZ) : permet à SellerRegisterPage.jsx de
+  // pré-sélectionner COOPERATIVE (?type=COOPERATIVE) quand un vendeur choisit
+  // ce type d'organisation dès la création de sa boutique — évite de
+  // resaisir le choix déjà fait.
+  const [params] = useSearchParams()
+  const preselected = params.get('type')
+  const [profileType, setProfileType] = useState(PROFILE_TYPES.some(p => p.type === preselected) ? preselected : null)
   const [account, setAccount] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' })
   const [profile, setProfile] = useState({})
   const [error, setError] = useState('')

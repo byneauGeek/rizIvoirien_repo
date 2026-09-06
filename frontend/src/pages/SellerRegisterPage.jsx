@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, Upload, Eye, EyeOff, ArrowRight, ArrowLeft, Store, FileText, User, AlertCircle, X } from 'lucide-react'
+import { CheckCircle, Upload, Eye, EyeOff, ArrowRight, ArrowLeft, Store, FileText, User, AlertCircle, X, Sprout, Building2, Users } from 'lucide-react'
 import Navbar from '../components/layout/Navbar'
 import { api, uploadImages } from '../api/client'
 import ImageDropZone from '../components/ui/ImageDropZone'
@@ -137,6 +137,19 @@ function ProgressBar({ current }) {
 }
 
 // ─── Main component ──────────────────────────────────────────────────────────
+// LOT AUDIT-ORG-01 (audit XXX RIZ) : gap confirmé — aucun choix de type
+// d'organisation n'existait à la création de boutique. COOPERATIVE n'est PAS
+// un simple label posé sur Shop (ce serait exactement l'anti-pattern signalé
+// par l'audit : "traitée comme une boutique individuelle avec un label
+// coopérative") — le système de gestion organisationnelle spécifique existe
+// déjà (Cooperative + CooperativeMember, filière B2B), donc ce choix ROUTE
+// vers lui plutôt que de dupliquer un champ inerte sur Shop.
+const ORG_TYPES = [
+  { type: 'INDIVIDUAL',  label: 'Producteur individuel', icon: Sprout,   desc: 'Je vends seul(e), en mon nom propre.' },
+  { type: 'COMPANY',     label: 'Entreprise',             icon: Building2, desc: 'Société commerciale (SARL, SA...).' },
+  { type: 'COOPERATIVE', label: 'Coopérative',            icon: Users,    desc: 'Groupement de producteurs avec gestion des membres.' },
+]
+
 export default function SellerRegisterPage() {
   const navigate = useNavigate()
   const [step, setStep]       = useState(1)
@@ -144,6 +157,7 @@ export default function SellerRegisterPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
   const [showPw, setShowPw]   = useState(false)
+  const [orgType, setOrgType] = useState(null)
 
   const [formData, setFormData] = useState({
     // Step 1
@@ -175,6 +189,7 @@ export default function SellerRegisterPage() {
 
   // ── Validation ─────────────────────────────────────────────────────────────
   const validateStep1 = () => {
+    if (!orgType)                      return "Choisissez un type d'organisation."
     if (!formData.shopName.trim())     return 'Le nom de la boutique est requis.'
     if (!formData.businessName.trim()) return 'La raison sociale est requise.'
     if (!formData.rccm.trim())         return 'Le N° RCCM est requis.'
@@ -311,6 +326,35 @@ export default function SellerRegisterPage() {
                 </h2>
 
                 <div>
+                  <Label>Type d'organisation *</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {ORG_TYPES.map(({ type, label, icon: Icon, desc }) => (
+                      <button key={type} type="button" onClick={() => setOrgType(type)}
+                        className={`text-left border-2 rounded-2xl p-3 transition-colors ${
+                          orgType === type ? 'border-forest bg-forest/5' : 'border-charcoal/10 hover:border-forest/40'
+                        }`}>
+                        <Icon size={18} className={orgType === type ? 'text-forest' : 'text-charcoal/40'} />
+                        <p className="font-syne text-xs font-bold text-charcoal mt-1.5">{label}</p>
+                        <p className="font-dm text-[11px] text-charcoal/40 mt-0.5">{desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {orgType === 'COOPERATIVE' ? (
+                  <div className="bg-forest/5 border border-forest/20 rounded-2xl p-5 space-y-3">
+                    <p className="font-dm text-sm text-charcoal/70">
+                      Une coopérative a besoin d'un espace dédié : gestion des membres, propriété des marchandises,
+                      comptabilité par membre. Ce parcours est différent de l'inscription boutique classique.
+                    </p>
+                    <Link to="/register/b2b?type=COOPERATIVE"
+                      className="inline-flex items-center gap-2 bg-forest text-cream font-syne font-bold px-5 py-3 rounded-2xl hover:bg-forest-dark transition-colors">
+                      Continuer vers l'inscription Coopérative <ArrowRight size={16} />
+                    </Link>
+                  </div>
+                ) : (
+                <>
+                <div>
                   <Label>Nom de la boutique *</Label>
                   <Input
                     type="text"
@@ -373,6 +417,8 @@ export default function SellerRegisterPage() {
                 >
                   Suivant <ArrowRight size={16} />
                 </motion.button>
+                </>
+                )}
               </motion.form>
             )}
 

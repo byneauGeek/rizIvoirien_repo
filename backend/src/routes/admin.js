@@ -588,6 +588,9 @@ router.post('/invite-codes', ...commercialGuard, async (req, res) => {
       const invite = await prisma.inviteCode.create({ data: { code } })
       created.push(invite)
     }
+    // LOT AUDIT-G7 (audit XXX RIZ) : génération de codes en base sans trace
+    // d'audit jusqu'ici.
+    setImmediate(() => logAction(req.user.id, 'INVITE_CODE_CREATE', 'INVITE_CODE', null, { count: created.length, codes: created.map(c => c.code) }))
     res.status(201).json(created)
   } catch (e) {
     sendError(res, e)
@@ -644,7 +647,11 @@ router.post('/subscriptions', ...guard, async (req, res) => {
 
 router.delete('/subscriptions/:id', ...guard, async (req, res) => {
   try {
-    await prisma.subscription.update({ where: { id: Number(req.params.id) }, data: { status: 'CANCELLED' } })
+    const sub = await prisma.subscription.update({ where: { id: Number(req.params.id) }, data: { status: 'CANCELLED' } })
+    // LOT AUDIT-G7 (audit XXX RIZ) : seule route de ce fichier à écrire en
+    // base sans logAction, contrairement aux ~45 routes voisines qui loguent
+    // systématiquement (dont SUBSCRIPTION_CREATE juste au-dessus).
+    setImmediate(() => logAction(req.user.id, 'SUBSCRIPTION_CANCEL', 'SUBSCRIPTION', sub.id, { shopId: sub.shopId }))
     res.json({ ok: true })
   } catch (e) { sendError(res, e) }
 })
@@ -794,6 +801,9 @@ router.post('/contracts/regenerate/shop/:id', ...commercialGuard, async (req, re
       create: { type: 'SHOP', shopId: shop.id, content: contractContent, status: 'PENDING_SIGNATURE' },
     })
     await prisma.shop.update({ where: { id: shop.id }, data: { contractSigned: false } })
+    // LOT AUDIT-G7 (audit XXX RIZ) : régénération de contrat (repasse
+    // contractSigned à false) sans trace d'audit jusqu'ici.
+    setImmediate(() => logAction(req.user.id, 'CONTRACT_REGENERATE', 'SHOP', shop.id, {}))
     res.json(contract)
   } catch (e) { sendError(res, e) }
 })
@@ -814,6 +824,7 @@ router.post('/contracts/regenerate/driver/:id', ...commercialGuard, async (req, 
       create: { type: 'DRIVER', driverId: driver.id, content: contractContent, status: 'PENDING_SIGNATURE' },
     })
     await prisma.driver.update({ where: { id: driver.id }, data: { contractSigned: false } })
+    setImmediate(() => logAction(req.user.id, 'CONTRACT_REGENERATE', 'DRIVER', driver.id, {}))
     res.json(contract)
   } catch (e) { sendError(res, e) }
 })

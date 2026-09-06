@@ -72,50 +72,72 @@ export default function OffersTab({ online, onAccepted, hasActiveDelivery, onGoT
   }, [])
 
   // ── SSE connexion ─────────────────────────────────────────────────────────
+  // LOT AUDIT-G9 (audit XXX RIZ) : `es.onerror` se contentait de marquer la
+  // connexion perdue, sans jamais la rouvrir — hors changement de `online`,
+  // le canal restait durablement déconnecté après une coupure réseau ou un
+  // redémarrage serveur (le polling 15s ci-dessous compensait, mais le
+  // "temps réel" restait mort jusqu'au prochain toggle en ligne/hors ligne ou
+  // rechargement de page). Reconnexion automatique avec backoff, en relisant
+  // le token à chaque tentative (couvre aussi un renouvellement de session).
   useEffect(() => {
-    const token = localStorage.getItem('rz_token')
-    if (!online || !token) {
-      setSseConnected(false)
-      if (esRef.current) { esRef.current.close(); esRef.current = null }
-      return
+    const reconnectTimer = { current: null }
+    let attempt = 0
+    let stopped = false
+
+    const connect = () => {
+      const token = localStorage.getItem('rz_token')
+      if (stopped || !online || !token) {
+        setSseConnected(false)
+        return
+      }
+
+      const url = `${BASE}/api/drivers/events?token=${token}`
+      const es = new EventSource(url)
+      esRef.current = es
+
+      es.addEventListener('connected', () => { attempt = 0; setSseConnected(true) })
+
+      es.addEventListener('new_offer', (e) => {
+        try {
+          const payload = JSON.parse(e.data)
+          // Le SSE peut envoyer { offer, commission } ou juste l'offre directement
+          const offer = payload.offer ?? payload
+          if (payload.commission != null) setCommission(payload.commission)
+          setOffers(prev => {
+            if (prev.find(o => o.id === offer.id)) return prev
+            return [offer, ...prev]
+          })
+        } catch {}
+      })
+
+      es.addEventListener('penalty_warning', (e) => {
+        try { setPenaltyMsg({ type: 'warning', text: JSON.parse(e.data).message }) } catch {}
+      })
+
+      es.addEventListener('penalty_suspended', (e) => {
+        try { setPenaltyMsg({ type: 'suspended', text: JSON.parse(e.data).message }) } catch {}
+      })
+
+      es.onerror = () => {
+        setSseConnected(false)
+        es.close()
+        if (esRef.current === es) esRef.current = null
+        if (stopped) return
+        const delay = Math.min(30000, 2000 * 2 ** attempt) // 2s, 4s, 8s... plafonné à 30s
+        attempt += 1
+        reconnectTimer.current = setTimeout(connect, delay)
+      }
     }
 
-    // Ouvrir le stream SSE avec le token en query param (EventSource ne supporte pas les headers)
-    const url = `${BASE}/api/drivers/events?token=${token}`
-    const es = new EventSource(url)
-    esRef.current = es
-
-    es.addEventListener('connected', () => setSseConnected(true))
-
-    es.addEventListener('new_offer', (e) => {
-      try {
-        const payload = JSON.parse(e.data)
-        // Le SSE peut envoyer { offer, commission } ou juste l'offre directement
-        const offer = payload.offer ?? payload
-        if (payload.commission != null) setCommission(payload.commission)
-        setOffers(prev => {
-          if (prev.find(o => o.id === offer.id)) return prev
-          return [offer, ...prev]
-        })
-      } catch {}
-    })
-
-    es.addEventListener('penalty_warning', (e) => {
-      try { setPenaltyMsg({ type: 'warning', text: JSON.parse(e.data).message }) } catch {}
-    })
-
-    es.addEventListener('penalty_suspended', (e) => {
-      try { setPenaltyMsg({ type: 'suspended', text: JSON.parse(e.data).message }) } catch {}
-    })
-
-    es.onerror = () => setSseConnected(false)
+    connect()
 
     return () => {
-      es.close()
-      esRef.current = null
+      stopped = true
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
+      if (esRef.current) { esRef.current.close(); esRef.current = null }
       setSseConnected(false)
     }
-  }, [online])  // token lu depuis localStorage à l'intérieur, pas en dépendance
+  }, [online])  // token relu à chaque tentative de connexion, pas en dépendance
 
   // Polling toutes les 15s — toujours actif (SSE peut manquer des événements)
   useEffect(() => {

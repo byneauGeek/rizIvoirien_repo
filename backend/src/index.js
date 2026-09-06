@@ -29,9 +29,21 @@ app.use((req, res, next) => {
 })
 
 // Sécurité HTTP headers
+// LOT PROD-5 (audit XXX RIZ) : API JSON pure (aucune vue HTML rendue avec CSS/JS
+// embarqué — le frontend est une SPA séparée sur un autre domaine), donc pas de
+// whitelist de script/style à établir : "default-src 'none'" ferme tout par
+// défaut, en défense en profondeur si une réponse en venait un jour à refléter
+// du HTML. N'affecte pas /uploads (CORP gère déjà son accès cross-origin) : un
+// <img src=".../uploads/x.jpg"> chargé depuis le frontend obéit au CSP DE LA
+// PAGE qui le charge, pas à celui de la réponse qui sert le fichier.
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // autorise /uploads cross-origin
-  contentSecurityPolicy: false,                           // à configurer avec whitelist en prod
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
 }))
 
 // Origines autorisées :
@@ -233,6 +245,18 @@ function start() {
 
   process.on('unhandledRejection', (reason) => {
     logger.error({ reason }, '❌ Promise non gérée')
+  })
+
+  // LOT PROD-7 (audit XXX RIZ) : gap confirmé — sans ce handler, une exception
+  // synchrone non rattrapée (bug dans un callback, erreur de programmation)
+  // fait crasher le process Node instantanément, sans log ni fermeture propre
+  // de la connexion DB. Après une uncaughtException l'état du process est
+  // considéré non fiable (doc Node) : on logue puis on quitte volontairement
+  // (exit 1) plutôt que de continuer à servir des requêtes sur un état
+  // possiblement corrompu — à charge du process manager (Render) de redémarrer.
+  process.on('uncaughtException', (err) => {
+    logger.error({ err }, '💥 Exception non rattrapée — arrêt du process')
+    process.exit(1)
   })
 
   return server

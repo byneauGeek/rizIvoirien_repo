@@ -13,6 +13,18 @@ const verifyAndLoadUser = async (rawToken) => {
     include: { capabilities: { select: { role: true } } },
   })
   if (!user) throw new Error('Utilisateur introuvable')
+  // LOT PROD-5 (audit XXX RIZ) : stratégie de révocation JWT — aucun blocklist
+  // de token n'existe (et n'est pas nécessaire ici) puisque ce middleware
+  // recharge déjà l'utilisateur en base à CHAQUE requête. Le gap réel était que
+  // `banned` n'était vérifié qu'à la connexion (auth.js) : un compte banni en
+  // cours de route gardait un accès complet jusqu'à l'expiration de son JWT
+  // (7 jours, cf. signToken). Ce contrôle suffit à révoquer l'accès dès la
+  // requête suivante, sans coût supplémentaire (le fetch avait déjà lieu).
+  if (user.banned) {
+    const err = new Error('Compte suspendu. Contactez le support.')
+    err.banned = true
+    throw err
+  }
   user.capabilities = user.capabilities.map((c) => c.role)
   return user
 }
@@ -31,7 +43,8 @@ const authenticate = async (req, res, next) => {
   try {
     req.user = await verifyAndLoadUser(rawToken)
     next()
-  } catch {
+  } catch (e) {
+    if (e.banned) return res.status(403).json({ error: e.message })
     res.status(401).json({ error: 'Token invalide' })
   }
 }
@@ -47,7 +60,8 @@ const authenticateSSE = async (req, res, next) => {
   try {
     req.user = await verifyAndLoadUser(rawToken)
     next()
-  } catch {
+  } catch (e) {
+    if (e.banned) return res.status(403).json({ error: e.message })
     res.status(401).json({ error: 'Token invalide' })
   }
 }

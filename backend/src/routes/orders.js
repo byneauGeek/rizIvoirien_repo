@@ -445,6 +445,16 @@ router.put('/:id/status', authenticate, async (req, res) => {
     const { role, id: userId } = req.user
     let nextStatus
 
+    // LOT AUDIT-G4 (audit XXX RIZ) : gap confirmé — pour tout rôle authentifié
+    // autre que SELLER/ADMIN (ex. un BUYER ou DRIVER quelconque, non lié à
+    // cette commande), nextStatus restait `undefined` et le code tombait sur
+    // le 400 générique plus bas, révélant `order.status` d'une commande
+    // appartenant à un tiers à quiconque devine un id. Rejet explicite avant
+    // tout accès aux données de la commande.
+    if (role !== 'SELLER' && role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Accès refusé' })
+    }
+
     if (role === 'SELLER') {
       const shop = await prisma.shop.findUnique({ where: { userId } })
       if (shop?.id !== order.shopId) return res.status(403).json({ error: 'Accès refusé' })

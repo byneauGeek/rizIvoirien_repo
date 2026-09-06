@@ -8,6 +8,7 @@ const { authenticate } = require('../middleware/auth')
 const { sendMail } = require('../services/mailer')
 
 const genToken = () => crypto.randomBytes(32).toString('hex')
+const emailVerifyExpiry = () => new Date(Date.now() + 48 * 60 * 60 * 1000) // 48h
 
 const sign = (user) =>
   jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' })
@@ -32,7 +33,7 @@ router.post('/register', async (req, res) => {
     const hash = await bcrypt.hash(password, 10)
     const verifyToken = genToken()
     const user = await prisma.user.create({
-      data: { email, password: hash, name, phone, role: 'BUYER', emailVerifyToken: verifyToken },
+      data: { email, password: hash, name, phone, role: 'BUYER', emailVerifyToken: verifyToken, emailVerifyTokenExpiry: emailVerifyExpiry() },
     })
     setImmediate(() => sendMail(email, 'verifyEmail', { name, token: verifyToken }))
     res.status(201).json({ token: sign(user), user: safeUser(user), emailNotVerified: true })
@@ -88,7 +89,7 @@ router.post('/register-vendor', async (req, res) => {
       include: { shop: true },
     })
     const verifyToken = genToken()
-    await prisma.user.update({ where: { id: user.id }, data: { emailVerifyToken: verifyToken } })
+    await prisma.user.update({ where: { id: user.id }, data: { emailVerifyToken: verifyToken, emailVerifyTokenExpiry: emailVerifyExpiry() } })
     setImmediate(() => sendMail(email, 'verifyEmail', { name, token: verifyToken }))
     res.status(201).json({ token: sign(user), user: safeUser(user), emailNotVerified: true })
   } catch (e) { sendError(res, e) }
@@ -159,7 +160,7 @@ router.post('/register-driver', async (req, res) => {
     })
 
     const verifyToken = genToken()
-    await prisma.user.update({ where: { id: user.id }, data: { emailVerifyToken: verifyToken } })
+    await prisma.user.update({ where: { id: user.id }, data: { emailVerifyToken: verifyToken, emailVerifyTokenExpiry: emailVerifyExpiry() } })
     setImmediate(() => sendMail(email, 'verifyEmail', { name, token: verifyToken }))
     res.status(201).json({ token: sign(user), user: safeUser(user), emailNotVerified: true })
   } catch (e) { sendError(res, e) }
@@ -257,6 +258,7 @@ router.post('/register-b2b', async (req, res) => {
       data: {
         email, password: hash, name, phone, role: spec.role,
         emailVerifyToken: verifyToken,
+        emailVerifyTokenExpiry: emailVerifyExpiry(),
         [spec.relation]: { create: profileData },
       },
       include: { [spec.relation]: true },
@@ -347,11 +349,13 @@ router.get('/verify-email', async (req, res) => {
   const { token } = req.query
   if (!token) return res.status(400).json({ error: 'Token manquant' })
   try {
-    const user = await prisma.user.findFirst({ where: { emailVerifyToken: token } })
+    const user = await prisma.user.findFirst({
+      where: { emailVerifyToken: token, emailVerifyTokenExpiry: { gt: new Date() } },
+    })
     if (!user) return res.status(400).json({ error: 'Lien invalide ou expiré' })
     await prisma.user.update({
       where: { id: user.id },
-      data: { emailVerified: true, emailVerifyToken: null },
+      data: { emailVerified: true, emailVerifyToken: null, emailVerifyTokenExpiry: null },
     })
     res.json({ success: true, message: 'Email vérifié avec succès' })
   } catch (e) { sendError(res, e) }
@@ -362,7 +366,7 @@ router.post('/resend-verification', authenticate, async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: req.user.id } })
     if (user.emailVerified) return res.json({ success: true })
     const verifyToken = genToken()
-    await prisma.user.update({ where: { id: user.id }, data: { emailVerifyToken: verifyToken } })
+    await prisma.user.update({ where: { id: user.id }, data: { emailVerifyToken: verifyToken, emailVerifyTokenExpiry: emailVerifyExpiry() } })
     setImmediate(() => sendMail(user.email, 'verifyEmail', { name: user.name, token: verifyToken }))
     res.json({ success: true })
   } catch (e) { sendError(res, e) }

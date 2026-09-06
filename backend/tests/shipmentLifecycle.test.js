@@ -110,13 +110,19 @@ describe('LOT 3 — deliveryLifecycle, point d\'entrée unique', () => {
 })
 
 describe('LOT 3 — ancien chemin générique supprimé', () => {
-  test('PUT /api/orders/:id/status en tant que DRIVER ne fait plus rien (transition impossible)', async () => {
+  // LOT AUDIT-G4 (audit XXX RIZ) : cette route ne gère plus aucune transition
+  // DRIVER (déplacée vers /api/drivers/delivery/:orderId/status, LOT 3). Le
+  // rejet doit être un 403 explicite, PAS le 400 générique "transition
+  // impossible depuis {order.status}" que la route renvoyait avant ce lot —
+  // ce 400 révélait le statut réel d'une commande à un livreur qui n'a aucun
+  // droit dessus via cette route, même quand il en est l'assigné légitime.
+  test('PUT /api/orders/:id/status en tant que DRIVER est refusé (403), même pour le livreur assigné', async () => {
     const { driverUser, order, offer } = await setupReadyOrder()
     await request(app).post(`/api/drivers/offers/${offer.id}/accept`).set('Authorization', `Bearer ${signToken(driverUser)}`)
 
     const res = await request(app).put(`/api/orders/${order.id}/status`)
       .set('Authorization', `Bearer ${signToken(driverUser)}`).send({})
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(403)
 
     const refreshedOrder = await prisma.order.findUnique({ where: { id: order.id } })
     expect(refreshedOrder.status).toBe('PRET') // inchangé

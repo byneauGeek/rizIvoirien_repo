@@ -135,3 +135,39 @@ describe('DELETE /api/orders/:id — annulation acheteur (restockage existant, n
     expect(productAfterCancel.stock).toBe(10)
   })
 })
+
+describe('PUT /api/orders/:id/status — LOT AUDIT-G4 : pas de fuite de statut à un tiers', () => {
+  test('un BUYER non lié à la commande reçoit 403, pas le statut réel', async () => {
+    const { shop } = await createShopUser()
+    const product = await createProduct(shop.id)
+    const owner = await createUser('BUYER')
+    const stranger = await createUser('BUYER')
+
+    const created = await request(app).post('/api/orders')
+      .set('Authorization', `Bearer ${signToken(owner)}`)
+      .send({ items: [{ productId: product.id, quantity: 1 }], address: 'Adresse test' })
+    expect(created.status).toBe(201)
+
+    const res = await request(app).put(`/api/orders/${created.body.id}/status`)
+      .set('Authorization', `Bearer ${signToken(stranger)}`)
+      .send({})
+    expect(res.status).toBe(403)
+  })
+
+  test('un DRIVER non assigné reçoit 403', async () => {
+    const { shop } = await createShopUser()
+    const product = await createProduct(shop.id)
+    const buyer = await createUser('BUYER')
+    const driver = await createUser('DRIVER')
+
+    const created = await request(app).post('/api/orders')
+      .set('Authorization', `Bearer ${signToken(buyer)}`)
+      .send({ items: [{ productId: product.id, quantity: 1 }], address: 'Adresse test' })
+    expect(created.status).toBe(201)
+
+    const res = await request(app).put(`/api/orders/${created.body.id}/status`)
+      .set('Authorization', `Bearer ${signToken(driver)}`)
+      .send({})
+    expect(res.status).toBe(403)
+  })
+})

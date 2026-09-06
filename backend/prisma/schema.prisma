@@ -19,10 +19,16 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  emailVerified    Boolean   @default(false)
-  emailVerifyToken String?
-  resetToken       String?
-  resetTokenExpiry DateTime?
+  emailVerified          Boolean   @default(false)
+  emailVerifyToken       String?
+  // LOT AUDIT-G5 (audit XXX RIZ) : le token de vérification email n'avait
+  // aucune expiration (contrairement à resetToken/resetTokenExpiry) — un lien
+  // intercepté restait valable indéfiniment. 48h, cohérent avec la nature
+  // moins sensible de cette action (prouver la possession de l'email, pas une
+  // prise de contrôle de compte) par rapport au reset mot de passe (1h).
+  emailVerifyTokenExpiry DateTime?
+  resetToken             String?
+  resetTokenExpiry       DateTime?
 
   shop            Shop?
   driver          Driver?

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
-import { UserPlus, AlertCircle, Users, Search, ChevronDown, ChevronUp, Ban, RotateCcw, Trash2 } from 'lucide-react'
+import { UserPlus, AlertCircle, Users, Search, ChevronDown, ChevronUp, Ban, RotateCcw, Trash2, Package, Wallet, Plus } from 'lucide-react'
 import { api } from '../../api/client'
+
+const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
+const LEDGER_TYPE_LABEL = { SALE_CREDIT: 'Vente', COMMISSION: 'Commission', PAYMENT: 'Paiement', ADJUSTMENT: 'Ajustement' }
 
 // LOT AUDIT-ORG-02 (audit XXX RIZ) : gap confirmé — seuls list/add/suppression
 // définitive existaient (aucune recherche, aucun filtre, aucune désactivation
@@ -19,7 +22,12 @@ export default function MembersTab() {
   const [activeFilter, setActiveFilter] = useState('') // '' = tous, 'true', 'false'
   const [expanded, setExpanded] = useState(null) // producerId
   const [detail, setDetail] = useState({}) // producerId -> fiche détail
+  const [ledger, setLedger] = useState({}) // producerId -> { entries, balance }
   const [noteDraft, setNoteDraft] = useState('')
+  const [paymentDraft, setPaymentDraft] = useState({ amount: '', reference: '' })
+  const [adjustmentDraft, setAdjustmentDraft] = useState({ amount: '', description: '' })
+  const [ledgerError, setLedgerError] = useState('')
+  const [ledgerBusy, setLedgerBusy] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -86,6 +94,9 @@ export default function MembersTab() {
   const toggleExpand = async (producerId) => {
     if (expanded === producerId) { setExpanded(null); return }
     setExpanded(producerId)
+    setLedgerError('')
+    setPaymentDraft({ amount: '', reference: '' })
+    setAdjustmentDraft({ amount: '', description: '' })
     if (!detail[producerId]) {
       try {
         const d = await api.get(`/b2b/cooperative/members/${producerId}`)
@@ -95,6 +106,17 @@ export default function MembersTab() {
     } else {
       setNoteDraft(detail[producerId].note || '')
     }
+    if (!ledger[producerId]) {
+      try {
+        const l = await api.get(`/b2b/cooperative/members/${producerId}/ledger`)
+        setLedger(prev => ({ ...prev, [producerId]: l }))
+      } catch { /* la fiche reste utilisable sans le ledger */ }
+    }
+  }
+
+  const refreshLedger = async (producerId) => {
+    const l = await api.get(`/b2b/cooperative/members/${producerId}/ledger`)
+    setLedger(prev => ({ ...prev, [producerId]: l }))
   }
 
   const saveNote = async (producerId) => {
@@ -103,6 +125,35 @@ export default function MembersTab() {
       setDetail(prev => ({ ...prev, [producerId]: { ...prev[producerId], note: updated.note } }))
       load()
     } catch (err) { setError(err.message) }
+  }
+
+  const recordPayment = async (producerId) => {
+    setLedgerError('')
+    if (!paymentDraft.amount || Number(paymentDraft.amount) <= 0) return setLedgerError('Montant invalide.')
+    setLedgerBusy(true)
+    try {
+      await api.post(`/b2b/cooperative/members/${producerId}/payments`, {
+        amount: Number(paymentDraft.amount), reference: paymentDraft.reference || undefined,
+      })
+      setPaymentDraft({ amount: '', reference: '' })
+      await refreshLedger(producerId)
+    } catch (err) { setLedgerError(err.message) }
+    finally { setLedgerBusy(false) }
+  }
+
+  const recordAdjustment = async (producerId) => {
+    setLedgerError('')
+    if (!adjustmentDraft.amount || Number(adjustmentDraft.amount) === 0) return setLedgerError('Montant invalide.')
+    if (!adjustmentDraft.description.trim()) return setLedgerError('Motif requis.')
+    setLedgerBusy(true)
+    try {
+      await api.post(`/b2b/cooperative/members/${producerId}/adjustments`, {
+        amount: Number(adjustmentDraft.amount), description: adjustmentDraft.description.trim(),
+      })
+      setAdjustmentDraft({ amount: '', description: '' })
+      await refreshLedger(producerId)
+    } catch (err) { setLedgerError(err.message) }
+    finally { setLedgerBusy(false) }
   }
 
   return (
@@ -195,6 +246,86 @@ export default function MembersTab() {
                         {d.producer.capacityKg && <p><span className="text-charcoal/40">Capacité :</span> {d.producer.capacityKg} kg</p>}
                       </div>
                     )}
+
+                    {/* LOT AUDIT-ORG-03 (audit XXX RIZ) : marchandises apportées par ce membre */}
+                    {d?.producer.ownedOffers && (
+                      <div>
+                        <p className="font-syne text-xs font-bold uppercase text-charcoal/40 mb-1.5 flex items-center gap-1.5"><Package size={12} /> Marchandises apportées</p>
+                        {d.producer.ownedOffers.length === 0 ? (
+                          <p className="font-dm text-xs text-charcoal/30">Aucune offre attribuée à ce membre.</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {d.producer.ownedOffers.map(o => (
+                              <div key={o.id} className="bg-charcoal/3 rounded-lg px-3 py-1.5 text-xs font-dm flex items-center justify-between">
+                                <span>{o.product} — {fmt(o.quantity)} {o.unit}</span>
+                                <span className="text-charcoal/40">{o.status}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* LOT AUDIT-ACC-05 (audit XXX RIZ) : ventes, commissions, paiements, solde */}
+                    <div>
+                      <p className="font-syne text-xs font-bold uppercase text-charcoal/40 mb-1.5 flex items-center gap-1.5"><Wallet size={12} /> Compte membre</p>
+                      {!ledger[m.producer.id] ? (
+                        <p className="font-dm text-xs text-charcoal/40">Chargement…</p>
+                      ) : (
+                        <>
+                          <div className="bg-forest/5 rounded-xl px-4 py-3 mb-2 flex items-center justify-between">
+                            <span className="font-dm text-xs text-charcoal/50">Solde actuel</span>
+                            <span className={`font-syne text-lg font-bold ${ledger[m.producer.id].balance >= 0 ? 'text-forest' : 'text-red-500'}`}>
+                              {fmt(ledger[m.producer.id].balance)} FCFA
+                            </span>
+                          </div>
+                          {ledger[m.producer.id].entries.length === 0 ? (
+                            <p className="font-dm text-xs text-charcoal/30">Aucun mouvement pour l'instant.</p>
+                          ) : (
+                            <div className="space-y-1 max-h-40 overflow-y-auto">
+                              {ledger[m.producer.id].entries.map(e => (
+                                <div key={e.id} className="flex items-center justify-between text-xs font-dm px-2 py-1">
+                                  <span className="text-charcoal/60">{LEDGER_TYPE_LABEL[e.type] || e.type}{e.description ? ` — ${e.description}` : ''}</span>
+                                  <span className={e.amount >= 0 ? 'text-forest font-bold' : 'text-red-500 font-bold'}>
+                                    {e.amount >= 0 ? '+' : ''}{fmt(e.amount)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {ledgerError && <p className="font-dm text-xs text-red-500 mt-2">{ledgerError}</p>}
+                          <div className="grid grid-cols-2 gap-2 mt-3">
+                            <div className="bg-charcoal/3 rounded-xl p-2.5 space-y-1.5">
+                              <label className="font-syne text-[10px] font-bold uppercase text-charcoal/40">Enregistrer un paiement</label>
+                              <input type="number" min="0" placeholder="Montant" value={paymentDraft.amount}
+                                onChange={e => setPaymentDraft(p => ({ ...p, amount: e.target.value }))}
+                                className="w-full bg-white border border-charcoal/10 rounded-lg px-2 py-1 font-dm text-xs" />
+                              <input placeholder="Référence (optionnel)" value={paymentDraft.reference}
+                                onChange={e => setPaymentDraft(p => ({ ...p, reference: e.target.value }))}
+                                className="w-full bg-white border border-charcoal/10 rounded-lg px-2 py-1 font-dm text-xs" />
+                              <button onClick={() => recordPayment(m.producer.id)} disabled={ledgerBusy}
+                                className="w-full flex items-center justify-center gap-1 bg-forest text-cream font-syne text-xs font-bold py-1.5 rounded-lg disabled:opacity-50">
+                                <Plus size={11} /> Payer
+                              </button>
+                            </div>
+                            <div className="bg-charcoal/3 rounded-xl p-2.5 space-y-1.5">
+                              <label className="font-syne text-[10px] font-bold uppercase text-charcoal/40">Ajustement manuel</label>
+                              <input type="number" placeholder="Montant (+ ou -)" value={adjustmentDraft.amount}
+                                onChange={e => setAdjustmentDraft(p => ({ ...p, amount: e.target.value }))}
+                                className="w-full bg-white border border-charcoal/10 rounded-lg px-2 py-1 font-dm text-xs" />
+                              <input placeholder="Motif (requis)" value={adjustmentDraft.description}
+                                onChange={e => setAdjustmentDraft(p => ({ ...p, description: e.target.value }))}
+                                className="w-full bg-white border border-charcoal/10 rounded-lg px-2 py-1 font-dm text-xs" />
+                              <button onClick={() => recordAdjustment(m.producer.id)} disabled={ledgerBusy}
+                                className="w-full flex items-center justify-center gap-1 bg-charcoal/10 text-charcoal font-syne text-xs font-bold py-1.5 rounded-lg disabled:opacity-50">
+                                <Plus size={11} /> Ajuster
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
                     <div>
                       <label className="font-syne text-xs font-bold uppercase text-charcoal/40 block mb-1">Note interne (visible coopérative uniquement)</label>
                       <div className="flex gap-2">

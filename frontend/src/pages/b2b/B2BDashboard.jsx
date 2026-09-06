@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { User, Package, Search, Users, LogOut, ChevronRight, Menu, X, MessageSquare, DollarSign } from 'lucide-react'
+import { User, Package, Search, Users, LogOut, ChevronRight, Menu, X, MessageSquare, DollarSign, Wallet } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { B2B_ROLE_META } from './roleMeta'
 import ProfileTab from './ProfileTab'
 import ListingsTab from './ListingsTab'
 import MarketplaceTab from './MarketplaceTab'
 import MembersTab from './MembersTab'
+import MyAccountTab from './MyAccountTab'
 import ContactsTab from './ContactsTab'
 import TransactionsTab from './TransactionsTab'
 
@@ -43,6 +44,7 @@ export default function B2BDashboard() {
     { id: 'contacts',    label: 'Mes contacts',      icon: MessageSquare },
     { id: 'transactions', label: 'Transactions',     icon: DollarSign },
     ...(effectiveRole === 'COOPERATIVE' ? [{ id: 'members', label: 'Membres', icon: Users }] : []),
+    ...(effectiveRole === 'PRODUCER' ? [{ id: 'myAccount', label: 'Mon compte', icon: Wallet }] : []),
   ]
 
   return (
@@ -133,6 +135,7 @@ export default function B2BDashboard() {
             {tab === 'contacts' && <ContactsTab />}
             {tab === 'transactions' && <TransactionsTab />}
             {tab === 'members' && effectiveRole === 'COOPERATIVE' && <MembersTab />}
+            {tab === 'myAccount' && effectiveRole === 'PRODUCER' && <MyAccountTab />}
           </motion.div>
         </AnimatePresence>
       </main>

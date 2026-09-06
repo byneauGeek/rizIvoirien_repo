@@ -540,7 +540,19 @@ router.get('/cooperative/members/:producerId', authenticate, requireRole('COOPER
     if (!actor) return res.status(404).json({ error: 'Profil introuvable' })
     const member = await prisma.cooperativeMember.findUnique({
       where: { cooperativeId_producerId: { cooperativeId: actor.profile.id, producerId: Number(req.params.producerId) } },
-      include: { producer: { select: { id: true, region: true, department: true, commune: true, farmType: true, surfaceHa: true, capacityKg: true, verification: true, user: { select: { name: true, email: true, phone: true } } } } },
+      include: {
+        producer: {
+          select: {
+            id: true, region: true, department: true, commune: true, farmType: true, surfaceHa: true, capacityKg: true, verification: true,
+            user: { select: { name: true, email: true, phone: true } },
+            // LOT AUDIT-ORG-03 (audit XXX RIZ) : "marchandises apportées" —
+            // seules les offres explicitement attribuées à CE membre au sein
+            // de CETTE coopérative (jamais les offres publiées par le membre
+            // en son nom propre ailleurs, hors périmètre de cette fiche).
+            ownedOffers: { where: { cooperativeId: actor.profile.id }, orderBy: { createdAt: 'desc' } },
+          },
+        },
+      },
     })
     if (!member) return res.status(404).json({ error: 'Membre introuvable' })
     res.json(member)

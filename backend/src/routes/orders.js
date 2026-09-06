@@ -11,6 +11,18 @@ const stockEngine = require('../services/stockEngine')
 
 const fmt = (n) => Number(n).toLocaleString('fr-FR')
 
+// LOT AUDIT-G1 (audit XXX RIZ) : wholesalePrice/minWholesaleQty existaient
+// (saisis vendeur, affichés en badge sur ProductPage.jsx) mais n'étaient
+// jamais lus au checkout — toute commande facturait product.price, même une
+// quantité dépassant largement le seuil de gros affiché à l'acheteur. On
+// revérifie saleType ici (pas seulement la présence de wholesalePrice) : un
+// vendeur peut repasser saleType à 'RETAIL' via PUT /products/:id sans que
+// wholesalePrice soit effacé (champs édités indépendamment côté route).
+const unitPriceFor = (product, quantity) =>
+  product.saleType !== 'RETAIL' && product.wholesalePrice && quantity >= (product.minWholesaleQty || 1)
+    ? product.wholesalePrice
+    : product.price
+
 // LOT 3 (Logistique, arbitrage Décision 3) : le livreur ne passe plus par
 // cette route générique — PRET→IN_TRANSIT→DELIVERED est désormais géré par
 // deliveryLifecycle.advanceShipment (PUT /api/drivers/delivery/:orderId/status),
@@ -121,7 +133,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
 
     const subtotal = items.reduce((sum, item) => {
       const product = products.find(p => p.id === item.productId)
-      return sum + product.price * item.quantity
+      return sum + unitPriceFor(product, item.quantity) * item.quantity
     }, 0)
 
     // Valider le code promo
@@ -194,7 +206,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
         const { shop, items: gItems } = groups[i]
         const groupSubtotal = gItems.reduce((sum, item) => {
           const product = products.find(p => p.id === item.productId)
-          return sum + product.price * item.quantity
+          return sum + unitPriceFor(product, item.quantity) * item.quantity
         }, 0)
         const groupDiscount = i === 0 ? discount : 0
         const order = await tx.order.create({
@@ -216,7 +228,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
             items: {
               create: gItems.map(item => {
                 const product = products.find(p => p.id === item.productId)
-                return { productId: item.productId, quantity: item.quantity, price: product.price, name: product.name }
+                return { productId: item.productId, quantity: item.quantity, price: unitPriceFor(product, item.quantity), name: product.name }
               }),
             },
             statusHistory: {

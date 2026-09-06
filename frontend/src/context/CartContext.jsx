@@ -1,4 +1,5 @@
 import { createContext, useContext, useReducer, useEffect } from 'react'
+import { effectiveUnitPrice } from '../utils/pricing'
 
 const CartContext = createContext(null)
 
@@ -74,7 +75,7 @@ export function CartProvider({ children }) {
     }
   }, [state])
 
-  const total = state.items.reduce((sum, i) => sum + i.price * i.qty, 0)
+  const total = state.items.reduce((sum, i) => sum + effectiveUnitPrice(i, i.qty) * i.qty, 0)
   const count = state.items.reduce((sum, i) => sum + i.qty, 0)
 
   // Ajout multi-boutiques : toujours autorisé

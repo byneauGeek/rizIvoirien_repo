@@ -8,6 +8,7 @@ import { api } from '../api/client'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
 import { firstImage } from '../utils/images'
+import { effectiveUnitPrice } from '../utils/pricing'
 
 const fmt = (n) => Number(n).toLocaleString('fr-FR')
 
@@ -116,7 +117,7 @@ export default function CartPage() {
                           </button>
                         </div>
                         <p className="font-playfair text-xl font-bold text-charcoal">
-                          {fmt(item.price * item.qty)} <span className="text-sm font-normal text-charcoal/40">FCFA</span>
+                          {fmt(effectiveUnitPrice(item, item.qty) * item.qty)} <span className="text-sm font-normal text-charcoal/40">FCFA</span>
                         </p>
                       </div>
                     </div>

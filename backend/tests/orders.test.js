@@ -171,3 +171,52 @@ describe('PUT /api/orders/:id/status — LOT AUDIT-G4 : pas de fuite de statut �
     expect(res.status).toBe(403)
   })
 })
+
+describe('POST /api/orders — LOT AUDIT-G1 : prix de gros appliqué au checkout', () => {
+  test('charge wholesalePrice quand la quantité atteint minWholesaleQty', async () => {
+    const buyer = await createUser('BUYER')
+    const { shop } = await createShopUser()
+    const product = await createProduct(shop.id, {
+      price: 2500, stock: 100, saleType: 'BOTH', wholesalePrice: 2000, minWholesaleQty: 10,
+    })
+
+    const res = await request(app).post('/api/orders')
+      .set('Authorization', `Bearer ${signToken(buyer)}`)
+      .send({ items: [{ productId: product.id, quantity: 10 }], address: 'Adresse test' })
+
+    expect(res.status).toBe(201)
+    expect(res.body.total).toBe(20000) // 10 * 2000, pas 10 * 2500
+    expect(res.body.items[0].price).toBe(2000)
+  })
+
+  test('charge le prix détail sous le seuil minWholesaleQty', async () => {
+    const buyer = await createUser('BUYER')
+    const { shop } = await createShopUser()
+    const product = await createProduct(shop.id, {
+      price: 2500, stock: 100, saleType: 'BOTH', wholesalePrice: 2000, minWholesaleQty: 10,
+    })
+
+    const res = await request(app).post('/api/orders')
+      .set('Authorization', `Bearer ${signToken(buyer)}`)
+      .send({ items: [{ productId: product.id, quantity: 9 }], address: 'Adresse test' })
+
+    expect(res.status).toBe(201)
+    expect(res.body.total).toBe(22500) // 9 * 2500
+    expect(res.body.items[0].price).toBe(2500)
+  })
+
+  test('ignore wholesalePrice si saleType est repassé à RETAIL', async () => {
+    const buyer = await createUser('BUYER')
+    const { shop } = await createShopUser()
+    const product = await createProduct(shop.id, {
+      price: 2500, stock: 100, saleType: 'RETAIL', wholesalePrice: 2000, minWholesaleQty: 10,
+    })
+
+    const res = await request(app).post('/api/orders')
+      .set('Authorization', `Bearer ${signToken(buyer)}`)
+      .send({ items: [{ productId: product.id, quantity: 20 }], address: 'Adresse test' })
+
+    expect(res.status).toBe(201)
+    expect(res.body.total).toBe(50000) // 20 * 2500, pas 20 * 2000
+  })
+})

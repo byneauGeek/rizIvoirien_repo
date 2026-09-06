@@ -8,6 +8,7 @@ import { api } from '../api/client'
 import Navbar from '../components/layout/Navbar'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { firstImage } from '../utils/images'
+import { effectiveUnitPrice } from '../utils/pricing'
 
 const fmt = n => Number(n).toLocaleString('fr-FR')
 
@@ -369,7 +370,7 @@ export default function CheckoutPage() {
                             <p className="font-syne text-sm font-bold text-charcoal truncate">{item.name}</p>
                             <p className="font-dm text-xs text-charcoal/40">x{item.qty}{item.unit ? ` · ${item.unit}` : ''}</p>
                           </div>
-                          <p className="font-playfair text-sm font-bold text-charcoal shrink-0">{fmt(item.price * item.qty)} F</p>
+                          <p className="font-playfair text-sm font-bold text-charcoal shrink-0">{fmt(effectiveUnitPrice(item, item.qty) * item.qty)} F</p>
                         </div>
                       ))}
                       {estimate && (

@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext'
 import { parseImages } from '../utils/images'
 import { usePageTitle } from '../hooks/usePageTitle'
 import SEOHead from '../components/SEOHead'
+import { effectiveUnitPrice } from '../utils/pricing'
 
 const fmt = n => Number(n).toLocaleString('fr-FR')
 
@@ -292,7 +293,7 @@ export default function ProductPage() {
                   ) : (
                     <motion.span key="add" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
                       <ShoppingBag size={18} />
-                      {product.stock === 0 ? 'Rupture de stock' : `Ajouter · ${fmt(product.price * qty)} FCFA`}
+                      {product.stock === 0 ? 'Rupture de stock' : `Ajouter · ${fmt(effectiveUnitPrice(product, qty) * qty)} FCFA`}
                     </motion.span>
                   )}
                 </AnimatePresence>

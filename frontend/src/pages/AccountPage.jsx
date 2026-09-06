@@ -518,9 +518,13 @@ export default function AccountPage() {
   const [params] = useSearchParams()
   const [activeTab, setActiveTab] = useState(params.get('tab') || 'profile')
 
+  // LOT B2B-2 : cette page restait verrouillée aux BUYER — un SELLER (ou tout
+  // autre rôle) n'avait donc aucun moyen d'atteindre l'onglet "Capacités B2B"
+  // (activation d'une capacité TRADER/PRODUCER/etc. sans nouveau compte),
+  // alors même que le backend (POST /auth/capabilities) l'autorise déjà pour
+  // n'importe quel rôle. Seule condition réelle : être connecté.
   useEffect(() => {
     if (!user) navigate('/auth')
-    else if (user.role !== 'BUYER') navigate('/')
   }, [user])
 
   if (!user) return null

@@ -239,12 +239,14 @@ export default function Navbar() {
                         transition={{ duration: 0.15 }}
                         className="absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl shadow-2xl border border-charcoal/6 overflow-hidden z-50"
                       >
+                        {/* LOT B2B-2 : "Mon compte" (→ Capacités B2B incluses) ouvert à tout
+                            rôle — seuls "Mes commandes"/"Ma wishlist" restent propres au BUYER. */}
+                        <Link to="/account" onClick={() => setAccountOpen(false)} className="flex items-center gap-3 px-4 py-3 hover:bg-charcoal/4 transition-colors">
+                          <User size={15} className="text-charcoal/40" />
+                          <span className="font-syne text-sm font-semibold text-charcoal">Mon compte</span>
+                        </Link>
                         {user.role === 'BUYER' && (
                           <>
-                            <Link to="/account" onClick={() => setAccountOpen(false)} className="flex items-center gap-3 px-4 py-3 hover:bg-charcoal/4 transition-colors">
-                              <User size={15} className="text-charcoal/40" />
-                              <span className="font-syne text-sm font-semibold text-charcoal">Mon compte</span>
-                            </Link>
                             <Link to="/orders" onClick={() => setAccountOpen(false)} className="flex items-center gap-3 px-4 py-3 hover:bg-charcoal/4 transition-colors">
                               <Package size={15} className="text-charcoal/40" />
                               <span className="font-syne text-sm font-semibold text-charcoal">Mes commandes</span>
@@ -319,11 +321,9 @@ export default function Navbar() {
               ))}
               {user ? (
                 <>
+                  <li><Link to="/account" onClick={() => setMobileOpen(false)} className="block font-syne font-medium text-base py-3 text-charcoal">Mon compte</Link></li>
                   {user.role === 'BUYER' && (
-                    <>
-                      <li><Link to="/orders" onClick={() => setMobileOpen(false)} className="block font-syne font-medium text-base py-3 text-charcoal">Mes commandes</Link></li>
-                      <li><Link to="/account" onClick={() => setMobileOpen(false)} className="block font-syne font-medium text-base py-3 text-charcoal">Mon compte</Link></li>
-                    </>
+                    <li><Link to="/orders" onClick={() => setMobileOpen(false)} className="block font-syne font-medium text-base py-3 text-charcoal">Mes commandes</Link></li>
                   )}
                   {ROLE_DASHBOARD[user.role] && (
                     <li><Link to={ROLE_DASHBOARD[user.role]} onClick={() => setMobileOpen(false)} className="block font-syne font-medium text-base py-3 text-forest">Mon espace</Link></li>

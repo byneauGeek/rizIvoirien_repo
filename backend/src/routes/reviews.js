@@ -2,6 +2,37 @@ const router = require('express').Router()
 const prisma = require('../lib/prisma')
 const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
+const { notify } = require('../services/notifications')
+
+// GET /api/reviews/shop/:shopId — LOT REVIEW-1 (audit XXX RIZ) : agrège les
+// avis PRODUIT (Review) de tous les produits d'une boutique. N'existait pas
+// avant ce lot — c'est la cause racine confirmée du bug "le vendeur ne voit
+// pas les avis client" : VendorReviewsTab.jsx ne lisait que ShopReview (avis
+// boutique), jamais Review (avis produit), faute d'un endpoint pour les
+// agréger. Réservé au propriétaire de la boutique (ou un admin) : contrairement
+// à GET /product/:id (public, un seul produit déjà visible sur sa fiche),
+// cette vue expose le nom de tous les clients ayant noté N'IMPORTE LEQUEL des
+// produits de la boutique — pas une donnée à exposer à un tiers.
+router.get('/shop/:shopId', authenticate, async (req, res) => {
+  try {
+    const shopId = Number(req.params.shopId)
+    const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { userId: true } })
+    if (!shop) return res.status(404).json({ error: 'Boutique introuvable' })
+    if (shop.userId !== req.user.id && req.user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Accès refusé' })
+    }
+
+    const [reviews, agg] = await Promise.all([
+      prisma.review.findMany({
+        where: { product: { shopId } },
+        include: { user: { select: { name: true } }, product: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.review.aggregate({ where: { product: { shopId } }, _avg: { rating: true }, _count: { id: true } }),
+    ])
+    res.json({ reviews, avg: Math.round((agg._avg.rating || 0) * 10) / 10, total: agg._count.id })
+  } catch (e) { sendError(res, e) }
+})
 
 // GET /api/reviews/product/:id — public
 router.get('/product/:id', async (req, res) => {
@@ -44,7 +75,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
         rating: Number(rating),
         comment: comment || null,
       },
-      include: { user: { select: { name: true } } },
+      include: { user: { select: { name: true } }, product: { select: { name: true, shopId: true } } },
     })
 
     // Recalculer la note moyenne du produit
@@ -60,6 +91,16 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
         reviewCount: agg._count.id,
       },
     })
+
+    // LOT REVIEW-3 (audit XXX RIZ) : le vendeur n'était jamais notifié
+    // qu'un avis venait d'être publié sur l'un de ses produits — gap signalé
+    // par l'audit, aucun notify() n'existait ici jusqu'ici.
+    const shop = await prisma.shop.findUnique({ where: { id: review.product.shopId }, select: { userId: true } })
+    if (shop) {
+      await notify(shop.userId, 'NEW_REVIEW', 'Nouvel avis client',
+        `${review.user.name} a laissé ${review.rating}★ sur "${review.product.name}".`,
+        { productId: Number(productId), rating: review.rating })
+    }
 
     res.status(201).json(review)
   } catch (e) {

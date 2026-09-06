@@ -2,6 +2,7 @@ const router = require('express').Router()
 const prisma = require('../lib/prisma')
 const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
+const { notify } = require('../services/notifications')
 
 // POST /api/shop-reviews — Acheteur note une boutique (après livraison)
 router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
@@ -30,6 +31,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
         rating: Number(rating),
         comment: comment || null,
       },
+      include: { user: { select: { name: true } } },
     })
 
     // Recalculer la note moyenne de la boutique
@@ -38,13 +40,20 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
       _avg: { rating: true },
       _count: { rating: true },
     })
-    await prisma.shop.update({
+    const shop = await prisma.shop.update({
       where: { id: Number(shopId) },
       data: {
         rating: Math.round((agg._avg.rating || 5) * 10) / 10,
         reviewCount: agg._count.rating,
       },
+      select: { userId: true },
     })
+
+    // LOT REVIEW-3 (audit XXX RIZ) : même gap que pour les avis produit —
+    // aucune notification n'existait sur la publication d'un avis boutique.
+    await notify(shop.userId, 'NEW_REVIEW', 'Nouvel avis boutique',
+      `${review.user.name} a laissé ${review.rating}★ sur votre boutique.`,
+      { shopId: Number(shopId), rating: review.rating })
 
     res.status(201).json(review)
   } catch (e) { sendError(res, e) }

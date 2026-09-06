@@ -703,14 +703,26 @@ router.get('/cooperative/accounting', authenticate, requireRole('COOPERATIVE'), 
       if (e.type === 'PAYMENT') byMember[key].payments += e.amount
     }
 
+    // LOT AUDIT-ACC-04 (correctif) : totalSales dérivé du ledger ne comptait
+    // QUE les ventes attribuées à un membre — une vente d'une marchandise
+    // propriété de la coopérative elle-même (ownerProducerId=null, aucune
+    // écriture de ledger générée par construction, cf. b2bContact.js) restait
+    // invisible du chiffre d'affaires total. Le CA global doit inclure TOUTES
+    // les ventes de la coopérative (section §18 du cahier de cadrage) ; seule
+    // la répartition PAR MEMBRE (byMember) doit rester silencieuse sur les
+    // ventes non attribuées — ce qui est déjà correctement le cas.
+    const allSales = await prisma.b2BTransaction.aggregate({
+      where: { sellerUserId: req.user.id, amount: { not: null } },
+      _sum: { amount: true },
+    })
+
     res.json({
-      totalSales: totals.SALE_CREDIT,
+      totalSales: allSales._sum.amount || 0,
       totalCommissions: totals.COMMISSION, // négatif
       totalPayments: totals.PAYMENT, // négatif
       totalAdjustments: totals.ADJUSTMENT,
-      // "montants dus aux membres" = solde global de la coopérative envers
-      // l'ensemble de ses membres ; ce qui a déjà été versé apparaît
-      // séparément (totalPayments, négatif par convention du ledger).
+      // "montants dus aux membres" = solde du ledger uniquement (jamais les
+      // ventes non attribuées, qui n'appartiennent à aucun membre).
       totalDue: entries.reduce((sum, e) => sum + e.amount, 0),
       byMember: Object.values(byMember).sort((a, b) => b.balance - a.balance),
     })

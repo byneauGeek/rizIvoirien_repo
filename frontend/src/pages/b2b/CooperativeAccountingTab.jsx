@@ -36,7 +36,7 @@ export default function CooperativeAccountingTab() {
   }
 
   const cards = [
-    { label: 'Chiffre d\'affaires (ventes membres)', value: data.totalSales, positive: true },
+    { label: 'Chiffre d\'affaires total', value: data.totalSales, positive: true },
     { label: 'Commissions perçues', value: -data.totalCommissions, positive: true },
     { label: 'Déjà versé aux membres', value: -data.totalPayments, positive: null },
     { label: 'Montant dû aux membres', value: data.totalDue, positive: data.totalDue >= 0 },

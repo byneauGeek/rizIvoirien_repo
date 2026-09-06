@@ -472,6 +472,46 @@ describe('B2B — ledger membre coopérative', () => {
     expect(ledger.body.balance).toBe(0)
   })
 
+  // Section 26 du cahier de cadrage : rejouer le scénario avec
+  // Propriétaire = COOPÉRATIVE et vérifier qu'aucun revenu n'est attribué
+  // par erreur à un membre.
+  test('propriétaire = COOPÉRATIVE : aucun revenu attribué à un membre, même avec un montant déclaré', async () => {
+    const coop = await registerB2B('COOPERATIVE', { name: 'Coop Own Test', responsable: 'X', region: 'Man' })
+    const memberEmail = uniqueEmail('own-coop-owned')
+    await registerB2B('PRODUCER', { region: 'Man' }, { email: memberEmail })
+    await request(app).post('/api/b2b/cooperative/members').set('Authorization', `Bearer ${coop.body.token}`).send({ producerEmail: memberEmail })
+    const member = await prisma.user.findUnique({ where: { email: memberEmail }, include: { producer: true } })
+
+    // Offre publiée SANS ownerProducerId : propriété = coopérative.
+    const offer = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${coop.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 100, unit: 'sac', region: 'Man' })
+    expect(offer.body.ownerProducerId).toBeNull()
+
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME Own Coop' })
+    const contact = await request(app).post('/api/b2b/contacts').set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: offer.body.id })
+    await request(app).post(`/api/b2b/contacts/${contact.body.id}/accept`).set('Authorization', `Bearer ${coop.body.token}`)
+    const tx = await request(app).post('/api/b2b/transactions').set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 40, amount: 400000 })
+    expect(tx.status).toBe(201)
+    expect(tx.body.ownerProducerId).toBeNull()
+
+    // Aucun mouvement pour le membre, alors qu'il EST bien membre de cette coopérative.
+    const memberLedger = await request(app).get(`/api/b2b/cooperative/members/${member.producer.id}/ledger`)
+      .set('Authorization', `Bearer ${coop.body.token}`)
+    expect(memberLedger.body.entries).toHaveLength(0)
+    expect(memberLedger.body.balance).toBe(0)
+
+    // La vente compte dans le CA total de la coopérative (elle a bien eu
+    // lieu), mais aucune répartition par membre ne lui est associée (aucun
+    // producerId n'a jamais été crédité) : le CA global reste correct sans
+    // qu'aucun revenu ne soit faussement attribué à un membre.
+    const accounting = await request(app).get('/api/b2b/cooperative/accounting')
+      .set('Authorization', `Bearer ${coop.body.token}`)
+    expect(accounting.body.totalSales).toBe(400000)
+    expect(accounting.body.byMember).toHaveLength(0)
+    expect(accounting.body.totalDue).toBe(0) // rien n'est dû à un membre pour cette vente
+  })
+
   test('la coopérative peut enregistrer un paiement, qui réduit le solde', async () => {
     const { coop, member, buyer, contact } = await setupMemberOfferContact()
     await request(app).post('/api/b2b/transactions').set('Authorization', `Bearer ${buyer.body.token}`)

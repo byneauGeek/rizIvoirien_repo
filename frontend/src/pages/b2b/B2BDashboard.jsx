@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { User, Package, Search, Users, LogOut, ChevronRight, Menu, X, MessageSquare, DollarSign } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
@@ -11,10 +11,25 @@ import MembersTab from './MembersTab'
 import ContactsTab from './ContactsTab'
 import TransactionsTab from './TransactionsTab'
 
+// LOT 11 (Arbitrage XXX RIZ) : une capacité B2B activée (LOT2 — un BUYER
+// devenu aussi TRADER, par exemple) ne change jamais User.role, seulement le
+// rôle PRINCIPAL — mais /producer, /cooperative, /trader, /processor,
+// /exporter mènent tous vers CE MÊME composant. Utiliser user.role pour
+// savoir "avec quelle casquette" afficher ce dashboard cassait systématiquement
+// (crash : B2B_ROLE_META[user.role] undefined) pour quiconque y accède via
+// une capacité plutôt que son rôle principal. La route elle-même dit déjà
+// sans ambiguïté quelle capacité est consultée.
+const PATH_TO_ROLE = {
+  '/producer': 'PRODUCER', '/cooperative': 'COOPERATIVE', '/trader': 'TRADER',
+  '/processor': 'PROCESSOR', '/exporter': 'EXPORTER',
+}
+
 export default function B2BDashboard() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const meta = B2B_ROLE_META[user.role]
+  const location = useLocation()
+  const effectiveRole = PATH_TO_ROLE[location.pathname] || user.role
+  const meta = B2B_ROLE_META[effectiveRole]
   const [tab, setTab] = useState('profile')
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -27,7 +42,7 @@ export default function B2BDashboard() {
     { id: 'marketplace', label: 'Rechercher',        icon: Search },
     { id: 'contacts',    label: 'Mes contacts',      icon: MessageSquare },
     { id: 'transactions', label: 'Transactions',     icon: DollarSign },
-    ...(user.role === 'COOPERATIVE' ? [{ id: 'members', label: 'Membres', icon: Users }] : []),
+    ...(effectiveRole === 'COOPERATIVE' ? [{ id: 'members', label: 'Membres', icon: Users }] : []),
   ]
 
   return (
@@ -101,19 +116,23 @@ export default function B2BDashboard() {
       </aside>
 
       <main className="md:ml-60 flex-1 min-h-screen">
-        <AnimatePresence mode="wait">
+        {/* LOT 11 : ni mode="wait" ni exit — même bug déjà rencontré et
+            corrigé ailleurs (DriverDashboard.jsx LOT3, AdminDashboard.jsx
+            LOT9, AccountPage.jsx LOT11) : ici constaté en direct pendant la
+            vérification de ce lot (le clic change bien l'onglet actif dans
+            la barre latérale, mais le contenu précédent reste affiché). */}
+        <AnimatePresence>
           <motion.div key={tab}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
             className="p-6 pt-20 md:pt-6">
-            {tab === 'profile' && <ProfileTab />}
-            {tab === 'listings' && <ListingsTab />}
+            {tab === 'profile' && <ProfileTab effectiveRole={effectiveRole} />}
+            {tab === 'listings' && <ListingsTab effectiveRole={effectiveRole} />}
             {tab === 'marketplace' && <MarketplaceTab />}
             {tab === 'contacts' && <ContactsTab />}
             {tab === 'transactions' && <TransactionsTab />}
-            {tab === 'members' && user.role === 'COOPERATIVE' && <MembersTab />}
+            {tab === 'members' && effectiveRole === 'COOPERATIVE' && <MembersTab />}
           </motion.div>
         </AnimatePresence>
       </main>

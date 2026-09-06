@@ -33,6 +33,11 @@ export default function CheckoutPage() {
 
   const [estimate, setEstimate]         = useState(null)
   const [estimating, setEstimating]     = useState(false)
+  // LOT 11 (Arbitrage XXX RIZ) : la grille tarifaire (LOT6) sait déjà calculer
+  // un prix différent par niveau de service, mais aucun panier ne le
+  // proposait jusqu'ici — l'acheteur restait toujours en STANDARD par défaut,
+  // rendant l'axe SERVICE_LEVEL inaccessible en pratique.
+  const [serviceLevel, setServiceLevel] = useState('STANDARD')
 
   useEffect(() => {
     if (!user) { navigate('/auth'); return }
@@ -56,11 +61,12 @@ export default function CheckoutPage() {
       const result = await api.post('/orders/estimate-delivery', {
         items: items.map(i => ({ productId: i.id, quantity: i.qty })),
         address: `${addr.address}, ${addr.city}`,
+        serviceLevel,
       })
       setEstimate(result)
     } catch { setEstimate(null) }
     finally { setEstimating(false) }
-  }, [items, addresses])
+  }, [items, addresses, serviceLevel])
 
   useEffect(() => {
     if (selectedAddr && addresses.length) fetchEstimate(selectedAddr)
@@ -111,6 +117,7 @@ export default function CheckoutPage() {
         promoCode: promo ? promoCode : undefined,
         idempotencyKey,
         deliveryFee: typeof estimate?.deliveryFee === 'number' ? estimate.deliveryFee : undefined,
+        serviceLevel,
       })
       dispatch({ type: 'CLEAR' })
       const firstId = result.multiShop ? result.firstOrderId : result.id
@@ -182,6 +189,29 @@ export default function CheckoutPage() {
                     </motion.form>
                   )}
                 </AnimatePresence>
+              </div>
+            </div>
+
+            {/* LOT 11 : niveau de service — indépendant de la zone/du poids,
+                affecte directement le prix via la grille tarifaire (LOT6). */}
+            <div className="bg-white rounded-3xl p-6 shadow-card">
+              <h2 className="font-playfair text-xl font-bold text-charcoal mb-4 flex items-center gap-2">
+                <Truck size={18} className="text-forest" /> Rapidité de livraison
+              </h2>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { id: 'ECONOMIC', label: 'Économique', hint: 'Le plus abordable' },
+                  { id: 'STANDARD', label: 'Standard', hint: 'Recommandé' },
+                  { id: 'EXPRESS',  label: 'Express',   hint: 'Le plus rapide' },
+                ].map(opt => (
+                  <button key={opt.id} onClick={() => setServiceLevel(opt.id)}
+                    className={`text-center p-3 rounded-2xl border-2 transition-all ${
+                      serviceLevel === opt.id ? 'border-forest bg-forest/4' : 'border-charcoal/10 hover:border-charcoal/20'
+                    }`}>
+                    <p className="font-syne text-sm font-bold text-charcoal">{opt.label}</p>
+                    <p className="font-dm text-[11px] text-charcoal/40 mt-0.5">{opt.hint}</p>
+                  </button>
+                ))}
               </div>
             </div>
 

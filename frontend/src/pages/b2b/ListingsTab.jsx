@@ -7,10 +7,10 @@ import { B2B_ROLE_META, OFFER_STATUS_LABEL, REQUEST_STATUS_LABEL } from './roleM
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR')
 
-export default function ListingsTab() {
+export default function ListingsTab({ effectiveRole }) {
   const { user } = useAuth()
   const { regions: CI_REGIONS, products: RICE_PRODUCTS, units: RICE_UNITS } = useB2BReferenceData()
-  const meta = B2B_ROLE_META[user.role]
+  const meta = B2B_ROLE_META[effectiveRole || user.role]
   const isOffer = meta.kind === 'offer'
   const endpoint = isOffer ? '/b2b/offers' : '/b2b/requests'
   const statusLabels = isOffer ? OFFER_STATUS_LABEL : REQUEST_STATUS_LABEL

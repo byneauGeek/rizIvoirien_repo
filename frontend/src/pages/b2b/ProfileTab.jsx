@@ -39,10 +39,10 @@ const FIELDS = {
   ],
 }
 
-export default function ProfileTab() {
+export default function ProfileTab({ effectiveRole }) {
   const { user } = useAuth()
   const { regions: CI_REGIONS } = useB2BReferenceData()
-  const fields = FIELDS[user.role] || []
+  const fields = FIELDS[effectiveRole || user.role] || []
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)

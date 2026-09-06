@@ -54,7 +54,16 @@ function PrivateRoute({ children, role }) {
   if (!user) return <Navigate to="/auth" replace />
   if (role) {
     const allowed = Array.isArray(role) ? role : [role]
-    if (!allowed.includes(user.role)) return <Navigate to="/" replace />
+    // LOT 11 (Arbitrage XXX RIZ) : une capacité B2B activée (LOT2 —
+    // UserCapability, ex. un BUYER devenu aussi TRADER) ne change jamais
+    // User.role, seul le rôle PRINCIPAL — sans ce repli, PrivateRoute
+    // renvoyait systématiquement vers "/" un utilisateur qui venait
+    // pourtant d'activer la capacité avec succès (backend déjà correct,
+    // requireRole() honore les deux depuis LOT2 ; seul le routeur frontend
+    // ne le savait pas). GET /me inclut déjà chaque relation de profil
+    // (user.trader, user.cooperative, ...) quand la capacité existe.
+    const hasCapability = allowed.some(r => Boolean(user[r.toLowerCase()]))
+    if (!allowed.includes(user.role) && !hasCapability) return <Navigate to="/" replace />
   }
   return children
 }

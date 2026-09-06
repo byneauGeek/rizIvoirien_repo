@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { User, MapPin, Heart, Plus, Trash2, Check, Edit2, Save, X, AlertCircle } from 'lucide-react'
+import { User, MapPin, Heart, Plus, Trash2, Check, Edit2, Save, X, AlertCircle, Sprout, Users, Building2, Factory, Ship, ArrowRight, ArrowLeft } from 'lucide-react'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
+import { useB2BReferenceData } from '../hooks/useB2BReferenceData'
 import { firstImage } from '../utils/images'
 
 const fmt = n => Number(n).toLocaleString('fr-FR')
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'profile', label: 'Mon profil', icon: User },
   { id: 'addresses', label: 'Adresses', icon: MapPin },
   { id: 'wishlist', label: 'Ma wishlist', icon: Heart },
+  { id: 'capabilities', label: 'Capacités B2B', icon: Sprout },
 ]
 
 // ─── Profile Tab ──────────────────────────────────────────────
@@ -331,6 +333,174 @@ function WishlistTab() {
   )
 }
 
+// ─── Capacités B2B (LOT 11, Arbitrage XXX RIZ) ─────────────────
+// POST /auth/capabilities existait depuis le LOT2 mais n'avait jamais eu
+// d'entrée UI — un compte BUYER ne pouvait activer une capacité TRADER (ou
+// toute autre) qu'en appelant l'API directement. Réutilise exactement les
+// mêmes types de profil que /register-b2b (B2BRegisterPage.jsx), sans
+// dupliquer la validation (le backend reste la seule source de vérité sur
+// les champs requis).
+const CAPABILITY_TYPES = [
+  { type: 'PRODUCER', label: 'Producteur', icon: Sprout, desc: 'Je cultive aussi du riz et je veux vendre ma récolte.' },
+  { type: 'COOPERATIVE', label: 'Coopérative', icon: Users, desc: 'Je représente aussi un groupement de producteurs.' },
+  { type: 'TRADER', label: 'Acheteur / Commerçant', icon: Building2, desc: 'Je veux aussi acheter du riz en volume (filière B2B).' },
+  { type: 'PROCESSOR', label: 'Transformateur', icon: Factory, desc: 'Rizerie — je transforme aussi le riz paddy.' },
+  { type: 'EXPORTER', label: 'Exportateur', icon: Ship, desc: 'Je recherche aussi des fournisseurs pour l\'export.' },
+]
+const CAPABILITY_DASHBOARD = { PRODUCER: '/producer', COOPERATIVE: '/cooperative', TRADER: '/trader', PROCESSOR: '/processor', EXPORTER: '/exporter' }
+
+function CapabilitiesTab() {
+  const { updateUser } = useAuth()
+  const { regions: CI_REGIONS } = useB2BReferenceData()
+  const [active, setActive] = useState(null) // capacités déjà activées : { TRADER: {...profil}, ... }
+  const [loading, setLoading] = useState(true)
+  const [profileType, setProfileType] = useState(null)
+  const [profile, setProfile] = useState({})
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [done, setDone] = useState(null)
+
+  useEffect(() => {
+    api.get('/auth/me').then(me => {
+      const found = {}
+      for (const { type } of CAPABILITY_TYPES) {
+        const rel = type.toLowerCase()
+        if (me[rel]) found[type] = me[rel]
+      }
+      setActive(found)
+    }).catch(() => setActive({})).finally(() => setLoading(false))
+  }, [])
+
+  const selected = CAPABILITY_TYPES.find(p => p.type === profileType)
+  const setP = (field) => (e) => setProfile(p => ({ ...p, [field]: e.target.value }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError(''); setSubmitting(true)
+    try {
+      const data = await api.post('/auth/capabilities', { profileType, profile })
+      setActive(a => ({ ...a, [profileType]: data.profile }))
+      // Rafraîchit le user d'AuthContext avec la relation de profil créée —
+      // sans ça, PrivateRoute (App.jsx) continuerait de refuser l'accès au
+      // dashboard de cette capacité jusqu'au prochain rechargement complet
+      // (GET /auth/me n'est ré-appelé qu'au montage de l'app, pas ici).
+      updateUser({ [profileType.toLowerCase()]: data.profile })
+      setDone(profileType)
+      setProfileType(null); setProfile({})
+    } catch (err) { setError(err.message || 'Erreur lors de l\'activation') }
+    finally { setSubmitting(false) }
+  }
+
+  if (loading) return <div className="h-40 bg-white rounded-3xl animate-pulse shadow-card max-w-lg" />
+
+  return (
+    <div className="max-w-lg space-y-4">
+      <p className="font-dm text-sm text-charcoal/50">
+        Activez une capacité supplémentaire sans créer de nouveau compte — votre rôle principal et votre historique restent inchangés.
+      </p>
+
+      {done && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-2xl px-4 py-3">
+          <Check size={14} className="text-green-600 shrink-0" />
+          <p className="font-dm text-sm text-green-700 flex-1">Capacité activée — accédez-y dès maintenant depuis "Mon espace" dans le menu.</p>
+          <Link to={CAPABILITY_DASHBOARD[done]} className="font-syne text-xs font-bold text-forest hover:underline shrink-0">Y aller →</Link>
+        </div>
+      )}
+
+      {!profileType ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {CAPABILITY_TYPES.map(({ type, label, icon: Icon, desc }) => {
+            const isActive = Boolean(active?.[type])
+            return (
+              <button key={type} onClick={() => !isActive && setProfileType(type)} disabled={isActive}
+                className={`text-left bg-white border-2 rounded-2xl p-4 transition-colors ${
+                  isActive ? 'border-green-200 bg-green-50/50 cursor-default' : 'border-charcoal/10 hover:border-forest'
+                }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <Icon className={isActive ? 'text-green-600' : 'text-forest'} size={22} />
+                  {isActive && <span className="font-syne text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">Activée</span>}
+                </div>
+                <h3 className="font-syne font-bold text-sm text-charcoal mb-0.5">{label}</h3>
+                <p className="font-dm text-xs text-charcoal/50">{desc}</p>
+                {isActive && (
+                  <Link to={CAPABILITY_DASHBOARD[type]} onClick={e => e.stopPropagation()} className="mt-2 inline-block font-syne text-xs font-bold text-forest hover:underline">
+                    Accéder à mon espace →
+                  </Link>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-6 shadow-card space-y-4">
+          <button type="button" onClick={() => { setProfileType(null); setError('') }}
+            className="flex items-center gap-1.5 font-syne text-xs font-bold text-charcoal/40 hover:text-charcoal">
+            <ArrowLeft size={14} /> Changer de capacité
+          </button>
+          <div className="flex items-center gap-2">
+            <selected.icon className="text-forest" size={20} />
+            <h2 className="font-syne font-bold text-charcoal">{selected.label}</h2>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <AlertCircle size={14} className="text-red-500 shrink-0" />
+              <p className="font-dm text-sm text-red-600">{error}</p>
+            </div>
+          )}
+
+          {profileType === 'PRODUCER' && (
+            <>
+              <div>
+                <label className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/40 block mb-1.5">Région</label>
+                <input required list="regions" value={profile.region || ''} onChange={setP('region')}
+                  className="w-full border-2 border-charcoal/10 rounded-xl px-4 py-3 font-dm text-sm focus:outline-none focus:border-forest" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <input type="number" min="0" step="0.1" placeholder="Superficie (ha)" value={profile.surfaceHa || ''} onChange={setP('surfaceHa')}
+                  className="border-2 border-charcoal/10 rounded-xl px-4 py-3 font-dm text-sm focus:outline-none focus:border-forest" />
+                <input type="number" min="0" placeholder="Capacité (kg)" value={profile.capacityKg || ''} onChange={setP('capacityKg')}
+                  className="border-2 border-charcoal/10 rounded-xl px-4 py-3 font-dm text-sm focus:outline-none focus:border-forest" />
+              </div>
+            </>
+          )}
+          {profileType === 'COOPERATIVE' && (
+            <>
+              <input required placeholder="Nom de la coopérative" value={profile.name || ''} onChange={setP('name')}
+                className="w-full border-2 border-charcoal/10 rounded-xl px-4 py-3 font-dm text-sm focus:outline-none focus:border-forest" />
+              <input required placeholder="Responsable" value={profile.responsable || ''} onChange={setP('responsable')}
+                className="w-full border-2 border-charcoal/10 rounded-xl px-4 py-3 font-dm text-sm focus:outline-none focus:border-forest" />
+              <input required list="regions" placeholder="Région" value={profile.region || ''} onChange={setP('region')}
+                className="w-full border-2 border-charcoal/10 rounded-xl px-4 py-3 font-dm text-sm focus:outline-none focus:border-forest" />
+            </>
+          )}
+          {(profileType === 'TRADER' || profileType === 'PROCESSOR' || profileType === 'EXPORTER') && (
+            <>
+              <input required placeholder="Nom de l'entreprise" value={profile.companyName || ''} onChange={setP('companyName')}
+                className="w-full border-2 border-charcoal/10 rounded-xl px-4 py-3 font-dm text-sm focus:outline-none focus:border-forest" />
+              <input placeholder="Zones d'intérêt (ex : Bouaké, San-Pédro)" value={profile.zones || ''} onChange={setP('zones')}
+                className="w-full border-2 border-charcoal/10 rounded-xl px-4 py-3 font-dm text-sm focus:outline-none focus:border-forest" />
+              {profileType === 'EXPORTER' && (
+                <input type="number" min="0" placeholder="Capacité d'achat (kg)" value={profile.capacityKg || ''} onChange={setP('capacityKg')}
+                  className="w-full border-2 border-charcoal/10 rounded-xl px-4 py-3 font-dm text-sm focus:outline-none focus:border-forest" />
+              )}
+            </>
+          )}
+
+          <datalist id="regions">
+            {CI_REGIONS.map(r => <option key={r} value={r} />)}
+          </datalist>
+
+          <button type="submit" disabled={submitting}
+            className="w-full flex items-center justify-center gap-2 bg-forest text-cream font-syne font-bold py-3.5 rounded-xl hover:bg-forest-light transition-colors disabled:opacity-60">
+            {submitting ? 'Activation…' : 'Activer cette capacité'} <ArrowRight size={16} />
+          </button>
+        </form>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────
 export default function AccountPage() {
   const { user, updateUser } = useAuth()
@@ -369,11 +539,17 @@ export default function AccountPage() {
           })}
         </div>
 
-        <AnimatePresence mode="wait">
-          <motion.div key={activeTab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+        {/* LOT 11 : ni mode="wait" ni exit — même bug déjà rencontré et
+            corrigé ailleurs (DriverDashboard.jsx LOT3, AdminDashboard.jsx
+            LOT9) : une animation de sortie qui ne se résout jamais laisse
+            l'onglet précédent affiché indéfiniment malgré un changement
+            d'état React correct. */}
+        <AnimatePresence>
+          <motion.div key={activeTab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
             {activeTab === 'profile' && <ProfileTab user={user} onUpdate={updateUser} />}
             {activeTab === 'addresses' && <AddressesTab />}
             {activeTab === 'wishlist' && <WishlistTab />}
+            {activeTab === 'capabilities' && <CapabilitiesTab />}
           </motion.div>
         </AnimatePresence>
       </div>

@@ -239,6 +239,42 @@ router.get('/transactions', authenticate, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// GET /api/b2b/transactions/:id/track — LOT 11 (Arbitrage XXX RIZ) :
+// équivalent B2B de orders.js GET /:id/track, jusqu'ici totalement absent —
+// le backend savait déjà générer un QR/code de secours pour une livraison
+// B2B (LOT2/3), mais aucune route n'exposait ces données à l'acheteur B2B,
+// qui n'avait donc aucun moyen réel de les consulter. Volontairement plus
+// sobre que le B2C : pas de position GPS ni d'ETA (DriverCurrentLocation est
+// lié à Order.id, pas à B2BTransaction — brancher une position temps réel
+// pour le B2B est un sujet séparé, hors périmètre de ce lot) ; uniquement ce
+// qui est strictement nécessaire à la preuve de livraison (QR/code/statut).
+router.get('/transactions/:id/track', authenticate, async (req, res) => {
+  try {
+    const tx = await prisma.b2BTransaction.findUnique({
+      where: { id: Number(req.params.id) },
+      select: { id: true, buyerUserId: true },
+    })
+    if (!tx) return res.status(404).json({ error: 'Transaction introuvable' })
+    if (tx.buyerUserId !== req.user.id && req.user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Accès refusé' })
+    }
+
+    const shipment = await prisma.shipment.findUnique({
+      where: { b2bTransactionId: tx.id },
+      select: { id: true, status: true, deliveryCode: true },
+    })
+    if (!shipment) return res.json({ shipmentStatus: null, deliveryCode: null, qrToken: null })
+
+    const qrToken = (await prisma.deliveryVerificationToken.findFirst({
+      where: { shipmentId: shipment.id, usedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+      select: { token: true },
+    }))?.token || null
+
+    res.json({ shipmentStatus: shipment.status, deliveryCode: shipment.deliveryCode || null, qrToken })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // PUT /api/b2b/transactions/:id/request-logistics — LOT 2 : le TRADER (ou
 // tout acheteur B2B) demande une livraison pour une transaction déclarée.
 // Seul l'ACHETEUR peut la demander : c'est lui le destinataire de la

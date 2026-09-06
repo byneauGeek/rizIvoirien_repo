@@ -4,7 +4,7 @@ import DOMPurify from 'dompurify'
 import {
   Zap, Truck, TrendingUp, BarChart2, User,
   LogOut, Power, ChevronRight, AlertTriangle, FileText, CheckSquare, Square,
-  CheckCircle, Clock, Download, Crown, Loader2, RefreshCw, X, Menu,
+  CheckCircle, Clock, Download, Crown, Loader2, RefreshCw, X, Menu, Route as RouteIcon,
 } from 'lucide-react'
 
 const downloadContract = async (contract, holderName) => {
@@ -35,10 +35,12 @@ import PerformanceTab from './PerformanceTab'
 import DeliveryTab from './DeliveryTab'
 import EarningsTab from './EarningsTab'
 import ProfileTab from './ProfileTab'
+import RouteTab from './RouteTab'
 
 const TABS = [
   { id: 'offers',      label: 'Offres',           icon: Zap },
   { id: 'delivery',    label: 'En cours',         icon: Truck,     badge: 'delivery' },
+  { id: 'route',       label: 'Ma tournée',       icon: RouteIcon },
   { id: 'earnings',    label: 'Gains',            icon: TrendingUp },
   { id: 'performance', label: 'Performance',      icon: BarChart2 },
   { id: 'profile',     label: 'Mon profil',       icon: User },
@@ -816,6 +818,7 @@ export default function DriverDashboard() {
             className="p-6 pt-20 md:pt-6 max-w-3xl">
             {tab === 'offers'      && <OffersTab online={online} onAccepted={() => setTab('delivery')} hasActiveDelivery={hasActiveDelivery} onGoToDelivery={() => setTab('delivery')} />}
             {tab === 'delivery'    && <DeliveryTab onDelivered={() => setHasActiveDelivery(false)} />}
+            {tab === 'route'       && <RouteTab />}
             {tab === 'earnings'    && <EarningsTab />}
             {tab === 'performance' && <PerformanceTab />}
             {tab === 'profile'     && <ProfileTab />}

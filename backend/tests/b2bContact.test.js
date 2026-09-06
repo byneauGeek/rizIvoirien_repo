@@ -176,6 +176,58 @@ describe('B2B — transaction déclarée', () => {
       .send({ contactId: contact.body.id, quantity: 10 })
     expect(tx.status).toBe(404)
   })
+
+  // LOT AUDIT-G3/G12 (audit XXX RIZ)
+  test('rejette une transaction sous le MOQ de l\'offre', async () => {
+    const seller = await registerB2B('PRODUCER', { region: 'Bouaké' })
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME' })
+    const offer = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${seller.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 50, unit: 'tonne', region: 'Bouaké', minOrderQty: 20 })
+    const contact = await request(app).post('/api/b2b/contacts')
+      .set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: offer.body.id })
+    await request(app).post(`/api/b2b/contacts/${contact.body.id}/accept`).set('Authorization', `Bearer ${seller.body.token}`)
+
+    const tx = await request(app).post('/api/b2b/transactions')
+      .set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 10 })
+    expect(tx.status).toBe(400)
+    expect(tx.body.error).toMatch(/MOQ/)
+
+    const untouchedOffer = await prisma.riceOffer.findUnique({ where: { id: offer.body.id } })
+    expect(untouchedOffer.status).toBe('AVAILABLE')
+  })
+
+  test('accepte une transaction au niveau du MOQ et passe l\'offre en RESERVED', async () => {
+    const seller = await registerB2B('PRODUCER', { region: 'Bouaké' })
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME' })
+    const offer = await request(app).post('/api/b2b/offers').set('Authorization', `Bearer ${seller.body.token}`)
+      .send({ product: 'Riz paddy', quantity: 50, unit: 'tonne', region: 'Bouaké', minOrderQty: 20 })
+    const contact = await request(app).post('/api/b2b/contacts')
+      .set('Authorization', `Bearer ${buyer.body.token}`).send({ offerId: offer.body.id })
+    await request(app).post(`/api/b2b/contacts/${contact.body.id}/accept`).set('Authorization', `Bearer ${seller.body.token}`)
+
+    const tx = await request(app).post('/api/b2b/transactions')
+      .set('Authorization', `Bearer ${buyer.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 20 })
+    expect(tx.status).toBe(201)
+
+    const updatedOffer = await prisma.riceOffer.findUnique({ where: { id: offer.body.id } })
+    expect(updatedOffer.status).toBe('RESERVED')
+  })
+
+  test('une transaction déclarée sur une demande (pas une offre) ne touche aucun RiceOffer', async () => {
+    const seller = await registerB2B('PRODUCER', { region: 'Bouaké' })
+    const buyer = await registerB2B('TRADER', { companyName: 'ACME' })
+    const req_ = await publishRequest(buyer.body.token)
+    const contact = await request(app).post('/api/b2b/contacts')
+      .set('Authorization', `Bearer ${seller.body.token}`).send({ requestId: req_.id })
+    await request(app).post(`/api/b2b/contacts/${contact.body.id}/accept`).set('Authorization', `Bearer ${buyer.body.token}`)
+
+    const tx = await request(app).post('/api/b2b/transactions')
+      .set('Authorization', `Bearer ${seller.body.token}`)
+      .send({ contactId: contact.body.id, quantity: 10 })
+    expect(tx.status).toBe(201) // pas de MOQ sur une demande, rien à rejeter
+  })
 })
 
 describe('B2B — admin : vérification, modération, stats', () => {

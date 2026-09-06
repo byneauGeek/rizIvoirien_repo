@@ -183,6 +183,15 @@ router.post('/transactions', authenticate, async (req, res) => {
     const existingTx = await prisma.b2BTransaction.findUnique({ where: { contactId: contact.id } })
     if (existingTx) return res.status(409).json({ error: 'Une transaction est déjà déclarée pour ce contact' })
 
+    // LOT AUDIT-G3 (audit XXX RIZ) : minOrderQty (LOT B2B-7) était vérifié à
+    // la création/édition de l'offre mais jamais relu ici — une transaction
+    // pouvait être déclarée sous le MOQ affiché de l'offre d'origine.
+    if (contact.offer?.minOrderQty && qty < contact.offer.minOrderQty) {
+      return res.status(400).json({
+        error: `Quantité (${qty}) inférieure au MOQ de l'offre (${contact.offer.minOrderQty} ${contact.offer.unit})`,
+      })
+    }
+
     // L'offre est publiée par le vendeur (destinataire du contact) ; une demande
     // est publiée par l'acheteur (destinataire du contact) — dans les deux cas
     // c'est le contexte de l'annonce qui détermine qui est acheteur / vendeur.
@@ -211,6 +220,20 @@ router.post('/transactions', authenticate, async (req, res) => {
         notes: notes || null,
       },
     })
+
+    // LOT AUDIT-G12 (audit XXX RIZ) : RiceOffer.status prévoit RESERVED/SOLD
+    // mais rien ne l'appliquait jamais automatiquement — deux acheteurs
+    // pouvaient négocier la même offre sans qu'aucun compteur ne s'épuise.
+    // Uniquement depuis AVAILABLE (jamais depuis SOLD/DISABLED/EXPIRED, qui
+    // restent des décisions manuelles du producteur) ; le passage définitif en
+    // SOLD reste un geste manuel du producteur (une transaction déclarée est
+    // un constat, pas un paiement confirmé — cf. commentaire ci-dessus).
+    if (contact.offerId) {
+      await prisma.riceOffer.updateMany({
+        where: { id: contact.offerId, status: 'AVAILABLE' },
+        data: { status: 'RESERVED' },
+      })
+    }
 
     const otherPartyId = req.user.id === buyerUserId ? sellerUserId : buyerUserId
     setImmediate(() => notify(

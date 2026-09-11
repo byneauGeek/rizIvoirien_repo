@@ -4,7 +4,8 @@
   "type": "commonjs",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js",
+    "postinstall": "prisma generate",
+    "start": "prisma migrate deploy && node src/index.js",
     "seed": "node seed.js",
     "test": "cross-env NODE_ENV=test jest --runInBand --forceExit"
   },

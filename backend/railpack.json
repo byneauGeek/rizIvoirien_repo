@@ -3,14 +3,14 @@
   "provider": "node",
   "steps": {
     "install": {
-      "commands": ["cd backend && npm install"]
+      "commands": ["npm install"]
     },
     "build": {
       "inputs": [{ "step": "install" }],
-      "commands": ["cd backend && npx prisma generate"]
+      "commands": ["npx prisma generate"]
     }
   },
   "deploy": {
-    "startCommand": "cd backend && npx prisma migrate deploy && npm start"
+    "startCommand": "npx prisma migrate deploy && npm start"
   }
 }

@@ -3,8 +3,7 @@ generator client {
 }
 
 datasource db {
-  // PRODUCTION : changer "sqlite" → "postgresql" + mettre DATABASE_URL dans les secrets du serveur
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

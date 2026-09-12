@@ -208,6 +208,14 @@ export default function ListingsTab({ effectiveRole }) {
                   {item.minOrderQty != null && ` · MOQ ${fmt(item.minOrderQty)} ${item.unit}`}
                   {isCooperative && isOffer && ` · Propriétaire : ${item.ownerProducer ? item.ownerProducer.user.name : 'Coopérative'}`}
                 </p>
+                {isOffer && item.moderationStatus === 'PENDING_REVIEW' && (
+                  <p className="mt-1 font-syne text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 inline-block">
+                    ⏳ En attente de validation admin
+                  </p>
+                )}
+                {isOffer && item.moderationStatus === 'REJECTED' && (
+                  <p className="mt-1 font-dm text-[10px] text-red-500">✕ Refusé : {item.rejectionReason}</p>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <span className="font-syne text-xs font-bold px-3 py-1.5 rounded-full bg-charcoal/5 text-charcoal/60">

@@ -833,6 +833,142 @@ router.post('/contracts/regenerate/driver/:id', ...commercialGuard, async (req, 
   } catch (e) { sendError(res, e) }
 })
 
+// ─── Onglet : Règles d'approbation produits/offres (LOT APPROVAL) ─────────
+// CRUD réservé ADMIN (politique de modération = décision structurelle), la
+// file d'attente et les actions approuver/refuser au quotidien restent
+// accessibles à COMMERCIAL — même partage de responsabilité que les
+// contrats/vérifications B2B ci-dessus.
+
+const VALID_RULE_TYPES = ['MIN_PRICE', 'MAX_PRICE', 'MIN_IMAGES', 'MIN_DESCRIPTION_LENGTH', 'BANNED_KEYWORDS', 'CATEGORY_WHITELIST', 'MIN_QUANTITY']
+
+router.get('/approval-rules', ...guard, async (req, res) => {
+  try {
+    const rules = await prisma.approvalRule.findMany({ orderBy: { createdAt: 'desc' } })
+    res.json({ rules })
+  } catch (e) { sendError(res, e) }
+})
+
+router.post('/approval-rules', ...guard, async (req, res) => {
+  const { targetType, ruleType, severity, params, label } = req.body
+  if (!['PRODUCT', 'OFFER', 'BOTH'].includes(targetType)) return res.status(400).json({ error: 'targetType invalide (PRODUCT | OFFER | BOTH)' })
+  if (!VALID_RULE_TYPES.includes(ruleType)) return res.status(400).json({ error: `ruleType invalide (attendu : ${VALID_RULE_TYPES.join(', ')})` })
+  if (!['AUTO_REJECT', 'FLAG_FOR_REVIEW'].includes(severity)) return res.status(400).json({ error: 'severity invalide (AUTO_REJECT | FLAG_FOR_REVIEW)' })
+  if (!label?.trim()) return res.status(400).json({ error: 'label requis (motif affiché au vendeur/admin)' })
+  let parsedParams
+  try { parsedParams = typeof params === 'string' ? JSON.parse(params) : (params || {}) } catch { return res.status(400).json({ error: 'params doit être un JSON valide' }) }
+  try {
+    const rule = await prisma.approvalRule.create({
+      data: { targetType, ruleType, severity, label: label.trim(), params: JSON.stringify(parsedParams) },
+    })
+    await logAction(req.user.id, 'APPROVAL_RULE_CREATE', 'APPROVAL_RULE', rule.id, { ruleType, targetType })
+    res.status(201).json(rule)
+  } catch (e) { sendError(res, e) }
+})
+
+router.put('/approval-rules/:id', ...guard, async (req, res) => {
+  try {
+    const rule = await prisma.approvalRule.findUnique({ where: { id: Number(req.params.id) } })
+    if (!rule) return res.status(404).json({ error: 'Règle introuvable' })
+    const data = {}
+    if ('active' in req.body) data.active = Boolean(req.body.active)
+    if ('label' in req.body) data.label = String(req.body.label).trim()
+    if ('severity' in req.body && ['AUTO_REJECT', 'FLAG_FOR_REVIEW'].includes(req.body.severity)) data.severity = req.body.severity
+    if ('params' in req.body) {
+      try { data.params = JSON.stringify(typeof req.body.params === 'string' ? JSON.parse(req.body.params) : req.body.params) }
+      catch { return res.status(400).json({ error: 'params doit être un JSON valide' }) }
+    }
+    const updated = await prisma.approvalRule.update({ where: { id: rule.id }, data })
+    await logAction(req.user.id, 'APPROVAL_RULE_UPDATE', 'APPROVAL_RULE', rule.id, data)
+    res.json(updated)
+  } catch (e) { sendError(res, e) }
+})
+
+router.delete('/approval-rules/:id', ...guard, async (req, res) => {
+  try {
+    const rule = await prisma.approvalRule.findUnique({ where: { id: Number(req.params.id) } })
+    if (!rule) return res.status(404).json({ error: 'Règle introuvable' })
+    await prisma.approvalRule.delete({ where: { id: rule.id } })
+    await logAction(req.user.id, 'APPROVAL_RULE_DELETE', 'APPROVAL_RULE', rule.id, {})
+    res.json({ ok: true })
+  } catch (e) { sendError(res, e) }
+})
+
+// File de modération : produits + offres B2B en attente de revue manuelle
+router.get('/moderation/queue', ...commercialGuard, async (req, res) => {
+  try {
+    const [products, offers] = await Promise.all([
+      prisma.product.findMany({
+        where: { moderationStatus: 'PENDING_REVIEW' },
+        include: { shop: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.riceOffer.findMany({
+        where: { moderationStatus: 'PENDING_REVIEW' },
+        include: {
+          producer: { select: { id: true, user: { select: { name: true } } } },
+          cooperative: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ])
+    res.json({ products, offers })
+  } catch (e) { sendError(res, e) }
+})
+
+router.post('/moderation/product/:id/approve', ...commercialGuard, async (req, res) => {
+  try {
+    const product = await prisma.product.update({
+      where: { id: Number(req.params.id) },
+      data: { moderationStatus: 'APPROVED', rejectionReason: null },
+      include: { shop: true },
+    })
+    await logAction(req.user.id, 'PRODUCT_APPROVE', 'PRODUCT', product.id, {})
+    await notify(product.shop.userId, 'PRODUCT_APPROVED', 'Produit approuvé', `"${product.name}" est maintenant visible publiquement.`, { productId: product.id })
+    res.json(product)
+  } catch (e) { sendError(res, e) }
+})
+
+router.post('/moderation/product/:id/reject', ...commercialGuard, async (req, res) => {
+  const reason = (req.body.reason || '').trim()
+  if (!reason) return res.status(400).json({ error: 'Motif de refus requis' })
+  try {
+    const product = await prisma.product.update({
+      where: { id: Number(req.params.id) },
+      data: { moderationStatus: 'REJECTED', rejectionReason: reason },
+      include: { shop: true },
+    })
+    await logAction(req.user.id, 'PRODUCT_REJECT', 'PRODUCT', product.id, { reason })
+    await notify(product.shop.userId, 'PRODUCT_REJECTED', 'Produit refusé', `"${product.name}" a été refusé : ${reason}`, { productId: product.id })
+    res.json(product)
+  } catch (e) { sendError(res, e) }
+})
+
+router.post('/moderation/offer/:id/approve', ...commercialGuard, async (req, res) => {
+  try {
+    const offer = await prisma.riceOffer.findUnique({ where: { id: Number(req.params.id) }, include: { producer: true, cooperative: true } })
+    if (!offer) return res.status(404).json({ error: 'Offre introuvable' })
+    const updated = await prisma.riceOffer.update({ where: { id: offer.id }, data: { moderationStatus: 'APPROVED', rejectionReason: null } })
+    await logAction(req.user.id, 'OFFER_APPROVE', 'OFFER', offer.id, {})
+    const ownerUserId = offer.producer?.userId || offer.cooperative?.userId
+    if (ownerUserId) await notify(ownerUserId, 'OFFER_APPROVED', 'Offre B2B approuvée', `"${updated.product}" est maintenant visible publiquement.`, { offerId: updated.id })
+    res.json(updated)
+  } catch (e) { sendError(res, e) }
+})
+
+router.post('/moderation/offer/:id/reject', ...commercialGuard, async (req, res) => {
+  const reason = (req.body.reason || '').trim()
+  if (!reason) return res.status(400).json({ error: 'Motif de refus requis' })
+  try {
+    const offer = await prisma.riceOffer.findUnique({ where: { id: Number(req.params.id) }, include: { producer: true, cooperative: true } })
+    if (!offer) return res.status(404).json({ error: 'Offre introuvable' })
+    const updated = await prisma.riceOffer.update({ where: { id: offer.id }, data: { moderationStatus: 'REJECTED', rejectionReason: reason } })
+    await logAction(req.user.id, 'OFFER_REJECT', 'OFFER', offer.id, { reason })
+    const ownerUserId = offer.producer?.userId || offer.cooperative?.userId
+    if (ownerUserId) await notify(ownerUserId, 'OFFER_REJECTED', 'Offre B2B refusée', `"${updated.product}" a été refusée : ${reason}`, { offerId: updated.id })
+    res.json(updated)
+  } catch (e) { sendError(res, e) }
+})
+
 // ─── Onglet 7 : Paramètres plateforme ─────────────────────────────────────
 
 router.get('/settings', ...guard, async (req, res) => {

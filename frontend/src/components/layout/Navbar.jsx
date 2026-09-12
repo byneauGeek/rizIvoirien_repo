@@ -39,6 +39,12 @@ const NOTIF_META = {
   NEW_REVIEW:                { icon: Star,          path: () => '/vendor' },
   DELIVERY_CONFIRMED:        { icon: Truck,         path: () => '/driver' },
   ORDER_VALIDATION_EXPIRING: { icon: AlertTriangle, path: (u) => ROLE_DASHBOARD[u.role] || '/' },
+  PRODUCT_PENDING_REVIEW:    { icon: Package,       path: () => '/admin' },
+  PRODUCT_APPROVED:          { icon: Package,       path: () => '/vendor' },
+  PRODUCT_REJECTED:          { icon: Package,       path: () => '/vendor' },
+  OFFER_PENDING_REVIEW:      { icon: FileText,      path: () => '/admin' },
+  OFFER_APPROVED:            { icon: FileText,      path: () => '/account' },
+  OFFER_REJECTED:            { icon: FileText,      path: () => '/account' },
 }
 const notifMetaFor = (type) => {
   if (NOTIF_META[type]) return NOTIF_META[type]

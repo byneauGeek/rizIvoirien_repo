@@ -3,6 +3,7 @@ const prisma = require('../lib/prisma')
 const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { notify, notifyAdmins } = require('../services/notifications')
+const { evaluateApproval } = require('../services/approvalEngine')
 
 // ─── Listes de référence (régions, produits, unités) ─────────────────────────
 // Gérées par l'admin (voir b2bAdmin.js) — cette route publique alimente les
@@ -139,7 +140,7 @@ const OFFER_SELLER_ROLES = ['PRODUCER', 'COOPERATIVE']
 router.get('/offers', async (req, res) => {
   const { product, region, minQuantity, sellerType, availableBy, search, limit = '20', offset = '0' } = req.query
   try {
-    const and = [{ status: 'AVAILABLE' }]
+    const and = [{ status: 'AVAILABLE' }, { moderationStatus: 'APPROVED' }]
     if (product) and.push({ product })
     if (region) and.push({ region: { contains: region } })
     if (minQuantity) and.push({ quantity: { gte: Number(minQuantity) } })
@@ -200,7 +201,7 @@ router.get('/offers/:id', async (req, res) => {
         ownerProducer: { select: { id: true, region: true, user: { select: { name: true } } } },
       },
     })
-    if (!offer) return res.status(404).json({ error: 'Offre introuvable' })
+    if (!offer || offer.moderationStatus !== 'APPROVED') return res.status(404).json({ error: 'Offre introuvable' })
     res.json(offer)
   } catch (e) { sendError(res, e) }
 })
@@ -255,6 +256,12 @@ router.post('/offers', authenticate, requireRole(...OFFER_SELLER_ROLES), async (
       return res.status(err.status || 400).json({ error: err.message })
     }
 
+    // LOT APPROVAL : évalué avant création, même moteur que Product.
+    const { moderationStatus, rejectionReason } = await evaluateApproval('OFFER', {
+      product, variety, price: price !== undefined && price !== null && price !== '' ? Number(price) : null,
+      photos: JSON.stringify(photos || []), quantity: qty,
+    })
+
     const offer = await prisma.riceOffer.create({
       data: {
         producerId: actor.modelName === 'producer' ? actor.profile.id : null,
@@ -267,8 +274,19 @@ router.post('/offers', authenticate, requireRole(...OFFER_SELLER_ROLES), async (
         minOrderQty: moq,
         photos: JSON.stringify(photos || []),
         status: ['DRAFT', 'AVAILABLE'].includes(status) ? status : 'AVAILABLE',
+        moderationStatus,
+        rejectionReason,
       },
     })
+
+    if (moderationStatus === 'PENDING_REVIEW') {
+      await notifyAdmins('OFFER_PENDING_REVIEW', 'Offre B2B en attente de validation',
+        `"${offer.product}" (${actor.actingRole}) nécessite une revue manuelle : ${rejectionReason}`, { offerId: offer.id })
+    } else if (moderationStatus === 'REJECTED') {
+      await notify(req.user.id, 'OFFER_REJECTED', 'Offre refusée',
+        `"${offer.product}" n'a pas été publiée : ${rejectionReason}`, { offerId: offer.id })
+    }
+
     res.status(201).json(offer)
   } catch (e) { sendError(res, e) }
 })
@@ -338,7 +356,29 @@ router.put('/offers/:id', authenticate, requireRole(...OFFER_SELLER_ROLES), asyn
       }
     }
 
+    // LOT APPROVAL : ré-évalué contre l'état final fusionné, même logique
+    // que products.js PUT — un contenu modifié peut faire perdre ou
+    // retrouver l'approbation.
+    const merged = { ...existing, ...data }
+    const evalResult = await evaluateApproval('OFFER', {
+      product: merged.product, variety: merged.variety, price: merged.price,
+      photos: merged.photos, quantity: merged.quantity,
+    })
+    data.moderationStatus = evalResult.moderationStatus
+    data.rejectionReason = evalResult.rejectionReason
+
     const updated = await prisma.riceOffer.update({ where: { id: existing.id }, data })
+
+    if (evalResult.moderationStatus !== existing.moderationStatus) {
+      if (evalResult.moderationStatus === 'PENDING_REVIEW') {
+        await notifyAdmins('OFFER_PENDING_REVIEW', 'Offre B2B en attente de validation',
+          `"${updated.product}" nécessite une revue manuelle : ${evalResult.rejectionReason}`, { offerId: updated.id })
+      } else if (evalResult.moderationStatus === 'REJECTED') {
+        await notify(req.user.id, 'OFFER_REJECTED', 'Offre refusée',
+          `"${updated.product}" a été dépubliée : ${evalResult.rejectionReason}`, { offerId: updated.id })
+      }
+    }
+
     res.json(updated)
   } catch (e) { sendError(res, e) }
 })

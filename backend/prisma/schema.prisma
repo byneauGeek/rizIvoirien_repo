@@ -321,27 +321,27 @@ model Exporter {
 // ─── B2B : offres & demandes ────────────────────────────────────────────────
 
 model RiceOffer {
-  id              Int          @id @default(autoincrement())
-  producerId      Int?
-  producer        Producer?    @relation(fields: [producerId], references: [id], onDelete: Cascade)
-  cooperativeId   Int?
-  cooperative     Cooperative? @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
-  product         String // "Riz paddy" | "Riz blanchi"
-  variety         String?
-  quantity        Float
-  unit            String // kg | tonne | sac
-  region          String
-  availableFrom   DateTime?
-  quality         String?
-  price           Float?
+  id               Int          @id @default(autoincrement())
+  producerId       Int?
+  producer         Producer?    @relation(fields: [producerId], references: [id], onDelete: Cascade)
+  cooperativeId    Int?
+  cooperative      Cooperative? @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  product          String // "Riz paddy" | "Riz blanchi"
+  variety          String?
+  quantity         Float
+  unit             String // kg | tonne | sac
+  region           String
+  availableFrom    DateTime?
+  quality          String?
+  price            Float?
   // LOT B2B-7 (audit XXX RIZ) : MOQ (quantité minimale de commande) —
   // absente jusqu'ici, `quantity` ne représentait que le stock total
   // disponible, jamais un seuil minimum d'achat par commande. Nullable :
   // une offre sans MOQ reste vendable à l'unité, comportement inchangé pour
   // les offres existantes.
-  minOrderQty     Float?
-  photos          String       @default("[]")
-  status          String       @default("DRAFT") // DRAFT|AVAILABLE|RESERVED|SOLD|EXPIRED|DISABLED
+  minOrderQty      Float?
+  photos           String       @default("[]")
+  status           String       @default("DRAFT") // DRAFT|AVAILABLE|RESERVED|SOLD|EXPIRED|DISABLED
   // LOT AUDIT-OWN-01 (audit XXX RIZ) : gap confirmé — une offre publiée par
   // une COOPERATIVE (cooperativeId renseigné) n'avait aucun moyen d'indiquer
   // que la marchandise appartient en réalité à un membre précis plutôt qu'à
@@ -352,10 +352,16 @@ model RiceOffer {
   // absence ambiguë) ; non-null = doit référencer un membre réel de CETTE
   // coopérative (vérifié en route, pas en contrainte DB — CooperativeMember
   // n'est pas une simple FK 1:1).
-  ownerProducerId Int?
-  ownerProducer   Producer?    @relation("RiceOfferOwner", fields: [ownerProducerId], references: [id])
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  ownerProducerId  Int?
+  ownerProducer    Producer?    @relation("RiceOfferOwner", fields: [ownerProducerId], references: [id])
+  // LOT APPROVAL (audit XXX RIZ) : même logique que Product.moderationStatus
+  // — orthogonal au `status` métier existant (DRAFT|AVAILABLE|...), qui
+  // reste géré librement par le producteur/coopérative. Défaut APPROVED
+  // pour ne pas invisibiliser rétroactivement les offres déjà publiées.
+  moderationStatus String       @default("APPROVED") // PENDING_REVIEW | APPROVED | REJECTED
+  rejectionReason  String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   contactRequests ContactRequest[]
 
@@ -365,6 +371,7 @@ model RiceOffer {
   @@index([producerId])
   @@index([cooperativeId])
   @@index([ownerProducerId])
+  @@index([moderationStatus])
 }
 
 model PurchaseRequest {
@@ -578,30 +585,42 @@ model Shop {
 }
 
 model Product {
-  id              Int      @id @default(autoincrement())
-  shopId          Int
-  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  name            String
-  slug            String   @unique
-  description     String?
-  category        String
-  price           Float
-  unit            String   @default("5kg")
-  pricePerKg      Float    @default(0)
-  stock           Int      @default(0)
-  images          String   @default("[]")
-  badge           String?
-  origin          String?
-  harvest         String?
+  id               Int      @id @default(autoincrement())
+  shopId           Int
+  shop             Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name             String
+  slug             String   @unique
+  description      String?
+  category         String
+  price            Float
+  unit             String   @default("5kg")
+  pricePerKg       Float    @default(0)
+  stock            Int      @default(0)
+  images           String   @default("[]")
+  badge            String?
+  origin           String?
+  harvest          String?
   // RETAIL = détail uniquement | WHOLESALE = gros uniquement | BOTH = gros & détail
-  saleType        String   @default("BOTH")
-  wholesalePrice  Float?
-  minWholesaleQty Int?
-  rating          Float    @default(5.0)
-  reviewCount     Int      @default(0)
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  saleType         String   @default("BOTH")
+  wholesalePrice   Float?
+  minWholesaleQty  Int?
+  rating           Float    @default(5.0)
+  reviewCount      Int      @default(0)
+  active           Boolean  @default(true)
+  // LOT APPROVAL (audit XXX RIZ) : jusqu'ici, `active` était le SEUL
+  // interrupteur — un produit créé était public instantanément, aucune
+  // règle ni contrôle admin. moderationStatus est orthogonal à `active`
+  // (le vendeur garde son interrupteur vitrine, indépendant de la
+  // modération) : un produit doit être `active: true` ET
+  // `moderationStatus: 'APPROVED'` pour apparaître publiquement.
+  // Défaut APPROVED ici pour que la migration n'invisibilise pas
+  // rétroactivement les produits déjà en ligne — seules les créations
+  // futures passent explicitement par l'évaluation des règles
+  // (services/approvalEngine.js), qui fixe toujours la vraie valeur.
+  moderationStatus String   @default("APPROVED") // PENDING_REVIEW | APPROVED | REJECTED
+  rejectionReason  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   orderItems    OrderItem[]
   reviews       Review[]
@@ -612,6 +631,7 @@ model Product {
   @@index([shopId])
   @@index([active])
   @@index([saleType])
+  @@index([moderationStatus])
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1238,6 +1258,32 @@ model Subscription {
   startDate DateTime  @default(now())
   endDate   DateTime?
   amount    Float
+}
+
+// LOT APPROVAL (audit XXX RIZ) : mirroir structurel de PricingRule — une
+// vraie table de lignes admin-définies (pas un blob PlatformSettings figé),
+// pour que "règles entièrement paramétrables" veuille dire "l'admin
+// ajoute/retire/désactive des lignes", pas "on édite un JSON à la main".
+// `params` reste un JSON string : le shape dépend de `ruleType` (ex.
+// {"min":500} pour MIN_PRICE, {"keywords":["..."]} pour BANNED_KEYWORDS) —
+// volontairement schemaless pour ajouter un nouveau ruleType sans migration.
+model ApprovalRule {
+  id         Int      @id @default(autoincrement())
+  targetType String // PRODUCT | OFFER | BOTH
+  ruleType   String // MIN_PRICE | MAX_PRICE | MIN_IMAGES | MIN_DESCRIPTION_LENGTH | BANNED_KEYWORDS | CATEGORY_WHITELIST | MIN_QUANTITY
+  // AUTO_REJECT : le produit/l'offre passe direct en REJECTED, avec
+  // rejectionReason = label de la règle. FLAG_FOR_REVIEW : passe en
+  // PENDING_REVIEW, un admin tranche à la main (aucune règle AUTO_REJECT
+  // déclenchée par ailleurs) — même geste que l'approbation B2B existante.
+  severity   String   @default("FLAG_FOR_REVIEW") // AUTO_REJECT | FLAG_FOR_REVIEW
+  params     String // JSON, shape dépendant de ruleType
+  label      String // motif lisible affiché au vendeur/admin en cas d'échec
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([targetType])
+  @@index([active])
 }
 
 model Contract {

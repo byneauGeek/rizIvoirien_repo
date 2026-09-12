@@ -711,6 +711,16 @@ function ProductListCard({ product, index, selected, onToggleSelect, onEdit, onD
       <div className="p-3.5">
         <p className="font-syne text-sm font-bold text-charcoal truncate">{product.name}</p>
         <p className="font-dm text-xs text-charcoal/40 mt-0.5 truncate">{product.category} · {product.unit}</p>
+        {product.moderationStatus === 'PENDING_REVIEW' && (
+          <p className="mt-1 font-syne text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 inline-block">
+            ⏳ En attente de validation
+          </p>
+        )}
+        {product.moderationStatus === 'REJECTED' && (
+          <p className="mt-1 font-dm text-[10px] text-red-500" title={product.rejectionReason}>
+            ✕ Refusé : {product.rejectionReason}
+          </p>
+        )}
 
         <div className="flex items-center justify-between mt-3">
           <p className="font-playfair text-base font-bold text-charcoal">

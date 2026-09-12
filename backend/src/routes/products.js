@@ -6,6 +6,8 @@ const { uploadCsv } = require('../middleware/upload')
 const Papa = require('papaparse')
 const Anthropic = require('@anthropic-ai/sdk')
 const stockEngine = require('../services/stockEngine')
+const { evaluateApproval } = require('../services/approvalEngine')
+const { notifyAdmins, notify } = require('../services/notifications')
 
 const slugify = (str) =>
   str.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '-' + Date.now()
@@ -101,7 +103,10 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans commentaire :
 router.get('/', async (req, res) => {
   const { category, shopId, certified, priceMax, search, sort = 'createdAt', limit = '20', offset = '0' } = req.query
   try {
-    const where = { active: true }
+    // LOT APPROVAL : `active` (interrupteur vendeur) et `moderationStatus`
+    // (résultat du moteur de règles) sont deux gardes indépendantes — les
+    // deux doivent être au vert pour qu'un produit soit public.
+    const where = { active: true, moderationStatus: 'APPROVED' }
     if (category) where.category = category
     if (shopId) where.shopId = Number(shopId)
     if (search) where.name = { contains: search }
@@ -184,7 +189,7 @@ router.get('/:slug', async (req, res) => {
       where: { slug: req.params.slug },
       include: { shop: { select: { id: true, name: true, certified: true, rating: true, reviewCount: true, location: true } } },
     })
-    if (!product) return res.status(404).json({ error: 'Produit introuvable' })
+    if (!product || product.moderationStatus !== 'APPROVED') return res.status(404).json({ error: 'Produit introuvable' })
     res.json(product)
   } catch (e) {
     sendError(res, e)
@@ -219,6 +224,13 @@ router.post('/', authenticate, requireRole('SELLER'), async (req, res) => {
     // l'amène à sa quantité initiale dans la même transaction — jamais une
     // écriture directe de `stock` en dehors du Stock Engine.
     const initialStock = Number(stock) || 0
+
+    // LOT APPROVAL : évalué AVANT la transaction — la décision ne dépend que
+    // du contenu soumis, jamais du produit déjà créé en base.
+    const { moderationStatus, rejectionReason } = await evaluateApproval('PRODUCT', {
+      name, description, category, price: Number(price), images: JSON.stringify(images || []), stock: initialStock,
+    })
+
     const product = await prisma.$transaction(async (tx) => {
       const created = await tx.product.create({
         data: {
@@ -238,11 +250,23 @@ router.post('/', authenticate, requireRole('SELLER'), async (req, res) => {
           saleType: ['RETAIL','WHOLESALE','BOTH'].includes(saleType) ? saleType : 'BOTH',
           wholesalePrice:  wholesalePrice  != null && wholesalePrice  !== '' ? Number(wholesalePrice)  : null,
           minWholesaleQty: minWholesaleQty != null && minWholesaleQty !== '' ? Number(minWholesaleQty) : null,
+          moderationStatus,
+          rejectionReason,
         },
       })
       await stockEngine.initializeStock(tx, { productId: created.id, quantity: initialStock, actorId: req.user.id })
       return tx.product.findUnique({ where: { id: created.id } })
     })
+
+    if (moderationStatus === 'PENDING_REVIEW') {
+      await notifyAdmins('PRODUCT_PENDING_REVIEW', 'Produit en attente de validation',
+        `"${product.name}" (${shop.name}) nécessite une revue manuelle : ${rejectionReason}`,
+        { productId: product.id })
+    } else if (moderationStatus === 'REJECTED') {
+      await notify(req.user.id, 'PRODUCT_REJECTED', 'Produit refusé',
+        `"${product.name}" n'a pas été publié : ${rejectionReason}`, { productId: product.id })
+    }
+
     res.status(201).json(product)
   } catch (e) {
     sendError(res, e)
@@ -337,10 +361,32 @@ router.put('/:id', authenticate, requireRole('SELLER'), async (req, res) => {
     }
     data.updatedAt = new Date()
 
+    // LOT APPROVAL : ré-évalué à chaque modification (contre l'état final
+    // fusionné, pas seulement le diff) — un produit ne peut pas rester
+    // APPROVED avec un contenu modifié qui violerait désormais une règle,
+    // et un produit REJECTED peut redevenir APPROVED après correction.
+    const merged = { ...product, ...data }
+    const evalResult = await evaluateApproval('PRODUCT', {
+      name: merged.name, description: merged.description, category: merged.category,
+      price: merged.price, images: merged.images, stock: product.stock,
+    })
+    data.moderationStatus = evalResult.moderationStatus
+    data.rejectionReason = evalResult.rejectionReason
+
     const updated = await prisma.product.update({
       where: { id: product.id },
       data,
     })
+
+    if (evalResult.moderationStatus !== product.moderationStatus) {
+      if (evalResult.moderationStatus === 'PENDING_REVIEW') {
+        await notifyAdmins('PRODUCT_PENDING_REVIEW', 'Produit en attente de validation',
+          `"${updated.name}" nécessite une revue manuelle : ${evalResult.rejectionReason}`, { productId: updated.id })
+      } else if (evalResult.moderationStatus === 'REJECTED') {
+        await notify(req.user.id, 'PRODUCT_REJECTED', 'Produit refusé',
+          `"${updated.name}" a été dépublié : ${evalResult.rejectionReason}`, { productId: updated.id })
+      }
+    }
 
     // Enregistrement de l'historique si des champs ont changé
     if (changes.length > 0) {

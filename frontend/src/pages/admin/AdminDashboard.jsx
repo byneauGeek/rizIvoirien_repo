@@ -23,6 +23,7 @@ import CommercialSettingsTab from './CommercialSettingsTab'
 import B2BAdminTab from './B2BAdminTab'
 import AccountingRoleTab from './AccountingRoleTab'
 import LogisticsAdminTab from './LogisticsAdminTab'
+import ApprovalRulesTab from './ApprovalRulesTab'
 
 const TABS = [
   { id: 'analytics', label: 'Vue d\'ensemble',        icon: LayoutDashboard },
@@ -44,11 +45,12 @@ const TABS = [
   { id: 'b2b',        label: 'Filière B2B',               icon: Sprout, badge: 'b2bPending' },
   { id: 'accounting-role', label: 'Rôle Comptable',        icon: Calculator },
   { id: 'logistics',  label: 'Logistique',                icon: Route },
+  { id: 'approval',   label: 'Modération produits',       icon: ClipboardList, badge: 'moderationPending' },
 ]
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState('analytics')
-  const [pending, setPending] = useState({ shopsPending: 0, driversPending: 0, disputesPending: 0, planRequestsPending: 0, b2bPending: 0 })
+  const [pending, setPending] = useState({ shopsPending: 0, driversPending: 0, disputesPending: 0, planRequestsPending: 0, b2bPending: 0, moderationPending: 0 })
   const [menuOpen, setMenuOpen] = useState(false)
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -63,12 +65,13 @@ export default function AdminDashboard() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [shops, drivers, disputes, planReqs, b2bStats] = await Promise.all([
+        const [shops, drivers, disputes, planReqs, b2bStats, moderation] = await Promise.all([
           api.get('/admin/shops?status=PENDING'),
           api.get('/admin/drivers?status=PENDING'),
           api.get('/disputes?status=OPEN'),
           api.get('/admin/plan-requests?status=PENDING').catch(() => ({ requests: [] })),
           api.get('/admin/b2b/stats').catch(() => null),
+          api.get('/admin/moderation/queue').catch(() => ({ products: [], offers: [] })),
         ])
         setPending({
           shopsPending:         shops.shops?.length || 0,
@@ -76,6 +79,7 @@ export default function AdminDashboard() {
           disputesPending:      disputes.disputes?.length || 0,
           planRequestsPending:  (planReqs.requests ?? []).length,
           b2bPending:           (b2bStats?.pendingVerifications || 0) + (b2bStats?.reportsPending || 0),
+          moderationPending:    (moderation.products?.length || 0) + (moderation.offers?.length || 0),
         })
       } catch {}
     }
@@ -192,6 +196,7 @@ export default function AdminDashboard() {
             {tab === 'drivers'   && <DriversAdminTab onBadgeUpdate={onDriversBadge} />}
             {tab === 'payslips'  && <PayslipsAdminTab />}
             {tab === 'contracts' && <ContractsAdminTab />}
+            {tab === 'approval'  && <ApprovalRulesTab />}
             {tab === 'disputes'  && <DisputesAdminTab />}
             {tab === 'audit'     && <AuditLogTab />}
             {tab === 'users'     && <UsersTab />}

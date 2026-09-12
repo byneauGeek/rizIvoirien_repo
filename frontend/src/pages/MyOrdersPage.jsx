@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Package, ChevronDown, ChevronUp, Phone, Star, X, Truck, AlertTriangle, CheckCircle, Navigation, MapPin } from 'lucide-react'
+import { Package, ChevronDown, ChevronUp, Phone, Star, X, Truck, AlertTriangle, CheckCircle, Navigation, MapPin, MessageCircle } from 'lucide-react'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
 import { api } from '../api/client'
@@ -417,6 +417,10 @@ function OrderCard({ order, onReview, onCancel, onRateDriver, onRateShop, onDisp
               </span>
             </div>
             <p className="font-dm text-sm text-charcoal/50">{fmtDate(order.createdAt)} · {order.shop?.name}</p>
+            <Link to={`/messages?contextType=ORDER&contextId=${order.id}`}
+              className="inline-flex items-center gap-1.5 mt-1.5 font-syne text-xs font-bold text-forest hover:underline">
+              <MessageCircle size={12} /> Contacter le vendeur
+            </Link>
           </div>
           <div className="text-right shrink-0">
             <p className="font-playfair text-2xl font-bold text-charcoal">{fmt(order.total)} F</p>

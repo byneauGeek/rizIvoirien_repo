@@ -58,6 +58,11 @@ model User {
 
   // ── Capacités additives (programme "Arbitrage XXX RIZ", LOT 2) ─────────────
   capabilities UserCapability[]
+
+  // ── Messagerie entre acteurs ───────────────────────────────────────────────
+  conversationsAsUserA Conversation[] @relation("ConversationUserA")
+  conversationsAsUserB Conversation[] @relation("ConversationUserB")
+  messagesSent         Message[]
 }
 
 // Un compte a un rôle PRINCIPAL unique (User.role, inchangé — détermine la
@@ -69,6 +74,41 @@ model User {
 // TRADER. Vérifié par requireRole() dans middleware/auth.js, chargé à chaque
 // requête (pas embarqué dans le JWT) : une capacité activée est effective dès
 // la requête suivante, sans réémission de token ni reconnexion.
+model Conversation {
+  id          Int      @id @default(autoincrement())
+  // "ORDER" | "SHIPMENT" | "B2B_TRANSACTION" — chaque conversation est
+  // scopée à un contexte transactionnel existant plutôt qu'un DM générique
+  // ouvert (cf. audit messagerie XXX RIZ) : les deux participants et leur
+  // droit de se parler se déduisent déjà de ce contexte (Order.buyerId +
+  // Shop.userId, Shipment.driverId, B2BTransaction.buyerUserId/sellerUserId).
+  contextType String
+  contextId   Int
+  userAId     Int
+  userA       User      @relation("ConversationUserA", fields: [userAId], references: [id])
+  userBId     Int
+  userB       User      @relation("ConversationUserB", fields: [userBId], references: [id])
+  messages    Message[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([contextType, contextId])
+  @@index([userAId])
+  @@index([userBId])
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversationId Int
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       Int
+  sender         User         @relation(fields: [senderId], references: [id])
+  content        String
+  read           Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+}
+
 model UserCapability {
   id        Int      @id @default(autoincrement())
   userId    Int

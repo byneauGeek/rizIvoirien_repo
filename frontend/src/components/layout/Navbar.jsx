@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ShoppingBag, Menu, X, Search, Bell, User, ChevronDown, Package, LogOut, Settings, Heart, MailWarning, Star, Truck, AlertTriangle, Crown, FileText } from 'lucide-react'
+import { ShoppingBag, Menu, X, Search, Bell, User, ChevronDown, Package, LogOut, Settings, Heart, MailWarning, Star, Truck, AlertTriangle, Crown, FileText, MessageCircle } from 'lucide-react'
 import { useCart } from '../../context/CartContext'
 import { useAuth } from '../../context/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -56,6 +56,7 @@ export default function Navbar() {
   const [accountOpen, setAccountOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifs, setNotifs] = useState({ notifications: [], unread: 0 })
+  const [unreadMessages, setUnreadMessages] = useState(0)
   const [emailUnverified, setEmailUnverified] = useState(false)
   const [resending, setResending] = useState(false)
   const [resendSent, setResendSent] = useState(false)
@@ -85,6 +86,17 @@ export default function Navbar() {
   useEffect(() => {
     if (!user) return
     const load = () => api.get('/notifications').then(setNotifs).catch(() => {})
+    load()
+    const interval = setInterval(load, 30000)
+    return () => clearInterval(interval)
+  }, [user])
+
+  // Compteur de messages non lus (badge, cohérent avec la cloche ci-dessus)
+  useEffect(() => {
+    if (!user) return
+    const load = () => api.get('/conversations')
+      .then((list) => setUnreadMessages(list.reduce((sum, c) => sum + c.unreadCount, 0)))
+      .catch(() => {})
     load()
     const interval = setInterval(load, 30000)
     return () => clearInterval(interval)
@@ -207,6 +219,16 @@ export default function Navbar() {
 
             {user ? (
               <>
+                {/* Messages */}
+                <Link to="/messages" className={`relative p-2 rounded-full transition-colors ${hoverBg} ${textColor}`}>
+                  <MessageCircle size={18} />
+                  {unreadMessages > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-terra text-cream rounded-full text-[10px] font-bold flex items-center justify-center">
+                      {unreadMessages > 9 ? '9+' : unreadMessages}
+                    </span>
+                  )}
+                </Link>
+
                 {/* Notifications bell */}
                 <div className="relative">
                   <button onClick={() => setNotifOpen(v => !v)}
@@ -373,6 +395,9 @@ export default function Navbar() {
               {user ? (
                 <>
                   <li><Link to="/account" onClick={() => setMobileOpen(false)} className="block font-syne font-medium text-base py-3 text-charcoal">Mon compte</Link></li>
+                  <li><Link to="/messages" onClick={() => setMobileOpen(false)} className="flex items-center gap-2 font-syne font-medium text-base py-3 text-charcoal">
+                    Messages {unreadMessages > 0 && <span className="w-5 h-5 bg-terra text-cream rounded-full text-[10px] font-bold flex items-center justify-center">{unreadMessages > 9 ? '9+' : unreadMessages}</span>}
+                  </Link></li>
                   {user.role === 'BUYER' && (
                     <li><Link to="/orders" onClick={() => setMobileOpen(false)} className="block font-syne font-medium text-base py-3 text-charcoal">Mes commandes</Link></li>
                   )}

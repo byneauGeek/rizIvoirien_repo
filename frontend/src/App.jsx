@@ -18,6 +18,7 @@ const ProductPage       = lazy(() => import('./pages/ProductPage'))
 const CartPage          = lazy(() => import('./pages/CartPage'))
 const CheckoutPage      = lazy(() => import('./pages/CheckoutPage'))
 const MyOrdersPage      = lazy(() => import('./pages/MyOrdersPage'))
+const MessagesPage      = lazy(() => import('./pages/MessagesPage'))
 const AccountPage       = lazy(() => import('./pages/AccountPage'))
 const VendorDashboard   = lazy(() => import('./pages/vendor/VendorDashboard'))
 const DriverDashboard   = lazy(() => import('./pages/driver/DriverDashboard'))
@@ -84,6 +85,9 @@ function AppRoutes() {
         } />
         <Route path="/orders" element={
           <PrivateRoute><MyOrdersPage /></PrivateRoute>
+        } />
+        <Route path="/messages" element={
+          <PrivateRoute><MessagesPage /></PrivateRoute>
         } />
         <Route path="/account" element={
           <PrivateRoute><AccountPage /></PrivateRoute>

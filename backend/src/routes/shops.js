@@ -4,6 +4,7 @@ const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { notifyAdmins } = require('../services/notifications')
 const { getSettings } = require('../lib/settings')
+const { signContract } = require('../services/contractSignature')
 
 // ─── Public ───────────────────────────────────────────────────────────────────
 
@@ -502,7 +503,10 @@ router.put('/my', authenticate, requireRole('SELLER'), async (req, res) => {
 // GET /api/shops/my/contract
 router.get('/my/contract', authenticate, requireRole('SELLER'), async (req, res) => {
   try {
-    const shop = await prisma.shop.findUnique({ where: { userId: req.user.id }, include: { contract: true } })
+    const shop = await prisma.shop.findUnique({
+      where: { userId: req.user.id },
+      include: { contract: { include: { signatures: { orderBy: { createdAt: 'desc' } } } } },
+    })
     if (!shop) return res.status(404).json({ error: 'Boutique introuvable' })
     res.json({ contract: shop.contract, contractSigned: shop.contractSigned })
   } catch (e) { sendError(res, e) }
@@ -510,15 +514,21 @@ router.get('/my/contract', authenticate, requireRole('SELLER'), async (req, res)
 
 // PUT /api/shops/my/contract/sign
 router.put('/my/contract/sign', authenticate, requireRole('SELLER'), async (req, res) => {
+  const signedByName = (req.body.fullName || '').trim()
+  if (!signedByName) return res.status(400).json({ error: 'Merci de saisir votre nom complet pour signer.' })
   try {
     const shop = await prisma.shop.findUnique({ where: { userId: req.user.id }, include: { contract: true } })
     if (!shop?.contract) return res.status(404).json({ error: 'Contrat introuvable' })
     if (shop.contractSigned) return res.json({ message: 'Déjà signé' })
-    await prisma.$transaction([
-      prisma.contract.update({ where: { id: shop.contract.id }, data: { status: 'SIGNED', signedAt: new Date() } }),
-      prisma.shop.update({ where: { id: shop.id }, data: { contractSigned: true } }),
-    ])
-    res.json({ ok: true })
+    const signature = await signContract({
+      contract: shop.contract,
+      holderUpdate: (db) => db.shop.update({ where: { id: shop.id }, data: { contractSigned: true } }),
+      signerUserId: req.user.id,
+      signedByName,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+    })
+    res.json({ ok: true, signature })
   } catch (e) { sendError(res, e) }
 })
 

@@ -4,7 +4,7 @@ import { api } from '../../api/client'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText, Store, Truck, CheckCircle, Clock, RefreshCw,
-  Eye, AlertCircle, X, Search, Download
+  Eye, AlertCircle, X, Search, Download, ShieldCheck
 } from 'lucide-react'
 
 const downloadContract = async (contract, holderName) => {
@@ -99,6 +99,18 @@ function ContractPreviewModal({ contract, onClose, onRegenerate }) {
               <CheckCircle size={12} />
               Signé le {new Date(contract.signedAt).toLocaleDateString('fr-FR')} à {new Date(contract.signedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
             </p>
+          )}
+          {contract.lastSignature && (
+            <div className="bg-charcoal/4 rounded-xl px-4 py-3 space-y-1">
+              <p className="flex items-center gap-1.5 font-syne text-xs font-bold text-charcoal">
+                <ShieldCheck size={13} className="text-green-600" /> Preuve de signature
+              </p>
+              <p className="font-dm text-xs text-charcoal/60">Nom saisi : <span className="font-semibold text-charcoal">{contract.lastSignature.signedByName}</span></p>
+              {contract.lastSignature.ipAddress && (
+                <p className="font-dm text-xs text-charcoal/60">Adresse IP : <span className="font-mono">{contract.lastSignature.ipAddress}</span></p>
+              )}
+              <p className="font-dm text-[10px] text-charcoal/40 break-all">Empreinte du contenu signé : {contract.lastSignature.contentHash}</p>
+            </div>
           )}
           {error && (
             <div className="bg-red-50 rounded-xl px-4 py-3 flex items-center gap-2">

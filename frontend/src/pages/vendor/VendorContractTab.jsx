@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../../api/client'
+import { useAuth } from '../../context/AuthContext'
 import DOMPurify from 'dompurify'
-import { FileText, CheckCircle, Clock, AlertTriangle, CheckSquare, Square, Download } from 'lucide-react'
+import { FileText, CheckCircle, Clock, AlertTriangle, CheckSquare, Square, Download, ShieldCheck } from 'lucide-react'
 
 const downloadContract = async (contract, holderName) => {
   if (contract.status !== 'SIGNED') return
@@ -25,10 +26,12 @@ const downloadContract = async (contract, holderName) => {
 }
 
 export default function VendorContractTab() {
+  const { user } = useAuth()
   const [contract, setContract]   = useState(null)
   const [signed, setSigned]       = useState(false)
   const [loading, setLoading]     = useState(true)
   const [accepted, setAccepted]   = useState(false)
+  const [fullName, setFullName]   = useState('')
   const [signing, setSigning]     = useState(false)
   const [error, setError]         = useState(null)
 
@@ -48,13 +51,17 @@ export default function VendorContractTab() {
     return () => clearInterval(iv)
   }, [load])
 
+  useEffect(() => {
+    if (user?.name) setFullName(user.name)
+  }, [user])
+
   const sign = async () => {
-    if (!accepted) return
+    if (!accepted || !fullName.trim()) return
     setSigning(true); setError(null)
     try {
-      await api.put('/shops/my/contract/sign', {})
+      const res = await api.put('/shops/my/contract/sign', { fullName: fullName.trim() })
       setSigned(true)
-      setContract(c => c ? { ...c, status: 'SIGNED', signedAt: new Date().toISOString() } : c)
+      setContract(c => c ? { ...c, status: 'SIGNED', signedAt: new Date().toISOString(), signatures: [res.signature, ...(c.signatures || [])] } : c)
     } catch (e) { setError(e.message || 'Erreur lors de la signature') }
     finally { setSigning(false) }
   }
@@ -94,6 +101,7 @@ export default function VendorContractTab() {
           {signed && contract.signedAt && (
             <p className="font-dm text-xs text-green-600 mt-0.5">
               Signé le {new Date(contract.signedAt).toLocaleDateString('fr-FR')} à {new Date(contract.signedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+              {contract.signatures?.[0] && ` par ${contract.signatures[0].signedByName}`}
             </p>
           )}
         </div>
@@ -136,7 +144,18 @@ export default function VendorContractTab() {
                 J'ai lu et j'accepte l'intégralité du contrat de partenariat vendeur RizIvoirien.
               </span>
             </label>
-            <button onClick={sign} disabled={!accepted || signing}
+            <div>
+              <label className="block font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50 mb-1.5">
+                Nom complet (signature électronique)
+              </label>
+              <input type="text" value={fullName} onChange={e => setFullName(e.target.value)}
+                placeholder="Prénom NOM"
+                className="w-full bg-white border-2 border-charcoal/10 rounded-2xl px-4 py-3 font-dm text-sm text-charcoal focus:outline-none focus:border-[#E8A217] transition-colors" />
+              <p className="flex items-center gap-1.5 font-dm text-[11px] text-charcoal/40 mt-1.5">
+                <ShieldCheck size={12} /> Votre nom, l'heure et une empreinte du contrat sont enregistrés comme preuve de signature.
+              </p>
+            </div>
+            <button onClick={sign} disabled={!accepted || !fullName.trim() || signing}
               className="w-full py-3 rounded-2xl bg-[#E8A217] text-white font-syne font-bold text-sm hover:bg-[#d4901a] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
               {signing
                 ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

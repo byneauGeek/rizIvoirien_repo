@@ -63,6 +63,9 @@ model User {
   conversationsAsUserA Conversation[] @relation("ConversationUserA")
   conversationsAsUserB Conversation[] @relation("ConversationUserB")
   messagesSent         Message[]
+
+  // ── Signatures de contrat ──────────────────────────────────────────────────
+  contractSignatures ContractSignature[]
 }
 
 // Un compte a un rôle PRINCIPAL unique (User.role, inchangé — détermine la
@@ -75,7 +78,7 @@ model User {
 // requête (pas embarqué dans le JWT) : une capacité activée est effective dès
 // la requête suivante, sans réémission de token ni reconnexion.
 model Conversation {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   // "ORDER" | "SHIPMENT" | "B2B_TRANSACTION" — chaque conversation est
   // scopée à un contexte transactionnel existant plutôt qu'un DM générique
   // ouvert (cf. audit messagerie XXX RIZ) : les deux participants et leur
@@ -123,18 +126,18 @@ model UserCapability {
 // ─── B2B : profils ──────────────────────────────────────────────────────────
 
 model Producer {
-  id           Int      @id @default(autoincrement())
-  userId       Int      @unique
-  user         User     @relation(fields: [userId], references: [id])
-  region       String
-  department   String?
-  commune      String?
-  locality     String?
-  farmType     String?
-  surfaceHa    Float?
-  capacityKg   Float?
-  photo        String?
-  description  String?
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique
+  user            User     @relation(fields: [userId], references: [id])
+  region          String
+  department      String?
+  commune         String?
+  locality        String?
+  farmType        String?
+  surfaceHa       Float?
+  capacityKg      Float?
+  photo           String?
+  description     String?
   // LOT AUDIT-G13 (audit XXX RIZ) : gap confirmé — l'admin pouvait passer un
   // profil B2B en VERIFIED sans qu'aucune pièce (RCCM, identité...) n'ait
   // jamais été fournie, la vérification reposant uniquement sur des champs
@@ -142,21 +145,21 @@ model Producer {
   // une URL (photo du document), pas un upload PDF dédié — éditable par le
   // titulaire via PUT /b2b/my-profile, visible par l'admin (spread `...p`
   // déjà existant dans GET /admin/b2b/verifications).
-  documentUrl  String?
-  verification String   @default("UNVERIFIED") // UNVERIFIED|PENDING|VERIFIED|SUSPENDED
+  documentUrl     String?
+  verification    String   @default("UNVERIFIED") // UNVERIFIED|PENDING|VERIFIED|SUSPENDED
   // LOT AUDIT-B2B-03 (audit XXX RIZ) : REJECTED n'est pas un statut stocké
   // (retombe sur UNVERIFIED, cf. b2bAdmin.js) — sans ce champ, un refus était
   // indiscernable de "jamais candidaté", et le motif du refus perdu. Effacé à
   // chaque nouvelle soumission (request-verification) et à chaque décision
   // admin autre que REJECTED, pour ne jamais afficher un motif obsolète.
   rejectionReason String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   cooperativeMemberships CooperativeMember[]
   offers                 RiceOffer[]
-  ownedOffers            RiceOffer[] @relation("RiceOfferOwner")
-  ownedTransactions      B2BTransaction[] @relation("B2BTransactionOwner")
+  ownedOffers            RiceOffer[]              @relation("RiceOfferOwner")
+  ownedTransactions      B2BTransaction[]         @relation("B2BTransactionOwner")
   ledgerEntries          CooperativeLedgerEntry[]
 
   @@index([region])
@@ -164,28 +167,28 @@ model Producer {
 }
 
 model Cooperative {
-  id           Int      @id @default(autoincrement())
-  userId       Int      @unique
-  user         User     @relation(fields: [userId], references: [id])
-  name         String
-  responsable  String
-  region       String
-  zone         String?
-  description  String?
-  documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
-  verification String   @default("UNVERIFIED")
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique
+  user            User     @relation(fields: [userId], references: [id])
+  name            String
+  responsable     String
+  region          String
+  zone            String?
+  description     String?
+  documentUrl     String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
+  verification    String   @default("UNVERIFIED")
   rejectionReason String? // LOT AUDIT-B2B-03 — cf. commentaire sur Producer.rejectionReason
   // LOT AUDIT-ACC-05 (audit XXX RIZ) : taux de commission que la coopérative
   // prélève sur chaque vente d'un membre (%), configurable par la coopérative
   // elle-même — jamais un taux plateforme (la plateforme n'encaisse jamais
   // l'argent des transactions B2B, cf. remuneration.js). 0 par défaut : pas de
   // commission tant que la coopérative ne configure rien explicitement.
-  commissionRate Float    @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  commissionRate  Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  members CooperativeMember[]
-  offers  RiceOffer[]
+  members       CooperativeMember[]
+  offers        RiceOffer[]
   ledgerEntries CooperativeLedgerEntry[]
   invoices      CooperativeInvoice[]
 
@@ -230,14 +233,14 @@ model CooperativeLedgerEntry {
 // export PDF côté client (html2pdf.js), pas de moteur de facturation
 // parallèle ni de PDF stocké côté serveur.
 model CooperativeInvoice {
-  id            Int             @id @default(autoincrement())
+  id            Int            @id @default(autoincrement())
   cooperativeId Int
-  cooperative   Cooperative     @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
-  transactionId Int             @unique
-  transaction   B2BTransaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  invoiceNumber String          @unique
+  cooperative   Cooperative    @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  transactionId Int            @unique
+  transaction   B2BTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  invoiceNumber String         @unique
   content       String
-  createdAt     DateTime        @default(now())
+  createdAt     DateTime       @default(now())
 
   @@index([cooperativeId])
 }
@@ -263,17 +266,17 @@ model CooperativeMember {
 }
 
 model Trader {
-  id           Int      @id @default(autoincrement())
-  userId       Int      @unique
-  user         User     @relation(fields: [userId], references: [id])
-  companyName  String
-  activity     String?
-  zones        String?
-  documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
-  verification String   @default("UNVERIFIED")
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique
+  user            User     @relation(fields: [userId], references: [id])
+  companyName     String
+  activity        String?
+  zones           String?
+  documentUrl     String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
+  verification    String   @default("UNVERIFIED")
   rejectionReason String? // LOT AUDIT-B2B-03 — cf. commentaire sur Producer.rejectionReason
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   requests PurchaseRequest[]
 
@@ -281,16 +284,16 @@ model Trader {
 }
 
 model Processor {
-  id           Int      @id @default(autoincrement())
-  userId       Int      @unique
-  user         User     @relation(fields: [userId], references: [id])
-  companyName  String
-  zones        String?
-  documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
-  verification String   @default("UNVERIFIED")
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique
+  user            User     @relation(fields: [userId], references: [id])
+  companyName     String
+  zones           String?
+  documentUrl     String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
+  verification    String   @default("UNVERIFIED")
   rejectionReason String? // LOT AUDIT-B2B-03 — cf. commentaire sur Producer.rejectionReason
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   requests PurchaseRequest[]
 
@@ -298,17 +301,17 @@ model Processor {
 }
 
 model Exporter {
-  id           Int      @id @default(autoincrement())
-  userId       Int      @unique
-  user         User     @relation(fields: [userId], references: [id])
-  companyName  String
-  capacityKg   Float?
-  zones        String?
-  documentUrl  String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
-  verification String   @default("UNVERIFIED")
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique
+  user            User     @relation(fields: [userId], references: [id])
+  companyName     String
+  capacityKg      Float?
+  zones           String?
+  documentUrl     String? // LOT AUDIT-G13 — cf. commentaire sur Producer.documentUrl
+  verification    String   @default("UNVERIFIED")
   rejectionReason String? // LOT AUDIT-B2B-03 — cf. commentaire sur Producer.rejectionReason
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   requests PurchaseRequest[]
 
@@ -318,27 +321,27 @@ model Exporter {
 // ─── B2B : offres & demandes ────────────────────────────────────────────────
 
 model RiceOffer {
-  id            Int          @id @default(autoincrement())
-  producerId    Int?
-  producer      Producer?    @relation(fields: [producerId], references: [id], onDelete: Cascade)
-  cooperativeId Int?
-  cooperative   Cooperative? @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
-  product       String // "Riz paddy" | "Riz blanchi"
-  variety       String?
-  quantity      Float
-  unit          String // kg | tonne | sac
-  region        String
-  availableFrom DateTime?
-  quality       String?
-  price         Float?
+  id              Int          @id @default(autoincrement())
+  producerId      Int?
+  producer        Producer?    @relation(fields: [producerId], references: [id], onDelete: Cascade)
+  cooperativeId   Int?
+  cooperative     Cooperative? @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  product         String // "Riz paddy" | "Riz blanchi"
+  variety         String?
+  quantity        Float
+  unit            String // kg | tonne | sac
+  region          String
+  availableFrom   DateTime?
+  quality         String?
+  price           Float?
   // LOT B2B-7 (audit XXX RIZ) : MOQ (quantité minimale de commande) —
   // absente jusqu'ici, `quantity` ne représentait que le stock total
   // disponible, jamais un seuil minimum d'achat par commande. Nullable :
   // une offre sans MOQ reste vendable à l'unité, comportement inchangé pour
   // les offres existantes.
-  minOrderQty   Float?
-  photos        String       @default("[]")
-  status        String       @default("DRAFT") // DRAFT|AVAILABLE|RESERVED|SOLD|EXPIRED|DISABLED
+  minOrderQty     Float?
+  photos          String       @default("[]")
+  status          String       @default("DRAFT") // DRAFT|AVAILABLE|RESERVED|SOLD|EXPIRED|DISABLED
   // LOT AUDIT-OWN-01 (audit XXX RIZ) : gap confirmé — une offre publiée par
   // une COOPERATIVE (cooperativeId renseigné) n'avait aucun moyen d'indiquer
   // que la marchandise appartient en réalité à un membre précis plutôt qu'à
@@ -351,8 +354,8 @@ model RiceOffer {
   // n'est pas une simple FK 1:1).
   ownerProducerId Int?
   ownerProducer   Producer?    @relation("RiceOfferOwner", fields: [ownerProducerId], references: [id])
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   contactRequests ContactRequest[]
 
@@ -419,26 +422,26 @@ model ContactRequest {
 }
 
 model B2BTransaction {
-  id           Int             @id @default(autoincrement())
-  contactId    Int?            @unique
-  contact      ContactRequest? @relation(fields: [contactId], references: [id])
-  buyerUserId  Int
-  buyer        User            @relation("B2BTransactionBuyer", fields: [buyerUserId], references: [id])
-  sellerUserId Int
-  seller       User            @relation("B2BTransactionSeller", fields: [sellerUserId], references: [id])
-  product      String
-  quantity     Float
-  unit         String
-  region       String
-  amount       Float?
+  id              Int             @id @default(autoincrement())
+  contactId       Int?            @unique
+  contact         ContactRequest? @relation(fields: [contactId], references: [id])
+  buyerUserId     Int
+  buyer           User            @relation("B2BTransactionBuyer", fields: [buyerUserId], references: [id])
+  sellerUserId    Int
+  seller          User            @relation("B2BTransactionSeller", fields: [sellerUserId], references: [id])
+  product         String
+  quantity        Float
+  unit            String
+  region          String
+  amount          Float?
   // LOT 2 (Arbitrage XXX RIZ) : DECLARED restait un simple enregistrement
   // déclaratif — IN_TRANSIT/DELIVERED/ESCALATED ajoutés pour permettre le même
   // miroir de statut que Order (voir deliveryLifecycle.js), une fois qu'un
   // Shipment est rattaché via needsLogistics. Une transaction SANS logistique
   // (needsLogistics=false) reste DECLARED|CANCELLED comme avant — aucun
   // changement de comportement pour l'usage B2B existant.
-  status       String          @default("DECLARED") // DECLARED|CANCELLED|IN_TRANSIT|DELIVERED|ESCALATED
-  notes        String?
+  status          String          @default("DECLARED") // DECLARED|CANCELLED|IN_TRANSIT|DELIVERED|ESCALATED
+  notes           String?
   // LOT AUDIT-OWN-03 (audit XXX RIZ) : gap confirmé — structurellement
   // impossible jusqu'ici de savoir à quel membre une vente devait être
   // attribuée (aucun champ n'existait). Snapshot au moment de la déclaration
@@ -447,15 +450,15 @@ model B2BTransaction {
   // pour retrouver le propriétaire" (l'offre peut changer de propriétaire ou
   // être modifiée après coup, la transaction doit rester figée).
   ownerProducerId Int?
-  ownerProducer   Producer?     @relation("B2BTransactionOwner", fields: [ownerProducerId], references: [id])
-  createdAt    DateTime        @default(now())
+  ownerProducer   Producer?       @relation("B2BTransactionOwner", fields: [ownerProducerId], references: [id])
+  createdAt       DateTime        @default(now())
 
   // Logistique B2B (LOT 2) — renseignés uniquement si needsLogistics=true.
   // deliveryFee est saisi manuellement (comme les rémunérations COOPERATIVE/
   // EMPLOYEE en comptabilité) tant que la tarification par zone/volume
   // (lot ultérieur) n'est pas branchée : jamais un montant inventé par le
   // système, toujours une décision explicite de qui organise la livraison.
-  needsLogistics       Boolean   @default(false)
+  needsLogistics       Boolean             @default(false)
   deliveryAddress      String?
   deliveryFee          Float?
   // LOT 6 (Arbitrage XXX RIZ) : deliveryFee peut désormais être auto-calculé
@@ -464,7 +467,7 @@ model B2BTransaction {
   // saisie manuelle reste possible (décision explicite qui prime toujours sur
   // le calcul automatique), jamais supprimée. Mêmes champs de décomposition
   // que Order pour la même raison.
-  serviceLevel         String    @default("STANDARD")
+  serviceLevel         String              @default("STANDARD")
   deliveryInternalCost Float?
   deliveryMargin       Float?
   shipment             Shipment?
@@ -672,17 +675,17 @@ model ProductHistory {
 }
 
 model Order {
-  id                   Int      @id @default(autoincrement())
+  id                   Int       @id @default(autoincrement())
   buyerId              Int
-  buyer                User     @relation("BuyerOrders", fields: [buyerId], references: [id])
+  buyer                User      @relation("BuyerOrders", fields: [buyerId], references: [id])
   shopId               Int
-  shop                 Shop     @relation(fields: [shopId], references: [id])
+  shop                 Shop      @relation(fields: [shopId], references: [id])
   driverId             Int?
-  driver               Driver?  @relation(fields: [driverId], references: [id])
-  status               String   @default("PENDING")
+  driver               Driver?   @relation(fields: [driverId], references: [id])
+  status               String    @default("PENDING")
   total                Float
-  deliveryFee          Float    @default(0)
-  discount             Float    @default(0)
+  deliveryFee          Float     @default(0)
+  discount             Float     @default(0)
   promoCode            String?
   address              String
   note                 String?
@@ -693,20 +696,20 @@ model Order {
   // forfait (aucune règle configurée pour ce corridor). serviceLevel choisi
   // par l'acheteur à la commande, indépendant du segment (implicite B2C =
   // SMALL_MEDIUM ici, pas stocké car non ambigu pour ce modèle).
-  serviceLevel         String   @default("STANDARD") // ECONOMIC | STANDARD | EXPRESS
+  serviceLevel         String    @default("STANDARD") // ECONOMIC | STANDARD | EXPRESS
   deliveryInternalCost Float?
   deliveryMargin       Float?
   groupId              String?
   idempotencyKey       String?
-  paymentMethod        String   @default("CASH_ON_DELIVERY")
-  driverRated          Boolean  @default(false)
+  paymentMethod        String    @default("CASH_ON_DELIVERY")
+  driverRated          Boolean   @default(false)
   // LOT AUDIT-G11 (audit XXX RIZ) : PENDING_VALIDATION bloquait le stock
   // indéfiniment si personne ne traitait la commande. orderValidationExpiry.js
   // avertit le staff commercial à 24h puis annule+restocke à 48h ; ce champ
   // évite de renvoyer l'alerte à chaque passage du moteur (horaire).
   expiryWarnedAt       DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   items         OrderItem[]
   statusHistory OrderStatusHistory[]
@@ -1238,16 +1241,50 @@ model Subscription {
 }
 
 model Contract {
-  id          Int       @id @default(autoincrement())
+  id          Int                 @id @default(autoincrement())
   type        String // SHOP | DRIVER
-  shopId      Int?      @unique
-  driverId    Int?      @unique
-  shop        Shop?     @relation(fields: [shopId], references: [id])
-  driver      Driver?   @relation(fields: [driverId], references: [id])
+  shopId      Int?                @unique
+  driverId    Int?                @unique
+  shop        Shop?               @relation(fields: [shopId], references: [id])
+  driver      Driver?             @relation(fields: [driverId], references: [id])
   content     String // Full HTML contract text
-  status      String    @default("PENDING_SIGNATURE") // PENDING_SIGNATURE | SIGNED
-  generatedAt DateTime  @default(now())
+  status      String              @default("PENDING_SIGNATURE") // PENDING_SIGNATURE | SIGNED
+  generatedAt DateTime            @default(now())
   signedAt    DateTime?
+  signatures  ContractSignature[]
+}
+
+// LOT SIGNATURE (audit XXX RIZ) : jusqu'ici, "signer" ne faisait que basculer
+// Contract.status/signedAt — aucune identité capturée, aucun lien immuable
+// avec LE contenu exact accepté. Une régénération de contrat écrase
+// Contract.content en place (admin.js CONTRACT_REGENERATE) : sans cette
+// table à part, un contrat re-signé après régénération efface toute preuve
+// de ce qui avait été signé la première fois. Append-only (jamais de
+// update/delete) : chaque signature de l'historique reste consultable même
+// après plusieurs cycles régénération/re-signature — même logique que le
+// snapshot figé de B2BTransaction.ownerProducerId (jamais recalculé après coup).
+model ContractSignature {
+  id              Int      @id @default(autoincrement())
+  contractId      Int
+  contract        Contract @relation(fields: [contractId], references: [id])
+  signerUserId    Int
+  signerUser      User     @relation(fields: [signerUserId], references: [id])
+  // Nom légal tel que retapé au moment de la signature (peut différer du
+  // User.name du compte — ex. nom marital, raison sociale) : preuve
+  // d'un geste de consentement actif, pas une simple case cochée.
+  signedByName    String
+  // Copie figée de Contract.content au moment exact de la signature —
+  // jamais mise à jour si le contrat est régénéré ensuite.
+  contentSnapshot String
+  // SHA-256 du snapshot ci-dessus : preuve d'intégrité rapide sans
+  // recomparer le texte complet.
+  contentHash     String
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  @@index([contractId])
+  @@index([signerUserId])
 }
 
 model InviteCode {

@@ -6,6 +6,7 @@ const { getSettings, driverRate } = require('../lib/settings')
 const deliveryLifecycle = require('../services/deliveryLifecycle')
 const { ensureDefaultVehicleTypes } = require('../lib/vehicleTypes')
 const { reportBackgroundError } = require('../lib/logger')
+const { signContract } = require('../services/contractSignature')
 
 const BADGES = [
   { id: 'debutant', label: 'Débutant', icon: '🌱', minDeliveries: 0, minRate: 0 },
@@ -726,7 +727,10 @@ async function pruneDriverLocationHistory(driverId) {
 // ── GET /api/drivers/contract
 router.get('/contract', authenticate, requireRole('DRIVER'), async (req, res) => {
   try {
-    const driver = await prisma.driver.findUnique({ where: { userId: req.user.id }, include: { contract: true } })
+    const driver = await prisma.driver.findUnique({
+      where: { userId: req.user.id },
+      include: { contract: { include: { signatures: { orderBy: { createdAt: 'desc' } } } } },
+    })
     if (!driver) return res.status(404).json({ error: 'Profil introuvable' })
     res.json({ contract: driver.contract, contractSigned: driver.contractSigned })
   } catch (e) { sendError(res, e) }
@@ -734,15 +738,21 @@ router.get('/contract', authenticate, requireRole('DRIVER'), async (req, res) =>
 
 // PUT /api/drivers/contract/sign
 router.put('/contract/sign', authenticate, requireRole('DRIVER'), async (req, res) => {
+  const signedByName = (req.body.fullName || '').trim()
+  if (!signedByName) return res.status(400).json({ error: 'Merci de saisir votre nom complet pour signer.' })
   try {
     const driver = await prisma.driver.findUnique({ where: { userId: req.user.id }, include: { contract: true } })
     if (!driver?.contract) return res.status(404).json({ error: 'Contrat introuvable' })
     if (driver.contractSigned) return res.json({ message: 'Déjà signé' })
-    await prisma.$transaction([
-      prisma.contract.update({ where: { id: driver.contract.id }, data: { status: 'SIGNED', signedAt: new Date() } }),
-      prisma.driver.update({ where: { id: driver.id }, data: { contractSigned: true } }),
-    ])
-    res.json({ ok: true })
+    const signature = await signContract({
+      contract: driver.contract,
+      holderUpdate: (db) => db.driver.update({ where: { id: driver.id }, data: { contractSigned: true } }),
+      signerUserId: req.user.id,
+      signedByName,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+    })
+    res.json({ ok: true, signature })
   } catch (e) { sendError(res, e) }
 })
 

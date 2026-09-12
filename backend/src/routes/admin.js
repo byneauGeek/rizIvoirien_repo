@@ -776,6 +776,7 @@ router.get('/contracts', ...commercialGuard, async (req, res) => {
       include: {
         shop:   { select: { id: true, name: true, user: { select: { name: true, email: true } } } },
         driver: { select: { id: true, user: { select: { name: true, email: true, phone: true } } } },
+        signatures: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
       orderBy: { generatedAt: 'desc' },
     })
@@ -784,6 +785,7 @@ router.get('/contracts', ...commercialGuard, async (req, res) => {
       ...c,
       shopName:   c.shop?.name       || null,
       driverName: c.driver?.user?.name || null,
+      lastSignature: c.signatures[0] || null,
     }))
     res.json({ contracts: flat })
   } catch (e) { sendError(res, e) }

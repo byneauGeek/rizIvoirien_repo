@@ -4,7 +4,7 @@ import DOMPurify from 'dompurify'
 import {
   Zap, Truck, TrendingUp, BarChart2, User,
   LogOut, Power, ChevronRight, AlertTriangle, FileText, CheckSquare, Square,
-  CheckCircle, Clock, Download, Crown, Loader2, RefreshCw, X, Menu, Route as RouteIcon,
+  CheckCircle, Clock, Download, Crown, Loader2, RefreshCw, X, Menu, Route as RouteIcon, ShieldCheck,
 } from 'lucide-react'
 
 const downloadContract = async (contract, holderName) => {
@@ -393,10 +393,12 @@ function DriverPlanTab() {
 
 // ─── Contract View Tab ─────────────────────────────────────────────────────────
 function ContractViewTab() {
+  const { user } = useAuth()
   const [contract, setContract]   = useState(null)
   const [loading, setLoading]     = useState(true)
   const [signed, setSigned]       = useState(false)
   const [accepted, setAccepted]   = useState(false)
+  const [fullName, setFullName]   = useState('')
   const [signing, setSigning]     = useState(false)
   const [error, setError]         = useState(null)
 
@@ -410,13 +412,17 @@ function ContractViewTab() {
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    if (user?.name) setFullName(user.name)
+  }, [user])
+
   const sign = async () => {
-    if (!accepted) return
+    if (!accepted || !fullName.trim()) return
     setSigning(true); setError(null)
     try {
-      await api.put('/drivers/contract/sign', {})
+      const res = await api.put('/drivers/contract/sign', { fullName: fullName.trim() })
       setSigned(true)
-      setContract(c => c ? { ...c, status: 'SIGNED', signedAt: new Date().toISOString() } : c)
+      setContract(c => c ? { ...c, status: 'SIGNED', signedAt: new Date().toISOString(), signatures: [res.signature, ...(c.signatures || [])] } : c)
     } catch (e) { setError(e.message || 'Erreur lors de la signature') }
     finally { setSigning(false) }
   }
@@ -452,6 +458,7 @@ function ContractViewTab() {
           {signed && contract.signedAt && (
             <p className="font-dm text-xs text-green-600 mt-0.5">
               Signé le {new Date(contract.signedAt).toLocaleDateString('fr-FR')} à {new Date(contract.signedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+              {contract.signatures?.[0] && ` par ${contract.signatures[0].signedByName}`}
             </p>
           )}
         </div>
@@ -496,7 +503,18 @@ function ContractViewTab() {
                 J'ai lu et j'accepte l'intégralité du contrat de partenariat livreur RizIvoirien.
               </span>
             </label>
-            <button onClick={sign} disabled={!accepted || signing}
+            <div>
+              <label className="block font-syne text-xs font-bold tracking-wider uppercase text-gray-400 mb-1.5">
+                Nom complet (signature électronique)
+              </label>
+              <input type="text" value={fullName} onChange={e => setFullName(e.target.value)}
+                placeholder="Prénom NOM"
+                className="w-full bg-white border-2 border-gray-200 rounded-2xl px-4 py-3 font-dm text-sm text-charcoal focus:outline-none focus:border-charcoal transition-colors" />
+              <p className="flex items-center gap-1.5 font-dm text-[11px] text-gray-400 mt-1.5">
+                <ShieldCheck size={12} /> Votre nom, l'heure et une empreinte du contrat sont enregistrés comme preuve de signature.
+              </p>
+            </div>
+            <button onClick={sign} disabled={!accepted || !fullName.trim() || signing}
               className="w-full py-3 rounded-2xl bg-charcoal text-white font-syne font-bold text-sm hover:bg-charcoal/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
               {signing
                 ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -513,15 +531,17 @@ function ContractViewTab() {
 
 // ─── Contract Modal ────────────────────────────────────────────────────────────
 function ContractModal({ contract, onSigned }) {
+  const { user } = useAuth()
   const [accepted, setAccepted] = useState(false)
+  const [fullName, setFullName] = useState(user?.name || '')
   const [signing, setSigning]   = useState(false)
   const [error, setError]       = useState(null)
 
   const sign = async () => {
-    if (!accepted) return
+    if (!accepted || !fullName.trim()) return
     setSigning(true); setError(null)
     try {
-      await api.put('/drivers/contract/sign', {})
+      await api.put('/drivers/contract/sign', { fullName: fullName.trim() })
       onSigned()
     } catch (e) {
       setError(e.message || 'Erreur lors de la signature')
@@ -570,9 +590,20 @@ function ContractModal({ contract, onSigned }) {
               J'ai lu et j'accepte l'intégralité du contrat de partenariat livreur RizIvoirien, et je m'engage à respecter les conditions qui y sont définies.
             </span>
           </label>
+          <div>
+            <label className="block font-syne text-xs font-bold tracking-wider uppercase text-gray-400 mb-1.5">
+              Nom complet (signature électronique)
+            </label>
+            <input type="text" value={fullName} onChange={e => setFullName(e.target.value)}
+              placeholder="Prénom NOM"
+              className="w-full bg-white border-2 border-gray-200 rounded-2xl px-4 py-3 font-dm text-sm text-charcoal focus:outline-none focus:border-charcoal transition-colors" />
+            <p className="flex items-center gap-1.5 font-dm text-[11px] text-gray-400 mt-1.5">
+              <ShieldCheck size={12} /> Votre nom, l'heure et une empreinte du contrat sont enregistrés comme preuve de signature.
+            </p>
+          </div>
           <button
             onClick={sign}
-            disabled={!accepted || signing}
+            disabled={!accepted || !fullName.trim() || signing}
             className="w-full py-3.5 rounded-2xl bg-charcoal text-white font-syne font-bold text-sm hover:bg-charcoal/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {signing

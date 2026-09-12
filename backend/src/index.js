@@ -11,6 +11,13 @@ const helmet = require('helmet')
 const logger = require('./lib/logger')
 
 const app = express()
+// Railway (et la plupart des hébergeurs modernes) place l'app derrière un
+// reverse proxy — sans "trust proxy", req.ip renvoie l'IP interne du proxy
+// pour TOUTES les requêtes au lieu du vrai client, ce qui fausse à la fois
+// express-rate-limit (déjà en place, limiterait tous les visiteurs comme un
+// seul) et la capture d'IP de signature de contrat (LOT SIGNATURE) ajoutée
+// ci-dessous. Remarqué en implémentant cette dernière, corrigé au passage.
+app.set('trust proxy', 1)
 
 // Log des requêtes HTTP
 // Ne jamais logger un token en clair : le SSE (/api/drivers/events) reçoit son

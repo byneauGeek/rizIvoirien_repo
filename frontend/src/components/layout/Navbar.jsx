@@ -358,7 +358,7 @@ export default function Navbar() {
                 <Link to="/auth" className={`hidden md:inline-flex font-syne text-sm font-semibold px-4 py-2 rounded-full transition-all duration-200 ${hoverBg} ${textColor}`}>
                   Se connecter
                 </Link>
-                <Link to="/auth?mode=vendor" className="hidden md:inline-flex btn-accent text-sm px-5 py-2">
+                <Link to="/register/seller" className="hidden md:inline-flex btn-accent text-sm px-5 py-2">
                   Vendre ici
                 </Link>
               </>
@@ -417,7 +417,7 @@ export default function Navbar() {
               ) : (
                 <li className="pt-3 flex flex-col gap-2">
                   <Link to="/auth" onClick={() => setMobileOpen(false)} className="btn-outline text-center">Se connecter</Link>
-                  <Link to="/auth?mode=vendor" onClick={() => setMobileOpen(false)} className="btn-accent text-center">Vendre ici</Link>
+                  <Link to="/register/seller" onClick={() => setMobileOpen(false)} className="btn-accent text-center">Vendre ici</Link>
                 </li>
               )}
             </ul>

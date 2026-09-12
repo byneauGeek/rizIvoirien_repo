@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, ArrowLeft, Scale, MapPin } from 'lucide-react'
+import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, ArrowLeft, Scale, MapPin, X, LogIn, UserPlus, MessageCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
@@ -12,6 +12,50 @@ import { effectiveUnitPrice } from '../utils/pricing'
 
 const fmt = (n) => Number(n).toLocaleString('fr-FR')
 
+// LOT REVISION (retour utilisateur) : un acheteur non connecté qui cliquait
+// "Commander" était renvoyé silencieusement vers /auth, sans explication ni
+// possibilité de créer un compte acheteur (la page de connexion ne proposait
+// que "connexion" ou "ouvrir une boutique"). Contacter la boutique reste
+// possible sans compte via ses coordonnées publiques (ShopDetailPage), donc
+// proposé ici plutôt qu'un canal de messagerie qui exige une authentification.
+function AuthGateModal({ onClose, singleShop }) {
+  const navigate = useNavigate()
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-charcoal/50 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between p-6 border-b border-charcoal/8">
+          <h3 className="font-playfair text-xl font-bold text-charcoal">Un compte est requis</h3>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-charcoal/6 transition-colors">
+            <X size={18} className="text-charcoal/50" />
+          </button>
+        </div>
+        <div className="p-6 space-y-3">
+          <p className="font-dm text-sm text-charcoal/60 mb-2">
+            Connectez-vous ou créez un compte acheteur pour finaliser votre commande.
+          </p>
+          <button onClick={() => navigate('/auth')}
+            className="w-full flex items-center justify-center gap-2 bg-forest text-cream font-syne font-bold py-3.5 rounded-2xl hover:bg-forest-light transition-colors">
+            <LogIn size={16} /> Se connecter
+          </button>
+          <button onClick={() => navigate('/register', { state: { from: '/cart' } })}
+            className="w-full flex items-center justify-center gap-2 border-2 border-forest text-forest font-syne font-bold py-3.5 rounded-2xl hover:bg-forest/5 transition-colors">
+            <UserPlus size={16} /> Créer un compte acheteur
+          </button>
+          {singleShop && (
+            <button onClick={() => navigate(`/shop/${singleShop.id}`)}
+              className="w-full flex items-center justify-center gap-2 font-syne text-sm font-semibold text-charcoal/50 hover:text-forest transition-colors pt-2">
+              <MessageCircle size={14} /> Une question avant d'acheter ? Contacter {singleShop.name}
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
 export default function CartPage() {
   const { items, total, count, dispatch } = useCart()
   const { user } = useAuth()
@@ -19,6 +63,7 @@ export default function CartPage() {
 
   const [estimate, setEstimate] = useState(null)
   const [estimating, setEstimating] = useState(false)
+  const [showAuthGate, setShowAuthGate] = useState(false)
 
   // Appel estimate (sans adresse) pour afficher le minimum garanti
   const fetchEstimate = useCallback(async () => {
@@ -41,10 +86,12 @@ export default function CartPage() {
 
   const shopNames  = [...new Set(items.map(i => i.shopName || i.shop?.name).filter(Boolean))]
   const isMultiShop = shopNames.length > 1
+  const singleShop = !isMultiShop && items[0]
+    ? { id: items[0].shopId ?? items[0].shop?.id, name: items[0].shopName ?? items[0].shop?.name }
+    : null
 
   const handleCheckout = () => {
-    if (!user) return navigate('/auth')
-    if (user.role !== 'BUYER') return navigate('/auth')
+    if (!user || user.role !== 'BUYER') { setShowAuthGate(true); return }
     navigate('/checkout')
   }
 
@@ -212,6 +259,12 @@ export default function CartPage() {
       </div>
 
       <Footer />
+
+      <AnimatePresence>
+        {showAuthGate && (
+          <AuthGateModal onClose={() => setShowAuthGate(false)} singleShop={singleShop} />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

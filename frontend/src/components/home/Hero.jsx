@@ -80,7 +80,7 @@ export default function Hero() {
               <ArrowRight size={16} />
             </Link>
             <Link
-              to="/auth?mode=vendor"
+              to="/register/seller"
               className="inline-flex items-center gap-2 border-2 border-cream/30 text-cream font-syne font-semibold px-8 py-4 rounded-full hover:border-cream/60 hover:bg-cream/5 transition-all duration-200 text-sm"
             >
               Vendre mon riz

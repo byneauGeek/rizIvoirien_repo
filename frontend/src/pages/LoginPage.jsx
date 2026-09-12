@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { useNavigate, Link, useSearchParams } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Eye, EyeOff, ArrowRight, Store, Truck } from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { Eye, EyeOff, ArrowRight, Store, Truck, UserPlus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { api } from '../api/client'
 
 const ROLE_REDIRECT = {
   ADMIN:       '/admin',
@@ -20,14 +19,8 @@ const ROLE_REDIRECT = {
 }
 
 export default function LoginPage() {
-  const [searchParams] = useSearchParams()
-  const initialMode = searchParams.get('mode') === 'vendor' ? 'vendor' : 'login'
-  const [mode, setMode] = useState(initialMode)
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
-  const [shopName, setShopName] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -48,22 +41,7 @@ export default function LoginPage() {
     }
   }
 
-  const handleVendorRegister = async (e) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-    try {
-      await api.post('/auth/register-vendor', { name, email, password, shopName })
-      const user = await login(email, password)
-      navigate(ROLE_REDIRECT[user.role] || '/vendor')
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fillDemo = (e, pw) => { setEmail(e); setPassword(pw); setMode('login') }
+  const fillDemo = (e, pw) => { setEmail(e); setPassword(pw) }
 
   return (
     <div className="min-h-screen bg-forest-dark flex">
@@ -131,143 +109,56 @@ export default function LoginPage() {
             </span>
           </div>
 
-          {/* Mode toggle */}
-          <div className="flex bg-charcoal/6 rounded-2xl p-1 mb-8">
-            <button
-              onClick={() => { setMode('login'); setError('') }}
-              className={`flex-1 font-syne text-sm font-bold py-2.5 rounded-xl transition-all ${mode === 'login' ? 'bg-white text-charcoal shadow-sm' : 'text-charcoal/40 hover:text-charcoal/60'}`}
-            >
-              Connexion
-            </button>
-            <button
-              onClick={() => { setMode('vendor'); setError('') }}
-              className={`flex-1 flex items-center justify-center gap-1.5 font-syne text-sm font-bold py-2.5 rounded-xl transition-all ${mode === 'vendor' ? 'bg-white text-charcoal shadow-sm' : 'text-charcoal/40 hover:text-charcoal/60'}`}
-            >
-              <Store size={13} /> Ouvrir ma boutique
-            </button>
-          </div>
+          <h1 className="font-playfair text-3xl font-bold text-charcoal mb-1">Connexion</h1>
+          <p className="font-dm text-charcoal/50 mb-8">Accédez à votre espace personnel</p>
 
-          <AnimatePresence mode="wait">
-            {mode === 'login' ? (
-              <motion.div
-                key="login"
-                initial={{ opacity: 0, x: -16 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 16 }}
-                transition={{ duration: 0.2 }}
-              >
-                <h1 className="font-playfair text-3xl font-bold text-charcoal mb-1">Connexion</h1>
-                <p className="font-dm text-charcoal/50 mb-8">Accédez à votre espace personnel</p>
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div>
+              <label className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50 block mb-2">Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="vous@exemple.ci" required
+                className="w-full bg-white border-2 border-charcoal/10 rounded-2xl px-4 py-3.5 font-dm text-charcoal placeholder-charcoal/30 focus:outline-none focus:border-forest transition-colors" />
+            </div>
+            <div>
+              <label className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50 block mb-2">Mot de passe</label>
+              <div className="relative">
+                <input type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••" required
+                  className="w-full bg-white border-2 border-charcoal/10 rounded-2xl px-4 py-3.5 pr-12 font-dm text-charcoal placeholder-charcoal/30 focus:outline-none focus:border-forest transition-colors" />
+                <button type="button" onClick={() => setShowPw(v => !v)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-charcoal/30 hover:text-charcoal/60 transition-colors">
+                  {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
 
-                <form onSubmit={handleLogin} className="space-y-5">
-                  <div>
-                    <label className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50 block mb-2">Email</label>
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                      placeholder="vous@exemple.ci" required
-                      className="w-full bg-white border-2 border-charcoal/10 rounded-2xl px-4 py-3.5 font-dm text-charcoal placeholder-charcoal/30 focus:outline-none focus:border-forest transition-colors" />
-                  </div>
-                  <div>
-                    <label className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50 block mb-2">Mot de passe</label>
-                    <div className="relative">
-                      <input type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
-                        placeholder="••••••••" required
-                        className="w-full bg-white border-2 border-charcoal/10 rounded-2xl px-4 py-3.5 pr-12 font-dm text-charcoal placeholder-charcoal/30 focus:outline-none focus:border-forest transition-colors" />
-                      <button type="button" onClick={() => setShowPw(v => !v)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-charcoal/30 hover:text-charcoal/60 transition-colors">
-                        {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {error && (
-                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-                      className="bg-terra/10 border border-terra/20 rounded-xl px-4 py-3 font-dm text-sm text-terra">
-                      {error}
-                    </motion.div>
-                  )}
-
-                  <motion.button type="submit" disabled={loading} whileTap={{ scale: 0.98 }}
-                    className="w-full flex items-center justify-center gap-2 bg-forest text-cream font-syne font-bold py-4 rounded-2xl hover:bg-forest-light transition-colors disabled:opacity-60">
-                    {loading
-                      ? <div className="w-5 h-5 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
-                      : <><span>Se connecter</span> <ArrowRight size={16} /></>
-                    }
-                  </motion.button>
-
-                  <div className="text-center">
-                    <Link to="/forgot-password" className="font-dm text-sm text-charcoal/40 hover:text-forest transition-colors">
-                      Mot de passe oublié ?
-                    </Link>
-                  </div>
-                </form>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="vendor"
-                initial={{ opacity: 0, x: 16 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -16 }}
-                transition={{ duration: 0.2 }}
-              >
-                <h1 className="font-playfair text-3xl font-bold text-charcoal mb-1">Devenez vendeur</h1>
-                <p className="font-dm text-charcoal/50 mb-8">Créez votre boutique et commencez à vendre</p>
-
-                <form onSubmit={handleVendorRegister} className="space-y-4">
-                  <div>
-                    <label className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50 block mb-2">Votre nom</label>
-                    <input type="text" value={name} onChange={e => setName(e.target.value)}
-                      placeholder="Konan Yao" required
-                      className="w-full bg-white border-2 border-charcoal/10 rounded-2xl px-4 py-3.5 font-dm text-charcoal placeholder-charcoal/30 focus:outline-none focus:border-forest transition-colors" />
-                  </div>
-                  <div>
-                    <label className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50 block mb-2">Nom de la boutique</label>
-                    <input type="text" value={shopName} onChange={e => setShopName(e.target.value)}
-                      placeholder="Riz du Bandama" required
-                      className="w-full bg-white border-2 border-charcoal/10 rounded-2xl px-4 py-3.5 font-dm text-charcoal placeholder-charcoal/30 focus:outline-none focus:border-forest transition-colors" />
-                  </div>
-                  <div>
-                    <label className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50 block mb-2">Email</label>
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                      placeholder="vous@exemple.ci" required
-                      className="w-full bg-white border-2 border-charcoal/10 rounded-2xl px-4 py-3.5 font-dm text-charcoal placeholder-charcoal/30 focus:outline-none focus:border-forest transition-colors" />
-                  </div>
-                  <div>
-                    <label className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/50 block mb-2">Mot de passe</label>
-                    <div className="relative">
-                      <input type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
-                        placeholder="••••••••" required minLength={6}
-                        className="w-full bg-white border-2 border-charcoal/10 rounded-2xl px-4 py-3.5 pr-12 font-dm text-charcoal placeholder-charcoal/30 focus:outline-none focus:border-forest transition-colors" />
-                      <button type="button" onClick={() => setShowPw(v => !v)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-charcoal/30 hover:text-charcoal/60 transition-colors">
-                        {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {error && (
-                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-                      className="bg-terra/10 border border-terra/20 rounded-xl px-4 py-3 font-dm text-sm text-terra">
-                      {error}
-                    </motion.div>
-                  )}
-
-                  <motion.button type="submit" disabled={loading} whileTap={{ scale: 0.98 }}
-                    className="w-full flex items-center justify-center gap-2 bg-safran text-charcoal font-syne font-bold py-4 rounded-2xl hover:bg-safran/90 transition-colors disabled:opacity-60">
-                    {loading
-                      ? <div className="w-5 h-5 border-2 border-charcoal/20 border-t-charcoal rounded-full animate-spin" />
-                      : <><Store size={16} /> <span>Créer ma boutique</span></>
-                    }
-                  </motion.button>
-                </form>
-
-                <p className="font-dm text-xs text-charcoal/40 text-center mt-4">
-                  Plan gratuit — sans engagement. Passez Certifié quand vous voulez.
-                </p>
+            {error && (
+              <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+                className="bg-terra/10 border border-terra/20 rounded-xl px-4 py-3 font-dm text-sm text-terra">
+                {error}
               </motion.div>
             )}
-          </AnimatePresence>
+
+            <motion.button type="submit" disabled={loading} whileTap={{ scale: 0.98 }}
+              className="w-full flex items-center justify-center gap-2 bg-forest text-cream font-syne font-bold py-4 rounded-2xl hover:bg-forest-light transition-colors disabled:opacity-60">
+              {loading
+                ? <div className="w-5 h-5 border-2 border-cream/30 border-t-cream rounded-full animate-spin" />
+                : <><span>Se connecter</span> <ArrowRight size={16} /></>
+              }
+            </motion.button>
+
+            <div className="text-center">
+              <Link to="/forgot-password" className="font-dm text-sm text-charcoal/40 hover:text-forest transition-colors">
+                Mot de passe oublié ?
+              </Link>
+            </div>
+          </form>
 
           <div className="mt-6 pt-5 border-t border-charcoal/8 space-y-3">
+            <Link to="/register"
+              className="flex items-center justify-center gap-1.5 bg-charcoal/5 text-charcoal font-syne text-sm font-bold py-3 rounded-xl hover:bg-charcoal/10 transition-colors">
+              <UserPlus size={14} /> Créer un compte acheteur
+            </Link>
             <div className="flex gap-3">
               <Link to="/register/seller"
                 className="flex-1 flex items-center justify-center gap-1.5 border border-charcoal/15 text-charcoal/50 font-syne text-xs font-bold py-2.5 rounded-xl hover:border-[#1B4332] hover:text-[#1B4332] transition-colors">

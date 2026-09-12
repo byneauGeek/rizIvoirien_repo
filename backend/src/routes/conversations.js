@@ -5,7 +5,7 @@ const { authenticate } = require('../middleware/auth')
 const { notify } = require('../services/notifications')
 const { pushToUser } = require('../services/sse')
 
-const CONTEXT_TYPES = ['ORDER', 'SHIPMENT', 'B2B_TRANSACTION']
+const CONTEXT_TYPES = ['ORDER', 'ORDER_DRIVER', 'SHIPMENT', 'B2B_TRANSACTION']
 
 // Déduit les deux participants légitimes d'une conversation à partir de son
 // contexte transactionnel — jamais un DM générique ouvert (cf. audit
@@ -16,6 +16,16 @@ async function resolveParticipants(contextType, contextId) {
     const order = await prisma.order.findUnique({ where: { id: contextId }, include: { shop: true } })
     if (!order) return null
     return { a: order.buyerId, b: order.shop.userId }
+  }
+  // Commande B2C : Order.driverId est déjà dénormalisé sur la commande
+  // elle-même (pas besoin de passer par Shipment) — c'est ce que
+  // MyOrdersPage a déjà sous la main pour afficher le livreur assigné.
+  if (contextType === 'ORDER_DRIVER') {
+    const order = await prisma.order.findUnique({ where: { id: contextId } })
+    if (!order?.driverId) return null
+    const driver = await prisma.driver.findUnique({ where: { id: order.driverId } })
+    if (!driver) return null
+    return { a: order.buyerId, b: driver.userId }
   }
   if (contextType === 'SHIPMENT') {
     const shipment = await prisma.shipment.findUnique({ where: { id: contextId }, include: { order: true } })

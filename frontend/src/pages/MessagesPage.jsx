@@ -9,6 +9,7 @@ import ConversationThread from '../components/messaging/ConversationThread'
 
 const CONTEXT_META = {
   ORDER:           { icon: Package,   label: 'Commande' },
+  ORDER_DRIVER:    { icon: Truck,     label: 'Livraison' },
   SHIPMENT:        { icon: Truck,     label: 'Livraison' },
   B2B_TRANSACTION: { icon: Building2, label: 'Transaction B2B' },
 }

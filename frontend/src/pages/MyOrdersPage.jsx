@@ -447,6 +447,10 @@ function OrderCard({ order, onReview, onCancel, onRateDriver, onRateShop, onDisp
               <p className="font-syne text-sm font-bold text-charcoal">{order.driver.user?.name}</p>
               <p className="font-dm text-xs text-charcoal/50">⭐ {order.driver.rating?.toFixed(1)} · Votre livreur</p>
             </div>
+            <Link to={`/messages?contextType=ORDER_DRIVER&contextId=${order.id}`}
+              className="p-2 rounded-full bg-forest/15 text-forest hover:bg-forest hover:text-cream transition-colors">
+              <MessageCircle size={14} />
+            </Link>
             {order.driver.user?.phone && (
               <a href={`tel:${order.driver.user.phone}`} className="p-2 rounded-full bg-forest text-cream hover:bg-forest-light transition-colors">
                 <Phone size={14} />

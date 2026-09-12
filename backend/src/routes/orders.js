@@ -9,7 +9,7 @@ const { parseWeightKg, geocodeAddress, calcDeliveryFee, estimateDelivery, havers
 const { randomUUID } = require('crypto')
 const stockEngine = require('../services/stockEngine')
 const variantStockEngine = require('../services/variantStockEngine')
-const { nextReference } = require('../services/accountingSequence')
+const { nextShopOrderNumber } = require('../services/accountingSequence')
 
 const fmt = (n) => Number(n).toLocaleString('fr-FR')
 
@@ -246,10 +246,10 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
           return sum + resolveLineItem(item, product, variantsById).price * item.quantity
         }, 0)
         const groupDiscount = i === 0 ? discount : 0
-        // LOT NUMEROTATION : une référence persistée par commande, générée
-        // via le même compteur atomique que les documents comptables
-        // (services/accountingSequence.js) — jamais un nouveau mécanisme parallèle.
-        const reference = await nextReference('CMD')
+        // LOT NUMEROTATION (v2, retour utilisateur) : initiales de boutique +
+        // compteur propre à CETTE boutique (ex. RDB-0001), même mécanisme
+        // atomique que les documents comptables (accountingSequence.js).
+        const reference = await nextShopOrderNumber(shop.id, shop.name)
         const order = await tx.order.create({
           data: {
             reference,

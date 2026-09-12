@@ -770,7 +770,14 @@ model Order {
   // Payment/Expense — pas un nouveau compteur parallèle). Nullable : les
   // commandes déjà existantes n'en ont pas et retombent sur l'ancien format
   // d'affichage côté frontend, jamais de backfill rétroactif d'une séquence.
-  reference            String?   @unique
+  // v2 (retour utilisateur, format jugé "trop générique") : initiales de
+  // boutique + compteur PROPRE à cette boutique (ex. RDB-0001) plutôt qu'un
+  // compteur global daté — unique par (shopId, reference), pas globalement :
+  // deux boutiques aux initiales identiques peuvent en théorie produire la
+  // même chaîne affichée, cas rarissime et sans ambiguïté réelle pour
+  // l'acheteur/vendeur (jamais comparés entre boutiques), préférable à des
+  // initiales moins lisibles pour l'éliminer entièrement.
+  reference            String?
   buyerId              Int
   buyer                User      @relation("BuyerOrders", fields: [buyerId], references: [id])
   shopId               Int
@@ -813,6 +820,7 @@ model Order {
   shipment      Shipment?
 
   @@unique([buyerId, idempotencyKey])
+  @@unique([shopId, reference])
   @@index([buyerId])
   @@index([shopId])
   @@index([driverId])

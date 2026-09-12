@@ -47,6 +47,21 @@ export async function uploadImages(files) {
   return data.urls || []
 }
 
+// Upload sans authentification — pour les formulaires d'inscription
+// (livreur, vendeur) où l'utilisateur téléverse des photos avant que son
+// compte (et donc son token) n'existe.
+export async function uploadImagesPublic(files) {
+  const form = new FormData()
+  for (const f of files) form.append('files', f)
+  const res = await fetch(`${BASE}/upload/public/multiple`, {
+    method: 'POST',
+    body: form,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Erreur upload images')
+  return data.urls || []
+}
+
 export async function uploadCsv(path, file) {
   const token = localStorage.getItem('rz_token')
   const form = new FormData()

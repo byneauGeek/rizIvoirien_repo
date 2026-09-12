@@ -9,11 +9,13 @@
  *   shape        {string}   'round' | 'rect' (défaut 'rect')
  *   aspect       {string}   Classe h-* Tailwind pour la hauteur (défaut 'h-36')
  *   accent       {string}   Couleur de highlight ('forest' | 'safran')
+ *   authRequired {bool}     false pour les formulaires d'inscription (pas de
+ *                           token encore) — utilise l'endpoint public. Défaut true.
  */
 
 import { useState, useRef, useCallback } from 'react'
 import { Upload, X, ImagePlus } from 'lucide-react'
-import { uploadImages } from '../../api/client'
+import { uploadImages, uploadImagesPublic } from '../../api/client'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export default function ImageDropZone({
@@ -24,6 +26,7 @@ export default function ImageDropZone({
   shape     = 'rect',
   aspect    = 'h-36',
   accent    = 'forest',
+  authRequired = true,
 }) {
   const [dragging, setDragging]   = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -43,14 +46,14 @@ export default function ImageDropZone({
 
     setError(''); setUploading(true)
     try {
-      const urls = await uploadImages([file])
+      const urls = await (authRequired ? uploadImages([file]) : uploadImagesPublic([file]))
       onUpload(urls[0])
     } catch (e) {
       setError(e.message || 'Erreur upload')
     } finally {
       setUploading(false)
     }
-  }, [onUpload])
+  }, [onUpload, authRequired])
 
   // ── Drag events ───────────────────────────────────────────────────────────
   const onDragOver  = (e) => { e.preventDefault(); setDragging(true) }

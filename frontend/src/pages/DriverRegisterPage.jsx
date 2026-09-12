@@ -253,8 +253,10 @@ export default function DriverRegisterPage() {
     try {
       await api.post('/auth/register-driver', {
         inviteCode:    formData.inviteCode,
-        firstName:     formData.firstName,
-        lastName:      formData.lastName,
+        // Le backend attend `name` (pas firstName/lastName) et `vehiclePlate`
+        // (pas licensePlate) — le mismatch faisait échouer la validation des
+        // champs requis côté serveur même quand tout était rempli côté client.
+        name:          `${formData.firstName} ${formData.lastName}`.trim(),
         birthDate:     formData.birthDate,
         nationality:   formData.nationality,
         idNumber:      formData.idNumber,
@@ -264,7 +266,7 @@ export default function DriverRegisterPage() {
         licenseExpiry: formData.licenseExpiry,
         licensePhoto:  formData.licensePhoto,
         vehicleType:   formData.vehicleType,
-        licensePlate:  formData.licensePlate,
+        vehiclePlate:  formData.licensePlate,
         vehiclePhoto:  formData.vehiclePhoto,
         email:         formData.email,
         password:      formData.password,
@@ -458,6 +460,7 @@ export default function DriverRegisterPage() {
                     label="Déposer la photo CNI"
                     hint="JPG, PNG · recto visible"
                     accent="forest"
+                    authRequired={false}
                   />
                 </div>
 
@@ -535,6 +538,7 @@ export default function DriverRegisterPage() {
                     label="Déposer la photo du permis"
                     hint="JPG, PNG · lisible"
                     accent="forest"
+                    authRequired={false}
                   />
                 </div>
 
@@ -572,6 +576,7 @@ export default function DriverRegisterPage() {
                     label="Déposer la photo du véhicule"
                     hint="JPG, PNG · plaque visible"
                     accent="forest"
+                    authRequired={false}
                   />
                 </div>
 
@@ -665,6 +670,7 @@ export default function DriverRegisterPage() {
                       shape="round"
                       aspect="h-24 w-24"
                       accent="forest"
+                      authRequired={false}
                     />
                   </div>
                 </div>

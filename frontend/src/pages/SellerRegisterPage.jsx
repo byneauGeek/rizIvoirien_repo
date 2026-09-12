@@ -470,6 +470,7 @@ export default function SellerRegisterPage() {
                       shape="round"
                       aspect="h-24 w-24"
                       accent="safran"
+                      authRequired={false}
                     />
                     <p className="font-dm text-xs text-charcoal/40 mt-2 leading-relaxed">
                       Glissez votre logo ou cliquez.<br />Format carré recommandé.
@@ -487,6 +488,7 @@ export default function SellerRegisterPage() {
                     hint="JPG, PNG · format paysage recommandé"
                     aspect="h-36"
                     accent="safran"
+                    authRequired={false}
                   />
                 </div>
 

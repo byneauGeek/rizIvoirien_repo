@@ -1307,7 +1307,10 @@ model PlatformSettings {
   certifiedMonthlyPrice   Float    @default(1500)
   driverSubPrice          Float    @default(5000)
   driverAnnualPrice       Float    @default(48000)
-  basicMaxProducts        Int      @default(0)
+  // LOT PLANS (retour utilisateur) : 0 = illimité contredisait la promesse
+  // "jusqu'à 50 produits actifs" déjà affichée sur la page tarifs — 50
+  // devient le vrai défaut, cohérent avec ce qui est annoncé.
+  basicMaxProducts        Int      @default(50)
   premiumDriverCommission Float    @default(0.20)
   // Restrictions fonctionnelles plan BASIC boutique
   basicCanAnalytics       Boolean  @default(true)

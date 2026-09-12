@@ -62,7 +62,6 @@ const DEFAULT_DRIVER_PREMIUM_FEATURES = [
   'Tout ce qui est inclus dans BASIC',
   'Commission majorée sur les livraisons',
   'Priorité dans l\'assignation des commandes',
-  'Support dédié prioritaire',
   'Badge Livreur Premium visible',
 ]
 

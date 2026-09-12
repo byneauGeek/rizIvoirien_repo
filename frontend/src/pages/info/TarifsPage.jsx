@@ -35,7 +35,6 @@ const PLANS = [
       'Badge ✓ Certifié visible',
       'Priorité dans les résultats',
       'Statistiques complètes',
-      'Support prioritaire',
       'Produits illimités',
       'Zones de livraison configurables',
     ],

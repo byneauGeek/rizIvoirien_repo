@@ -245,6 +245,10 @@ export default function VendorShopTab({ onDirtyChange }) {
     if (form.minOrder < 0) return 'Commande minimum ne peut pas être négative.'
     if (form.latitude  && (Number(form.latitude)  < -90  || Number(form.latitude)  > 90))  return 'Latitude invalide (entre -90 et 90).'
     if (form.longitude && (Number(form.longitude) < -180 || Number(form.longitude) > 180)) return 'Longitude invalide (entre -180 et 180).'
+    if (shop?.plan === 'BASIC') {
+      const zoneCount = String(form.deliveryZones || '').split(',').map(z => z.trim()).filter(Boolean).length
+      if (zoneCount > 1) return 'Le plan BASIC est limité à une seule zone de livraison. Passez au plan Certifié pour en configurer plusieurs.'
+    }
     return null
   }
 
@@ -415,8 +419,10 @@ export default function VendorShopTab({ onDirtyChange }) {
           placeholder="ex : Marché de Cocody, Abidjan"
           hint="Visible par les clients sur votre page boutique" />
         <Field label="Zones de livraison" value={form.deliveryZones} onChange={set('deliveryZones')}
-          placeholder="ex : Abidjan, Bouaké, Yamoussoukro"
-          hint="Séparez les zones par des virgules" />
+          placeholder={shop?.plan === 'BASIC' ? 'ex : Abidjan' : 'ex : Abidjan, Bouaké, Yamoussoukro'}
+          hint={shop?.plan === 'BASIC'
+            ? 'Plan Basic : une seule zone. Passez au plan Certifié pour en configurer plusieurs.'
+            : 'Séparez les zones par des virgules'} />
         <div>
           <label className="block font-syne text-xs font-bold text-charcoal/40 uppercase tracking-wider mb-1.5">Position exacte (optionnel)</label>
           <GoogleMapsLocationInput

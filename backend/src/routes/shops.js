@@ -462,6 +462,22 @@ router.put('/my', authenticate, requireRole('SELLER'), async (req, res) => {
       announcement, announcementActive,
     } = req.body
 
+    // LOT PLANS (retour utilisateur) : "zones de livraison configurables"
+    // était promis CERTIFIÉ uniquement mais ouvert à tous sans contrôle — un
+    // vendeur BASIC ne peut déclarer qu'UNE seule zone (comptée par virgule,
+    // même format que l'existant), CERTIFIÉ peut en déclarer plusieurs.
+    // N'affecte que la MODIFICATION : une boutique déjà multi-zones avant ce
+    // lot n'est pas rétroactivement tronquée si elle ne touche pas ce champ.
+    if (deliveryZones !== undefined && shop.plan === 'BASIC') {
+      const zoneCount = String(deliveryZones || '').split(',').map(z => z.trim()).filter(Boolean).length
+      if (zoneCount > 1) {
+        return res.status(403).json({
+          error: 'Le plan BASIC est limité à une seule zone de livraison. Passez au plan Certifié pour en configurer plusieurs.',
+          code: 'PLAN_RESTRICTION',
+        })
+      }
+    }
+
     const updated = await prisma.shop.update({
       where: { id: shop.id },
       data: {

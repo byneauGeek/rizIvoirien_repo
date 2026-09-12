@@ -7,18 +7,20 @@ import {
 
 const DEFAULT_BASIC_FEATURES = [
   'Présence sur la marketplace',
-  'Gestion des produits illimitée',
+  'Jusqu\'à 50 produits actifs',
   'Tableau de bord analytics',
   'Gestion des commandes',
   'Avis clients',
   'Page boutique personnalisée',
+  '1 zone de livraison',
 ]
 const DEFAULT_CERTIFIED_FEATURES = [
   'Tout ce qui est inclus dans BASIC',
   'Badge "Boutique certifiée" visible',
   'Priorité dans les résultats de recherche',
   'Mise en avant sur la page d\'accueil',
-  'Support dédié prioritaire',
+  'Produits illimités',
+  'Zones de livraison multiples',
   'Accès aux fonctionnalités premium à venir',
 ]
 

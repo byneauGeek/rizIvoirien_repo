@@ -116,11 +116,17 @@ router.get('/', async (req, res) => {
     where.shop = { status: 'ACTIVE', contractSigned: true }
     if (certified === 'true') where.shop.certified = true
 
-    const orderBy = {
+    // LOT PLANS (retour utilisateur) : "priorité dans les résultats de
+    // recherche" était déjà réelle pour le répertoire boutiques
+    // (routes/shops.js), mais jamais pour la recherche produits elle-même —
+    // le tri choisi par l'acheteur (prix/note/récent) reste la clé
+    // principale, le certifié ne fait que départager en priorité absolue.
+    const secondarySort = {
       price_asc: { price: 'asc' },
       price_desc: { price: 'desc' },
       rating: { shop: { rating: 'desc' } },
     }[sort] || { createdAt: 'desc' }
+    const orderBy = [{ shop: { certified: 'desc' } }, secondarySort]
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({

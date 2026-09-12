@@ -811,9 +811,9 @@ router.post('/my/plan-upgrade-request', authenticate, requireRole('DRIVER'), asy
         status: 'PENDING',
       },
     })
-    const { notify } = require('../services/notifications')
+    const { notifyAdmins } = require('../services/notifications')
     setImmediate(() => {
-      notify(1, 'PLAN_UPGRADE_REQUEST', 'Nouvelle demande plan Premium (livreur)',
+      notifyAdmins('PLAN_UPGRADE_REQUEST', 'Nouvelle demande plan Premium (livreur)',
         `Le livreur "${req.user.name}" demande à passer en plan Premium.`, { requestId: request.id }).catch(() => {})
     })
     res.status(201).json(request)

@@ -2,7 +2,7 @@ const router = require('express').Router()
 const prisma = require('../lib/prisma')
 const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
-const { notify } = require('../services/notifications')
+const { notifyAdmins } = require('../services/notifications')
 const { getSettings } = require('../lib/settings')
 
 // ─── Public ───────────────────────────────────────────────────────────────────
@@ -438,7 +438,7 @@ router.post('/my/plan-upgrade-request', authenticate, requireRole('SELLER'), asy
       },
     })
     setImmediate(() => {
-      notify(1, 'PLAN_UPGRADE_REQUEST', 'Nouvelle demande de certification',
+      notifyAdmins('PLAN_UPGRADE_REQUEST', 'Nouvelle demande de certification',
         `La boutique "${shop.name}" demande à passer en plan Certifié.`, { requestId: request.id }).catch(() => {})
     })
     res.status(201).json(request)

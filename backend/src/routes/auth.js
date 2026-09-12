@@ -6,7 +6,7 @@ const prisma = require('../lib/prisma')
 const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { sendMail } = require('../services/mailer')
-const { notify } = require('../services/notifications')
+const { notifyAdmins } = require('../services/notifications')
 
 const genToken = () => crypto.randomBytes(32).toString('hex')
 const emailVerifyExpiry = () => new Date(Date.now() + 48 * 60 * 60 * 1000) // 48h
@@ -165,8 +165,8 @@ router.post('/register-driver', async (req, res) => {
     setImmediate(() => sendMail(email, 'verifyEmail', { name, token: verifyToken }))
     // LOT REVISION (retour utilisateur) : gap confirmé — aucune notification
     // n'était créée pour l'admin à la soumission d'une candidature livreur
-    // (contrairement à B2B_NEW_APPLICATION, b2b.js). Même convention : admin id=1.
-    await notify(1, 'DRIVER_NEW_APPLICATION', 'Nouvelle candidature livreur',
+    // (contrairement à B2B_NEW_APPLICATION, b2b.js).
+    await notifyAdmins('DRIVER_NEW_APPLICATION', 'Nouvelle candidature livreur',
       `${name} a soumis une candidature livreur à examiner.`,
       { driverId: user.driver.id })
     res.status(201).json({ token: sign(user), user: safeUser(user), emailNotVerified: true })

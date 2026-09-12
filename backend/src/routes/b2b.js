@@ -2,7 +2,7 @@ const router = require('express').Router()
 const prisma = require('../lib/prisma')
 const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
-const { notify } = require('../services/notifications')
+const { notify, notifyAdmins } = require('../services/notifications')
 
 // ─── Listes de référence (régions, produits, unités) ─────────────────────────
 // Gérées par l'admin (voir b2bAdmin.js) — cette route publique alimente les
@@ -121,13 +121,11 @@ router.post('/my-profile/request-verification', authenticate, requireB2BRole, as
     })
     // LOT AUDIT-B2B-05 (audit XXX RIZ) : gap confirmé — aucune notification
     // n'existait ni pour l'utilisateur (confirmation de réception) ni pour
-    // l'admin (nouvelle candidature à traiter). Admin notifié via l'id 1,
-    // même convention que NEW_DISPUTE (disputes.js) et PLAN_UPGRADE_REQUEST
-    // (shops.js/drivers.js) dans ce projet.
+    // l'admin (nouvelle candidature à traiter).
     await notify(req.user.id, 'B2B_VERIFICATION', 'Candidature soumise',
       'Votre demande de vérification a été transmise à l\'équipe RizIvoirien. Vous serez notifié dès son examen.',
       { profileType: actor.actingRole })
-    await notify(1, 'B2B_NEW_APPLICATION', 'Nouvelle candidature B2B',
+    await notifyAdmins('B2B_NEW_APPLICATION', 'Nouvelle candidature B2B',
       `${req.user.name} (${actor.actingRole}) a soumis une candidature B2B à examiner.`,
       { profileType: actor.actingRole, profileId: actor.profile.id })
     res.json(updated)

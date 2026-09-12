@@ -2,7 +2,7 @@ const router = require('express').Router()
 const prisma  = require('../lib/prisma')
 const { sendError } = require('../lib/sendError')
 const { authenticate, requireRole } = require('../middleware/auth')
-const { notify }   = require('../services/notifications')
+const { notify, notifyAdmins } = require('../services/notifications')
 const { sendMail } = require('../services/mailer')
 const { logAction } = require('../services/adminLog')
 const stockEngine = require('../services/stockEngine')
@@ -46,7 +46,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
     })
 
     // Notifier l'admin
-    setImmediate(() => notify(1, 'NEW_DISPUTE', 'Nouveau litige signalé',
+    setImmediate(() => notifyAdmins('NEW_DISPUTE', 'Nouveau litige signalé',
       `Commande #${order.id} — ${REASONS[reason]}`, { disputeId: dispute.id, orderId: order.id }))
 
     res.status(201).json(dispute)

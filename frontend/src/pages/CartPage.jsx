@@ -65,9 +65,14 @@ export default function CartPage() {
   const [estimating, setEstimating] = useState(false)
   const [showAuthGate, setShowAuthGate] = useState(false)
 
-  // Appel estimate (sans adresse) pour afficher le minimum garanti
+  // Appel estimate (sans adresse) pour afficher le minimum garanti.
+  // LOT REVISION (retour utilisateur) : /orders/estimate-delivery exige une
+  // authentification côté backend — appelé sans condition, un visiteur non
+  // connecté déclenchait un 401 dès le chargement de la page, qui provoque
+  // une redirection GLOBALE vers /auth (AuthContext, handler 401) avant même
+  // qu'il ait pu voir le panier ou cliquer sur quoi que ce soit.
   const fetchEstimate = useCallback(async () => {
-    if (!items.length) { setEstimate(null); return }
+    if (!items.length || !user) { setEstimate(null); return }
     setEstimating(true)
     try {
       const result = await api.post('/orders/estimate-delivery', {
@@ -76,7 +81,7 @@ export default function CartPage() {
       setEstimate(result)
     } catch { setEstimate(null) }
     finally { setEstimating(false) }
-  }, [items])
+  }, [items, user])
 
   useEffect(() => { fetchEstimate() }, [fetchEstimate])
 

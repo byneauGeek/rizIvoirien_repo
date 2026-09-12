@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, ClipboardList, Store, Truck, Image, CreditCard, BarChart2, Settings, LogOut, Tag, Users, DollarSign, Bell, Printer, FileText, Percent, AlertTriangle, ScrollText, Briefcase, Menu, X, Sprout, Calculator, Route } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Store, Truck, Image, CreditCard, BarChart2, Settings, LogOut, Tag, Users, DollarSign, Bell, Printer, FileText, Percent, AlertTriangle, ScrollText, Briefcase, Menu, X, Sprout, Calculator, Route, LifeBuoy } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../api/client'
@@ -24,6 +24,7 @@ import B2BAdminTab from './B2BAdminTab'
 import AccountingRoleTab from './AccountingRoleTab'
 import LogisticsAdminTab from './LogisticsAdminTab'
 import ApprovalRulesTab from './ApprovalRulesTab'
+import SupportAdminTab from './SupportAdminTab'
 
 const TABS = [
   { id: 'analytics', label: 'Vue d\'ensemble',        icon: LayoutDashboard },
@@ -46,11 +47,12 @@ const TABS = [
   { id: 'accounting-role', label: 'Rôle Comptable',        icon: Calculator },
   { id: 'logistics',  label: 'Logistique',                icon: Route },
   { id: 'approval',   label: 'Modération produits',       icon: ClipboardList, badge: 'moderationPending' },
+  { id: 'support',    label: 'Support',                    icon: LifeBuoy, badge: 'supportPending' },
 ]
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState('analytics')
-  const [pending, setPending] = useState({ shopsPending: 0, driversPending: 0, disputesPending: 0, planRequestsPending: 0, b2bPending: 0, moderationPending: 0 })
+  const [pending, setPending] = useState({ shopsPending: 0, driversPending: 0, disputesPending: 0, planRequestsPending: 0, b2bPending: 0, moderationPending: 0, supportPending: 0 })
   const [menuOpen, setMenuOpen] = useState(false)
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -60,18 +62,20 @@ export default function AdminDashboard() {
 
   const onShopsBadge   = useCallback(n => setPending(p => ({ ...p, shopsPending:   n })), [])
   const onDriversBadge = useCallback(n => setPending(p => ({ ...p, driversPending: n })), [])
+  const onSupportBadge = useCallback(n => setPending(p => ({ ...p, supportPending: n })), [])
 
   // Polling des badges pending toutes les 30s
   useEffect(() => {
     const load = async () => {
       try {
-        const [shops, drivers, disputes, planReqs, b2bStats, moderation] = await Promise.all([
+        const [shops, drivers, disputes, planReqs, b2bStats, moderation, supportTickets] = await Promise.all([
           api.get('/admin/shops?status=PENDING'),
           api.get('/admin/drivers?status=PENDING'),
           api.get('/disputes?status=OPEN'),
           api.get('/admin/plan-requests?status=PENDING').catch(() => ({ requests: [] })),
           api.get('/admin/b2b/stats').catch(() => null),
           api.get('/admin/moderation/queue').catch(() => ({ products: [], offers: [] })),
+          api.get('/admin/support/tickets').catch(() => []),
         ])
         setPending({
           shopsPending:         shops.shops?.length || 0,
@@ -80,6 +84,7 @@ export default function AdminDashboard() {
           planRequestsPending:  (planReqs.requests ?? []).length,
           b2bPending:           (b2bStats?.pendingVerifications || 0) + (b2bStats?.reportsPending || 0),
           moderationPending:    (moderation.products?.length || 0) + (moderation.offers?.length || 0),
+          supportPending:       supportTickets.filter(t => t.status === 'OPEN' || t.status === 'IN_PROGRESS').length,
         })
       } catch {}
     }
@@ -210,6 +215,7 @@ export default function AdminDashboard() {
             {tab === 'b2b'        && <B2BAdminTab />}
             {tab === 'accounting-role' && <AccountingRoleTab />}
             {tab === 'logistics'  && <LogisticsAdminTab />}
+            {tab === 'support'    && <SupportAdminTab onBadgeUpdate={onSupportBadge} />}
           </motion.div>
         </AnimatePresence>
       </main>

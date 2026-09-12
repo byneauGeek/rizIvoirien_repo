@@ -17,7 +17,7 @@ const prisma = require('../lib/prisma')
 const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { requirePermission } = require('../middleware/accounting')
-const { getSettings, driverRate } = require('../lib/settings')
+const { getSettings, driverRate, sellerRate } = require('../lib/settings')
 const { nextReference } = require('../services/accountingSequence')
 const { logAction } = require('../services/adminLog')
 
@@ -52,7 +52,7 @@ async function calculateSellerRemuneration(beneficiaryUserId, periodStart, perio
   if (!shop) return { error: 'Ce compte n\'a pas de profil boutique' }
 
   const settings = await getSettings()
-  const rate = settings.commissionRate
+  const rate = sellerRate(settings, shop.plan)
 
   const orders = await prisma.order.findMany({
     where: { shopId: shop.id, status: 'DELIVERED', updatedAt: { gte: periodStart, lte: periodEnd } },

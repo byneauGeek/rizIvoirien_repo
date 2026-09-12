@@ -969,6 +969,73 @@ router.post('/moderation/offer/:id/reject', ...commercialGuard, async (req, res)
   } catch (e) { sendError(res, e) }
 })
 
+// ─── Onglet : Support prioritaire (LOT SUPPORT, retour utilisateur) ────────
+// "Support dédié prioritaire" était promis aux plans CERTIFIÉ/PREMIUM sans
+// aucun système réel — ceci le rend réel : les tickets PRIORITY (boutique
+// CERTIFIÉE ou livreur PREMIUM au moment de l'ouverture) remontent toujours
+// en tête de file, quel que soit leur ancienneté relative aux tickets NORMAL.
+
+router.get('/support/tickets', ...commercialGuard, async (req, res) => {
+  const { status } = req.query
+  try {
+    const where = status ? { status } : {}
+    const tickets = await prisma.supportTicket.findMany({
+      where,
+      include: {
+        user: { select: { id: true, name: true, email: true, role: true } },
+        assignedTo: { select: { id: true, name: true } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+      orderBy: { createdAt: 'asc' },
+    })
+    // Tri applicatif : PRIORITY toujours devant, FIFO à l'intérieur de
+    // chaque groupe — un champ string ne s'ordonne pas nativement dans
+    // l'ordre métier voulu (NORMAL < PRIORITY alphabétiquement, l'inverse
+    // de ce qu'il faut).
+    tickets.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority === 'PRIORITY' ? -1 : 1
+      return new Date(a.createdAt) - new Date(b.createdAt)
+    })
+    res.json(tickets)
+  } catch (e) { sendError(res, e) }
+})
+
+router.put('/support/tickets/:id', ...commercialGuard, async (req, res) => {
+  try {
+    const ticket = await prisma.supportTicket.findUnique({ where: { id: Number(req.params.id) } })
+    if (!ticket) return res.status(404).json({ error: 'Ticket introuvable' })
+    const data = {}
+    if ('status' in req.body && ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].includes(req.body.status)) {
+      data.status = req.body.status
+      data.closedAt = req.body.status === 'CLOSED' ? new Date() : null
+    }
+    if ('assignedToId' in req.body) data.assignedToId = req.body.assignedToId || null
+    const updated = await prisma.supportTicket.update({ where: { id: ticket.id }, data })
+    await logAction(req.user.id, 'SUPPORT_TICKET_UPDATE', 'SUPPORT_TICKET', ticket.id, data)
+    res.json(updated)
+  } catch (e) { sendError(res, e) }
+})
+
+router.post('/support/tickets/:id/messages', ...commercialGuard, async (req, res) => {
+  const content = (req.body.content || '').trim()
+  if (!content) return res.status(400).json({ error: 'Message vide' })
+  if (content.length > 4000) return res.status(400).json({ error: 'Message trop long (4000 caractères max)' })
+  try {
+    const ticket = await prisma.supportTicket.findUnique({ where: { id: Number(req.params.id) } })
+    if (!ticket) return res.status(404).json({ error: 'Ticket introuvable' })
+    const message = await prisma.supportTicketMessage.create({ data: { ticketId: ticket.id, senderId: req.user.id, content } })
+    // Premier agent qui répond = assigné (convention simple), et le ticket
+    // repasse actif — jamais laissé RESOLVED alors qu'une réponse vient de
+    // partir.
+    await prisma.supportTicket.update({
+      where: { id: ticket.id },
+      data: { status: 'IN_PROGRESS', assignedToId: ticket.assignedToId || req.user.id, updatedAt: new Date() },
+    })
+    await notify(ticket.userId, 'SUPPORT_TICKET_REPLY', 'Réponse du support', `"${ticket.subject}"`, { ticketId: ticket.id })
+    res.status(201).json(message)
+  } catch (e) { sendError(res, e) }
+})
+
 // ─── Onglet 7 : Paramètres plateforme ─────────────────────────────────────
 
 router.get('/settings', ...guard, async (req, res) => {

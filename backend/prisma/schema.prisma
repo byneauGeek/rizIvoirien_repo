@@ -66,6 +66,11 @@ model User {
 
   // ── Signatures de contrat ──────────────────────────────────────────────────
   contractSignatures ContractSignature[]
+
+  // ── Support ────────────────────────────────────────────────────────────────
+  supportTickets         SupportTicket[]        @relation("SupportTicketOwner")
+  assignedSupportTickets SupportTicket[]        @relation("SupportTicketAssignee")
+  supportMessagesSent    SupportTicketMessage[]
 }
 
 // Un compte a un rôle PRINCIPAL unique (User.role, inchangé — détermine la
@@ -1312,6 +1317,12 @@ model PlatformSettings {
   // devient le vrai défaut, cohérent avec ce qui est annoncé.
   basicMaxProducts        Int      @default(50)
   premiumDriverCommission Float    @default(0.20)
+  // LOT PLANS (retour utilisateur) : nouvel avantage CERTIFIÉ réel, même
+  // principe que premiumDriverCommission côté livreur — la boutique
+  // CERTIFIÉE paie une commission plateforme réduite (elle garde une plus
+  // grande part de chaque vente) au lieu du taux plat `commissionRate`
+  // appliqué à tous jusqu'ici.
+  certifiedCommissionRate Float    @default(0.03)
   // Restrictions fonctionnelles plan BASIC boutique
   basicCanAnalytics       Boolean  @default(true)
   shopBasicFeatures       String?
@@ -1494,6 +1505,46 @@ model Notification {
 
   @@index([userId])
   @@index([read])
+}
+
+// LOT SUPPORT (retour utilisateur) : "support dédié prioritaire" était promis
+// aux plans CERTIFIÉ/PREMIUM sans qu'aucun système de ticket n'existe —
+// promesse retirée des pages tarifs en attendant. Ce modèle la rend réelle :
+// priority est un INSTANTANÉ du standing (Shop.plan/Driver.plan) de
+// l'utilisateur au moment de l'OUVERTURE du ticket, jamais recalculé après
+// coup (même logique de gel que les autres snapshots du projet) — un
+// changement de plan ultérieur ne doit jamais réordonner rétroactivement une
+// file d'attente déjà en cours de traitement.
+model SupportTicket {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  user         User      @relation("SupportTicketOwner", fields: [userId], references: [id])
+  subject      String
+  status       String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | CLOSED
+  priority     String    @default("NORMAL") // NORMAL | PRIORITY
+  assignedToId Int?
+  assignedTo   User?     @relation("SupportTicketAssignee", fields: [assignedToId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  closedAt     DateTime?
+
+  messages SupportTicketMessage[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([userId])
+}
+
+model SupportTicketMessage {
+  id        Int           @id @default(autoincrement())
+  ticketId  Int
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId  Int
+  sender    User          @relation(fields: [senderId], references: [id])
+  content   String
+  createdAt DateTime      @default(now())
+
+  @@index([ticketId])
 }
 
 // ── Litiges & remboursements ──────────────────────────────────────────────────

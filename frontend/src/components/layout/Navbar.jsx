@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ShoppingBag, Menu, X, Search, Bell, User, ChevronDown, Package, LogOut, Settings, Heart, MailWarning, Star, Truck, AlertTriangle, Crown, FileText, MessageCircle } from 'lucide-react'
+import { ShoppingBag, Menu, X, Search, Bell, User, ChevronDown, Package, LogOut, Settings, Heart, MailWarning, Star, Truck, AlertTriangle, Crown, FileText, MessageCircle, LifeBuoy } from 'lucide-react'
 import { useCart } from '../../context/CartContext'
 import { useAuth } from '../../context/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -45,6 +45,9 @@ const NOTIF_META = {
   OFFER_PENDING_REVIEW:      { icon: FileText,      path: () => '/admin' },
   OFFER_APPROVED:            { icon: FileText,      path: () => '/account' },
   OFFER_REJECTED:            { icon: FileText,      path: () => '/account' },
+  SUPPORT_TICKET_NEW:        { icon: LifeBuoy,      path: () => '/admin' },
+  SUPPORT_TICKET_PRIORITY:   { icon: LifeBuoy,      path: () => '/admin' },
+  SUPPORT_TICKET_REPLY:      { icon: LifeBuoy,      path: (u) => u.role === 'ADMIN' || u.role === 'COMMERCIAL' ? '/admin' : '/support' },
 }
 const notifMetaFor = (type) => {
   if (NOTIF_META[type]) return NOTIF_META[type]
@@ -342,6 +345,12 @@ export default function Navbar() {
                             <span className="font-syne text-sm font-semibold text-charcoal">Mon espace</span>
                           </Link>
                         )}
+                        {user.role !== 'ADMIN' && user.role !== 'COMMERCIAL' && (
+                          <Link to="/support" onClick={() => setAccountOpen(false)} className="flex items-center gap-3 px-4 py-3 hover:bg-charcoal/4 transition-colors">
+                            <LifeBuoy size={15} className="text-charcoal/40" />
+                            <span className="font-syne text-sm font-semibold text-charcoal">Support</span>
+                          </Link>
+                        )}
                         <div className="border-t border-charcoal/6">
                           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-terra/6 transition-colors text-left">
                             <LogOut size={15} className="text-terra" />
@@ -406,6 +415,9 @@ export default function Navbar() {
                   </Link></li>
                   {user.role === 'BUYER' && (
                     <li><Link to="/orders" onClick={() => setMobileOpen(false)} className="block font-syne font-medium text-base py-3 text-charcoal">Mes commandes</Link></li>
+                  )}
+                  {user.role !== 'ADMIN' && user.role !== 'COMMERCIAL' && (
+                    <li><Link to="/support" onClick={() => setMobileOpen(false)} className="block font-syne font-medium text-base py-3 text-charcoal">Support</Link></li>
                   )}
                   {ROLE_DASHBOARD[user.role] && (
                     <li><Link to={ROLE_DASHBOARD[user.role]} onClick={() => setMobileOpen(false)} className="block font-syne font-medium text-base py-3 text-forest">Mon espace</Link></li>

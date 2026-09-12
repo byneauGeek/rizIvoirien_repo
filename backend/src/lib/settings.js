@@ -24,4 +24,16 @@ function driverRate(settings, plan) {
     : settings.driverCommission
 }
 
-module.exports = { getSettings, driverRate }
+/**
+ * LOT PLANS (retour utilisateur) : taux de commission plateforme sur une
+ * vente boutique, selon son plan — même principe que driverRate ci-dessus.
+ * Une boutique CERTIFIÉE paie moins (garde une plus grande part de chaque
+ * vente) que le taux plat appliqué à toutes jusqu'ici.
+ */
+function sellerRate(settings, plan) {
+  return plan === 'CERTIFIED'
+    ? settings.certifiedCommissionRate
+    : settings.commissionRate
+}
+
+module.exports = { getSettings, driverRate, sellerRate }

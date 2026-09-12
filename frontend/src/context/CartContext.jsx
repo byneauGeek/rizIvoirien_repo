@@ -16,7 +16,11 @@ function loadFromStorage() {
     const valid = parsed.items.filter(
       i => i?.id && typeof i.price === 'number' && typeof i.qty === 'number'
     )
-    return { items: valid }
+    // LOT VARIANTS : items chargés d'un panier sauvegardé avant cette
+    // fonctionnalité n'ont pas encore ce champ — normalisé à null (taille de
+    // base), jamais undefined (undefined ne survit pas la sérialisation
+    // localStorage et casserait les comparaisons ===).
+    return { items: valid.map(i => ({ ...i, variantId: i.variantId ?? null })) }
   } catch {
     return { items: [] }
   }
@@ -26,27 +30,33 @@ function loadFromStorage() {
 function cartReducer(state, action) {
   switch (action.type) {
 
+    // LOT VARIANTS : deux lignes partageant le même productId mais une
+    // variantId différente (ex. 25kg et 50kg du même riz) sont des lignes de
+    // panier DISTINCTES — l'identité d'une ligne est désormais la paire
+    // (id, variantId), jamais id seul.
     case 'ADD': {
-      const existing = state.items.find(i => i.id === action.product.id)
+      const variantId = action.product.variantId ?? null
+      const addQty = action.qty && action.qty > 0 ? action.qty : 1
+      const existing = state.items.find(i => i.id === action.product.id && i.variantId === variantId)
       if (existing) {
         return {
           ...state,
           items: state.items.map(i =>
-            i.id === action.product.id ? { ...i, qty: i.qty + 1 } : i
+            (i.id === action.product.id && i.variantId === variantId) ? { ...i, qty: i.qty + addQty } : i
           ),
         }
       }
-      return { ...state, items: [...state.items, { ...action.product, qty: 1 }] }
+      return { ...state, items: [...state.items, { ...action.product, variantId, qty: addQty }] }
     }
 
     case 'REMOVE':
-      return { ...state, items: state.items.filter(i => i.id !== action.id) }
+      return { ...state, items: state.items.filter(i => !(i.id === action.id && i.variantId === (action.variantId ?? null))) }
 
     case 'UPDATE_QTY':
       return {
         ...state,
         items: state.items.map(i =>
-          i.id === action.id ? { ...i, qty: Math.max(1, action.qty) } : i
+          (i.id === action.id && i.variantId === (action.variantId ?? null)) ? { ...i, qty: Math.max(1, action.qty) } : i
         ),
       }
 
@@ -55,7 +65,7 @@ function cartReducer(state, action) {
 
     // Vide le panier puis ajoute le produit (changement de boutique confirmé)
     case 'REPLACE':
-      return { items: [{ ...action.product, qty: 1 }] }
+      return { items: [{ ...action.product, variantId: action.product.variantId ?? null, qty: action.qty && action.qty > 0 ? action.qty : 1 }] }
 
     default:
       return state
@@ -79,13 +89,13 @@ export function CartProvider({ children }) {
   const count = state.items.reduce((sum, i) => sum + i.qty, 0)
 
   // Ajout multi-boutiques : toujours autorisé
-  const addItem = (product) => {
-    dispatch({ type: 'ADD', product })
+  const addItem = (product, qty = 1) => {
+    dispatch({ type: 'ADD', product, qty })
     return { ok: true }
   }
 
-  const replaceCart = (product) => {
-    dispatch({ type: 'REPLACE', product })
+  const replaceCart = (product, qty = 1) => {
+    dispatch({ type: 'REPLACE', product, qty })
   }
 
   return (

@@ -6,6 +6,7 @@ const { uploadCsv } = require('../middleware/upload')
 const Papa = require('papaparse')
 const Anthropic = require('@anthropic-ai/sdk')
 const stockEngine = require('../services/stockEngine')
+const variantStockEngine = require('../services/variantStockEngine')
 const { evaluateApproval } = require('../services/approvalEngine')
 const { notifyAdmins, notify } = require('../services/notifications')
 
@@ -169,6 +170,7 @@ router.get('/shop/mine', authenticate, requireRole('SELLER'), async (req, res) =
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
+        include: { variants: { orderBy: { createdAt: 'asc' } } },
         orderBy: { createdAt: 'desc' },
         take: Number(limit),
         skip: Number(offset),
@@ -187,7 +189,10 @@ router.get('/:slug', async (req, res) => {
   try {
     const product = await prisma.product.findUnique({
       where: { slug: req.params.slug },
-      include: { shop: { select: { id: true, name: true, certified: true, rating: true, reviewCount: true, location: true } } },
+      include: {
+        shop: { select: { id: true, name: true, certified: true, rating: true, reviewCount: true, location: true } },
+        variants: { where: { active: true }, orderBy: { createdAt: 'asc' } },
+      },
     })
     if (!product || product.moderationStatus !== 'APPROVED') return res.status(404).json({ error: 'Produit introuvable' })
     res.json(product)
@@ -570,6 +575,112 @@ router.post('/:id/inventory-count', authenticate, requireRole('SELLER'), async (
       productId: product.id, countedQuantity: counted, actorId: req.user.id, reason: reason?.trim() || null,
     })
     res.status(201).json(result)
+  } catch (e) {
+    sendError(res, e)
+  }
+})
+
+// ─── Variantes de conditionnement (LOT VARIANTS, retour utilisateur) ──────────
+// Un produit peut proposer d'autres tailles de sac que sa taille de base
+// (Product.unit/price/stock) — chaque variante a son propre prix et stock,
+// géré par variantStockEngine.js (mécanisme dédié, cf. commentaire schema.prisma).
+
+// POST /api/products/:id/variants — seller : ajoute une taille supplémentaire
+router.post('/:id/variants', authenticate, requireRole('SELLER'), async (req, res) => {
+  const { unit, price, stock, wholesalePrice, minWholesaleQty } = req.body
+  if (!unit?.trim() || !price) return res.status(400).json({ error: 'unit et price requis' })
+  if (!Number.isFinite(Number(price)) || Number(price) <= 0) return res.status(400).json({ error: 'Prix invalide' })
+  const initialStock = Number(stock) || 0
+  if (!Number.isInteger(initialStock) || initialStock < 0) return res.status(400).json({ error: 'Stock invalide' })
+
+  try {
+    const shop = await prisma.shop.findUnique({ where: { userId: req.user.id } })
+    const product = await prisma.product.findFirst({ where: { id: Number(req.params.id), shopId: shop?.id } })
+    if (!product) return res.status(404).json({ error: 'Produit introuvable' })
+
+    if (unit.trim() === product.unit) {
+      return res.status(400).json({ error: `"${unit.trim()}" est déjà la taille de base de ce produit — choisissez une taille différente` })
+    }
+
+    const variant = await prisma.$transaction(async (tx) => {
+      const created = await tx.productVariant.create({
+        data: {
+          productId: product.id,
+          unit: unit.trim(),
+          price: Number(price),
+          pricePerKg: Math.round(Number(price) / (Number(unit.replace(/[^0-9]/g, '')) || 1)),
+          stock: 0,
+          wholesalePrice: wholesalePrice != null && wholesalePrice !== '' ? Number(wholesalePrice) : null,
+          minWholesaleQty: minWholesaleQty != null && minWholesaleQty !== '' ? Number(minWholesaleQty) : null,
+        },
+      })
+      await variantStockEngine.initializeVariantStock(tx, { variantId: created.id, quantity: initialStock, actorId: req.user.id })
+      return tx.productVariant.findUnique({ where: { id: created.id } })
+    })
+    res.status(201).json(variant)
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'Cette taille existe déjà pour ce produit' })
+    sendError(res, e)
+  }
+})
+
+// PUT /api/products/:id/variants/:variantId
+router.put('/:id/variants/:variantId', authenticate, requireRole('SELLER'), async (req, res) => {
+  try {
+    const shop = await prisma.shop.findUnique({ where: { userId: req.user.id } })
+    const product = await prisma.product.findFirst({ where: { id: Number(req.params.id), shopId: shop?.id } })
+    if (!product) return res.status(404).json({ error: 'Produit introuvable' })
+    const variant = await prisma.productVariant.findFirst({ where: { id: Number(req.params.variantId), productId: product.id } })
+    if (!variant) return res.status(404).json({ error: 'Variante introuvable' })
+
+    const data = {}
+    if ('unit' in req.body) {
+      if (!req.body.unit?.trim()) return res.status(400).json({ error: 'unit ne peut pas être vide' })
+      if (req.body.unit.trim() === product.unit) return res.status(400).json({ error: `"${req.body.unit.trim()}" est déjà la taille de base de ce produit` })
+      data.unit = req.body.unit.trim()
+    }
+    if ('price' in req.body) {
+      const p = Number(req.body.price)
+      if (!Number.isFinite(p) || p <= 0) return res.status(400).json({ error: 'Prix invalide' })
+      data.price = p
+    }
+    if ('wholesalePrice' in req.body) {
+      const wp = req.body.wholesalePrice
+      data.wholesalePrice = wp != null && wp !== '' ? Number(wp) : null
+    }
+    if ('minWholesaleQty' in req.body) {
+      const mq = req.body.minWholesaleQty
+      data.minWholesaleQty = mq != null && mq !== '' ? Number(mq) : null
+    }
+    if ('active' in req.body) data.active = Boolean(req.body.active)
+
+    const updated = await prisma.productVariant.update({ where: { id: variant.id }, data })
+    res.json(updated)
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'Cette taille existe déjà pour ce produit' })
+    sendError(res, e)
+  }
+})
+
+// DELETE /api/products/:id/variants/:variantId
+router.delete('/:id/variants/:variantId', authenticate, requireRole('SELLER'), async (req, res) => {
+  try {
+    const shop = await prisma.shop.findUnique({ where: { userId: req.user.id } })
+    const product = await prisma.product.findFirst({ where: { id: Number(req.params.id), shopId: shop?.id } })
+    if (!product) return res.status(404).json({ error: 'Produit introuvable' })
+    const variant = await prisma.productVariant.findFirst({ where: { id: Number(req.params.variantId), productId: product.id } })
+    if (!variant) return res.status(404).json({ error: 'Variante introuvable' })
+
+    // Une variante déjà utilisée dans une commande passée ne peut pas être
+    // supprimée (OrderItem.variantId la référence) — désactivée à la place,
+    // même logique que Shop/Driver (jamais de suppression d'un historique).
+    const hasOrders = await prisma.orderItem.findFirst({ where: { variantId: variant.id } })
+    if (hasOrders) {
+      const updated = await prisma.productVariant.update({ where: { id: variant.id }, data: { active: false } })
+      return res.json({ ...updated, deactivatedInstead: true })
+    }
+    await prisma.productVariant.delete({ where: { id: variant.id } })
+    res.json({ ok: true })
   } catch (e) {
     sendError(res, e)
   }

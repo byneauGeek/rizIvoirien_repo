@@ -9,7 +9,7 @@
  *   onSaved   {fn}            Après sauvegarde réussie
  */
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, Save, AlertTriangle, CheckCircle, History, ChevronDown, ArrowRight } from 'lucide-react'
+import { ArrowLeft, Save, AlertTriangle, CheckCircle, History, ChevronDown, ArrowRight, Plus, Trash2, Power } from 'lucide-react'
 import { api } from '../../api/client'
 import { motion, AnimatePresence } from 'framer-motion'
 import AIGeneratorPanel   from './AIGeneratorPanel'
@@ -311,6 +311,9 @@ export default function ProductFormView({ product, shopName, shopRating = 0, onB
             </div>
           </Section>
 
+          {/* ── Tailles supplémentaires (LOT VARIANTS, retour utilisateur, édition uniquement) ── */}
+          {product && <VariantsSection product={product} />}
+
           {/* ── Historique des modifications (édition uniquement) ── */}
           {product && (
             <div className="bg-white rounded-3xl shadow-sm border border-gray-50 overflow-hidden">
@@ -435,6 +438,120 @@ function Field({ label, children }) {
         {label}
       </label>
       {children}
+    </div>
+  )
+}
+
+// LOT VARIANTS (retour utilisateur) : un produit peut proposer d'autres
+// tailles de sac que sa taille de base (ex. 50kg en plus du 25kg déjà
+// renseigné ci-dessus) — chacune avec son propre prix et stock. Gestion
+// séparée du formulaire principal : une variante n'existe qu'une fois le
+// produit lui-même déjà créé (elle référence son productId).
+function VariantsSection({ product }) {
+  const [variants, setVariants] = useState(product.variants || [])
+  const [showForm, setShowForm] = useState(false)
+  const [newVariant, setNewVariant] = useState({ unit: '', price: '', stock: '' })
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  const reload = async () => {
+    try {
+      const data = await api.get('/products/shop/mine')
+      const fresh = (data.products || []).find(p => p.id === product.id)
+      if (fresh) setVariants(fresh.variants || [])
+    } catch {}
+  }
+
+  const addVariant = async () => {
+    setError(null)
+    if (!newVariant.unit.trim() || !newVariant.price) { setError('Taille et prix requis'); return }
+    setSaving(true)
+    try {
+      await api.post(`/products/${product.id}/variants`, {
+        unit: newVariant.unit.trim(),
+        price: Number(newVariant.price),
+        stock: Number(newVariant.stock) || 0,
+      })
+      setNewVariant({ unit: '', price: '', stock: '' })
+      setShowForm(false)
+      await reload()
+    } catch (e) {
+      setError(e.message || 'Erreur lors de la création')
+    } finally { setSaving(false) }
+  }
+
+  const toggleActive = async (variant) => {
+    await api.put(`/products/${product.id}/variants/${variant.id}`, { active: !variant.active })
+    await reload()
+  }
+
+  const removeVariant = async (variant) => {
+    if (!window.confirm(`Retirer la taille "${variant.unit}" ?`)) return
+    await api.delete(`/products/${product.id}/variants/${variant.id}`)
+    await reload()
+  }
+
+  return (
+    <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-50 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-syne text-sm font-bold text-charcoal">Tailles supplémentaires</p>
+          <p className="font-dm text-xs text-charcoal/40 mt-0.5">
+            En plus de la taille de base ({product.unit}) — chaque taille a son propre prix et stock.
+          </p>
+        </div>
+        <button onClick={() => setShowForm(v => !v)}
+          className="flex items-center gap-1.5 font-syne text-xs font-bold text-[#E8A217] hover:text-[#d4901a]">
+          <Plus size={13} /> Ajouter
+        </button>
+      </div>
+
+      {variants.length > 0 && (
+        <div className="space-y-2">
+          {variants.map(v => (
+            <div key={v.id} className={`flex items-center gap-3 px-4 py-3 rounded-2xl border ${v.active ? 'border-charcoal/8' : 'border-charcoal/8 opacity-50'}`}>
+              <div className="flex-1 min-w-0">
+                <p className="font-syne text-sm font-bold text-charcoal">{v.unit}</p>
+                <p className="font-dm text-xs text-charcoal/40">{Number(v.price).toLocaleString('fr-FR')} FCFA · {v.stock} sac{v.stock > 1 ? 's' : ''}</p>
+              </div>
+              <button onClick={() => toggleActive(v)} title={v.active ? 'Désactiver' : 'Activer'}
+                className={`p-2 rounded-xl transition-colors ${v.active ? 'text-green-600 hover:bg-green-50' : 'text-charcoal/30 hover:bg-charcoal/5'}`}>
+                <Power size={14} />
+              </button>
+              <button onClick={() => removeVariant(v)} className="p-2 rounded-xl text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <AnimatePresence>
+        {showForm && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden">
+            <div className="grid grid-cols-3 gap-3 pt-2">
+              <Field label="Taille">
+                <input value={newVariant.unit} onChange={e => setNewVariant(v => ({ ...v, unit: e.target.value }))}
+                  placeholder="ex : 50kg" className={inputCls} />
+              </Field>
+              <Field label="Prix (FCFA)">
+                <input type="number" value={newVariant.price} onChange={e => setNewVariant(v => ({ ...v, price: e.target.value }))}
+                  placeholder="ex : 24000" className={inputCls} />
+              </Field>
+              <Field label="Stock initial">
+                <input type="number" value={newVariant.stock} onChange={e => setNewVariant(v => ({ ...v, stock: e.target.value }))}
+                  placeholder="ex : 20" className={inputCls} />
+              </Field>
+            </div>
+            {error && <p className="font-dm text-xs text-red-500 mt-2">{error}</p>}
+            <button onClick={addVariant} disabled={saving}
+              className="mt-3 flex items-center gap-2 bg-[#E8A217] text-white font-syne text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#d4901a] transition-colors disabled:opacity-50">
+              {saving ? 'Ajout…' : 'Ajouter cette taille'}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

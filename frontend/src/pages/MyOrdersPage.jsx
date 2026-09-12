@@ -230,7 +230,7 @@ function DisputeModal({ order, onClose, onSubmitted }) {
           <form onSubmit={handleSubmit}>
             <div className="flex items-center justify-between p-6 border-b border-charcoal/8">
               <div>
-                <p className="font-dm text-xs text-charcoal/40">Commande {fmtOrderId(order.id, order.createdAt)}</p>
+                <p className="font-dm text-xs text-charcoal/40">Commande {fmtOrderId(order.id, order.createdAt, order.reference)}</p>
                 <h3 className="font-playfair text-xl font-bold text-charcoal">Signaler un problème</h3>
               </div>
               <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-charcoal/6 transition-colors">
@@ -410,7 +410,7 @@ function OrderCard({ order, onReview, onCancel, onRateDriver, onRateShop, onDisp
         <div className="flex items-start justify-between gap-4 mb-3">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <span className="font-syne font-bold text-charcoal">Commande {fmtOrderId(order.id, order.createdAt)}</span>
+              <span className="font-syne font-bold text-charcoal">Commande {fmtOrderId(order.id, order.createdAt, order.reference)}</span>
               <span className={`inline-flex items-center gap-1.5 font-syne text-xs font-bold px-3 py-1 rounded-full border ${STATUS_COLORS[order.status] || 'bg-charcoal/10 text-charcoal border-charcoal/20'}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[order.status] || 'bg-charcoal/40'}`} />
                 {BUYER_STATUS_LABELS[order.status] || STATUS_LABELS[order.status] || order.status}
@@ -475,7 +475,7 @@ function OrderCard({ order, onReview, onCancel, onRateDriver, onRateShop, onDisp
                 <p className="font-syne text-xs font-bold tracking-wider uppercase text-charcoal/40 mb-3">Articles</p>
                 {order.items?.map(item => (
                   <div key={item.id} className="flex items-center justify-between py-2">
-                    <span className="font-dm text-sm text-charcoal">{item.quantity}× {item.name}</span>
+                    <span className="font-dm text-sm text-charcoal">{item.quantity}× {item.name}{item.unitLabel && <span className="text-charcoal/40"> ({item.unitLabel})</span>}</span>
                     <span className="font-syne text-sm font-bold text-charcoal">{fmt(item.price * item.quantity)} F</span>
                   </div>
                 ))}

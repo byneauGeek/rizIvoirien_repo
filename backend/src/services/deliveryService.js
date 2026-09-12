@@ -148,15 +148,28 @@ function calcDeliveryFee(weightKg, distanceKm, orderTotal, settings, additionalS
 async function estimateDelivery({
   items, products, shopCoords, deliveryAddress, settings, additionalShops = 0, vehicleTypes = [],
   prisma = null, segment = 'SMALL_MEDIUM', serviceLevel = 'STANDARD', originZoneId = null,
+  variantsById = null, // LOT VARIANTS : Map<variantId, ProductVariant> — optionnel, comportement inchangé si absent
 }) {
+  // Résout unit/price depuis la variante choisie si item.variantId est
+  // renseigné ET connue de variantsById, sinon depuis le produit de base
+  // (comportement historique inchangé pour tout appelant qui ne passe pas
+  // variantsById ou pour une ligne sans variante).
+  const resolveUnitPrice = (item, product) => {
+    if (item.variantId && variantsById) {
+      const variant = variantsById.get(item.variantId)
+      if (variant) return { unit: variant.unit, price: variant.price }
+    }
+    return { unit: product?.unit, price: product?.price }
+  }
+
   const weightKg = items.reduce((sum, item) => {
     const p = products.find(pr => pr.id === item.productId)
-    return sum + parseWeightKg(p?.unit) * item.quantity
+    return sum + parseWeightKg(resolveUnitPrice(item, p).unit) * item.quantity
   }, 0)
 
   const orderTotal = items.reduce((sum, item) => {
     const p = products.find(pr => pr.id === item.productId)
-    return sum + (p?.price || 0) * item.quantity
+    return sum + (resolveUnitPrice(item, p).price || 0) * item.quantity
   }, 0)
 
   let distanceKm = 0

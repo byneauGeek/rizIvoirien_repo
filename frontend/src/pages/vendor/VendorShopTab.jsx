@@ -6,6 +6,7 @@ import {
   ExternalLink, CreditCard,
 } from 'lucide-react'
 import ImageDropZone from '../../components/ui/ImageDropZone'
+import GoogleMapsLocationInput from '../../components/ui/GoogleMapsLocationInput'
 
 /* ── Champs de complétion du profil ── */
 const COMPLETION_FIELDS = [
@@ -416,6 +417,14 @@ export default function VendorShopTab({ onDirtyChange }) {
         <Field label="Zones de livraison" value={form.deliveryZones} onChange={set('deliveryZones')}
           placeholder="ex : Abidjan, Bouaké, Yamoussoukro"
           hint="Séparez les zones par des virgules" />
+        <div>
+          <label className="block font-syne text-xs font-bold text-charcoal/40 uppercase tracking-wider mb-1.5">Position exacte (optionnel)</label>
+          <GoogleMapsLocationInput
+            latitude={form.latitude ? Number(form.latitude) : null}
+            longitude={form.longitude ? Number(form.longitude) : null}
+            onLocate={({ lat, lng }) => { set('latitude')(String(lat)); set('longitude')(String(lng)) }}
+          />
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Latitude GPS" value={form.latitude} onChange={set('latitude')} type="number"
             placeholder="5.3600" hint="-90 à 90" />

@@ -8,6 +8,7 @@ import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useB2BReferenceData } from '../hooks/useB2BReferenceData'
 import { firstImage } from '../utils/images'
+import GoogleMapsLocationInput from '../components/ui/GoogleMapsLocationInput'
 
 const fmt = n => Number(n).toLocaleString('fr-FR')
 
@@ -95,7 +96,7 @@ function AddressesTab() {
   const [addresses, setAddresses] = useState([])
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
-  const [newAddr, setNewAddr] = useState({ label: '', address: '', city: 'Abidjan' })
+  const [newAddr, setNewAddr] = useState({ label: '', address: '', city: 'Abidjan', latitude: null, longitude: null })
   const [editId, setEditId] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [addrError, setAddrError] = useState(null)
@@ -111,7 +112,7 @@ function AddressesTab() {
     try {
       const created = await api.post('/addresses', { ...newAddr, isDefault: addresses.length === 0 })
       setAddresses(a => [...a, created])
-      setNewAddr({ label: '', address: '', city: 'Abidjan' })
+      setNewAddr({ label: '', address: '', city: 'Abidjan', latitude: null, longitude: null })
       setShowNew(false)
     } catch (err) { setAddrError(err.message || 'Erreur lors de la création') }
   }
@@ -166,6 +167,10 @@ function AddressesTab() {
                   onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))}
                   className="w-full border-2 border-charcoal/10 rounded-xl px-3 py-2 font-dm text-sm focus:outline-none focus:border-forest" />
               ))}
+              <GoogleMapsLocationInput
+                latitude={editForm.latitude} longitude={editForm.longitude}
+                onLocate={({ lat, lng }) => setEditForm(f => ({ ...f, latitude: lat, longitude: lng }))}
+              />
               <div className="flex gap-2">
                 <button onClick={() => handleUpdate(addr.id)}
                   className="flex-1 bg-forest text-cream font-syne font-bold text-sm py-2 rounded-xl hover:bg-forest-light transition-colors">
@@ -210,7 +215,7 @@ function AddressesTab() {
                   </>
                 ) : (
                   <>
-                    <button onClick={() => { setEditId(addr.id); setEditForm({ label: addr.label, address: addr.address, city: addr.city }) }}
+                    <button onClick={() => { setEditId(addr.id); setEditForm({ label: addr.label, address: addr.address, city: addr.city, latitude: addr.latitude, longitude: addr.longitude }) }}
                       className="p-2 rounded-xl text-charcoal/40 hover:bg-charcoal/5 hover:text-charcoal transition-colors">
                       <Edit2 size={14} />
                     </button>
@@ -246,6 +251,10 @@ function AddressesTab() {
                   value={newAddr[key]} onChange={e => setNewAddr(a => ({ ...a, [key]: e.target.value }))}
                   className="w-full border-2 border-charcoal/10 rounded-xl px-4 py-3 font-dm text-sm focus:outline-none focus:border-forest transition-colors" />
               ))}
+              <GoogleMapsLocationInput
+                latitude={newAddr.latitude} longitude={newAddr.longitude}
+                onLocate={({ lat, lng }) => setNewAddr(a => ({ ...a, latitude: lat, longitude: lng }))}
+              />
               <button type="submit" className="w-full bg-forest text-cream font-syne font-bold py-3 rounded-xl hover:bg-forest-light transition-colors">
                 Enregistrer l'adresse
               </button>

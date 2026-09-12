@@ -66,7 +66,7 @@ export default function CheckoutPage() {
     setEstimating(true)
     try {
       const result = await api.post('/orders/estimate-delivery', {
-        items: items.map(i => ({ productId: i.id, quantity: i.qty })),
+        items: items.map(i => ({ productId: i.id, variantId: i.variantId || undefined, quantity: i.qty })),
         address: `${addr.address}, ${addr.city}`,
         serviceLevel,
       })
@@ -118,7 +118,7 @@ export default function CheckoutPage() {
     setPlacing(true); setOrderError(null)
     try {
       const result = await api.post('/orders', {
-        items: items.map(i => ({ productId: i.id, quantity: i.qty })),
+        items: items.map(i => ({ productId: i.id, variantId: i.variantId || undefined, quantity: i.qty })),
         address: `${addr.address}, ${addr.city}`,
         note: note || undefined,
         promoCode: promo ? promoCode : undefined,

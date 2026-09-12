@@ -4,8 +4,9 @@ import DOMPurify from 'dompurify'
 import {
   Zap, Truck, TrendingUp, BarChart2, User,
   LogOut, Power, ChevronRight, AlertTriangle, FileText, CheckSquare, Square,
-  CheckCircle, Clock, Download, Crown, Loader2, RefreshCw, X, Menu, Route as RouteIcon, ShieldCheck,
+  CheckCircle, Clock, Download, Crown, Loader2, RefreshCw, X, Menu, Route as RouteIcon, ShieldCheck, MessageCircle,
 } from 'lucide-react'
+import MessagesPanel from '../../components/messaging/MessagesPanel'
 
 const downloadContract = async (contract, holderName) => {
   if (contract.status !== 'SIGNED') return
@@ -41,6 +42,7 @@ const TABS = [
   { id: 'offers',      label: 'Offres',           icon: Zap },
   { id: 'delivery',    label: 'En cours',         icon: Truck,     badge: 'delivery' },
   { id: 'route',       label: 'Ma tournée',       icon: RouteIcon },
+  { id: 'messages',    label: 'Messages',         icon: MessageCircle, badge: 'messages' },
   { id: 'earnings',    label: 'Gains',            icon: TrendingUp },
   { id: 'performance', label: 'Performance',      icon: BarChart2 },
   { id: 'profile',     label: 'Mon profil',       icon: User },
@@ -629,10 +631,24 @@ export default function DriverDashboard() {
   const [contract, setContract] = useState(null)
   const [contractSigned, setContractSigned] = useState(true)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [unreadMessages, setUnreadMessages] = useState(0)
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
   const handleLogout = () => { logout(); navigate('/auth') }
+
+  // LOT REVISION (retour utilisateur) : DriverDashboard n'utilise pas le
+  // <Navbar /> public (chrome propre en sidebar) — le badge Messages de la
+  // Navbar n'y apparaissait donc jamais, laissant croire qu'aucun message
+  // n'arrivait jamais côté livreur alors qu'ils existaient bien côté acheteur.
+  useEffect(() => {
+    const load = () => api.get('/conversations')
+      .then((list) => setUnreadMessages(list.reduce((sum, c) => sum + c.unreadCount, 0)))
+      .catch(() => {})
+    load()
+    const iv = setInterval(load, 20000)
+    return () => clearInterval(iv)
+  }, [])
   const selectTab = (id) => { setTab(id); setMenuOpen(false) }
 
   useEffect(() => {
@@ -812,6 +828,11 @@ export default function DriverDashboard() {
                   )}
                 </div>
                 <span className="font-syne text-sm font-semibold flex-1">{label}</span>
+                {badge === 'messages' && unreadMessages > 0 && (
+                  <span className="w-4.5 h-4.5 min-w-[18px] px-1 bg-terra text-cream rounded-full text-[10px] font-bold flex items-center justify-center">
+                    {unreadMessages > 9 ? '9+' : unreadMessages}
+                  </span>
+                )}
                 {active && <ChevronRight size={12} className="text-forest" />}
               </button>
             )
@@ -846,10 +867,11 @@ export default function DriverDashboard() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="p-6 pt-20 md:pt-6 max-w-3xl">
+            className={`p-6 pt-20 md:pt-6 ${tab === 'messages' ? 'max-w-4xl h-[calc(100vh-6rem)] md:h-[calc(100vh-3rem)]' : 'max-w-3xl'}`}>
             {tab === 'offers'      && <OffersTab online={online} onAccepted={() => setTab('delivery')} hasActiveDelivery={hasActiveDelivery} onGoToDelivery={() => setTab('delivery')} />}
             {tab === 'delivery'    && <DeliveryTab onDelivered={() => setHasActiveDelivery(false)} />}
             {tab === 'route'       && <RouteTab />}
+            {tab === 'messages'    && <MessagesPanel className="h-full" />}
             {tab === 'earnings'    && <EarningsTab />}
             {tab === 'performance' && <PerformanceTab />}
             {tab === 'profile'     && <ProfileTab />}

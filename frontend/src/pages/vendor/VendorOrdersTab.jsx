@@ -134,7 +134,7 @@ export default function VendorOrdersTab() {
                   <div className="flex items-center gap-4 px-6 py-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-syne text-sm font-bold text-charcoal">{fmtOrderId(order.id, order.createdAt)}</p>
+                        <p className="font-syne text-sm font-bold text-charcoal">{fmtOrderId(order.id, order.createdAt, order.reference)}</p>
                         <span className={`font-syne text-[10px] font-bold px-2 py-0.5 rounded-full ${ui.color}`}>{ui.label}</span>
                       </div>
                       <p className="font-dm text-xs text-charcoal/50 mt-0.5">
@@ -184,7 +184,7 @@ export default function VendorOrdersTab() {
                         <p className="font-syne text-xs font-bold text-charcoal/40 uppercase tracking-wider mb-2">Articles</p>
                         {order.items?.map((item, j) => (
                           <div key={j} className="flex items-center justify-between">
-                            <span className="font-dm text-sm text-charcoal">{item.name} × {item.quantity}</span>
+                            <span className="font-dm text-sm text-charcoal">{item.name}{item.unitLabel && <span className="text-charcoal/40"> ({item.unitLabel})</span>} × {item.quantity}</span>
                             <span className="font-dm text-sm text-charcoal/60">{fmt(item.price * item.quantity)} FCFA</span>
                           </div>
                         ))}

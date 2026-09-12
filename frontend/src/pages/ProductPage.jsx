@@ -48,9 +48,18 @@ export default function ProductPage() {
 
   const [activeImg, setActiveImg] = useState(0)
   const [qty, setQty] = useState(1)
+  // LOT VARIANTS (retour utilisateur) : null = taille de base du produit,
+  // sinon la ProductVariant choisie — détermine unit/price/stock affichés
+  // et ajoutés au panier.
+  const [selectedVariant, setSelectedVariant] = useState(null)
   const [added,    setAdded]    = useState(false)
   const [wished,   setWished]   = useState(false)
   const [conflict, setConflict] = useState(null) // { shopName }
+
+  const activeOffer = product ? (selectedVariant
+    ? { unit: selectedVariant.unit, price: selectedVariant.price, wholesalePrice: selectedVariant.wholesalePrice, minWholesaleQty: selectedVariant.minWholesaleQty, stock: selectedVariant.stock, saleType: product.saleType }
+    : { unit: product.unit, price: product.price, wholesalePrice: product.wholesalePrice, minWholesaleQty: product.minWholesaleQty, stock: product.stock, saleType: product.saleType }
+  ) : null
 
   // Review form
   const [myRating, setMyRating] = useState(5)
@@ -78,8 +87,12 @@ export default function ProductPage() {
   }, [slug])
 
   const handleAdd = () => {
-    if (!product) return
-    const result = addItem({ ...product, images: product.images })
+    if (!product || !activeOffer) return
+    const result = addItem({
+      ...product, images: product.images,
+      unit: activeOffer.unit, price: activeOffer.price, wholesalePrice: activeOffer.wholesalePrice,
+      minWholesaleQty: activeOffer.minWholesaleQty, variantId: selectedVariant?.id || null,
+    }, qty)
     if (result.conflict) {
       setConflict({ shopName: result.shopName })
       return
@@ -89,8 +102,12 @@ export default function ProductPage() {
   }
 
   const handleConfirmReplace = () => {
-    if (!product) return
-    replaceCart({ ...product, images: product.images })
+    if (!product || !activeOffer) return
+    replaceCart({
+      ...product, images: product.images,
+      unit: activeOffer.unit, price: activeOffer.price, wholesalePrice: activeOffer.wholesalePrice,
+      minWholesaleQty: activeOffer.minWholesaleQty, variantId: selectedVariant?.id || null,
+    }, qty)
     setConflict(null)
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
@@ -200,10 +217,10 @@ export default function ProductPage() {
 
             <div className="mb-8 pb-8 border-b border-charcoal/8">
               <p className="font-playfair text-5xl font-bold text-charcoal">
-                {fmt(product.price)}<span className="text-2xl text-charcoal/50 font-dm font-normal"> FCFA</span>
+                {fmt(activeOffer.price)}<span className="text-2xl text-charcoal/50 font-dm font-normal"> FCFA</span>
               </p>
               <p className="font-dm text-sm text-charcoal/50 mt-1">
-                soit {fmt(product.pricePerKg)} FCFA/kg · sac de {product.unit}
+                soit {fmt(selectedVariant ? selectedVariant.pricePerKg : product.pricePerKg)} FCFA/kg · sac de {activeOffer.unit}
               </p>
             </div>
 
@@ -215,8 +232,8 @@ export default function ProductPage() {
               {[
                 { icon: <MapPin size={14} />, label: 'Origine', value: product.origin },
                 { icon: <Leaf size={14} />, label: 'Récolte', value: product.harvest },
-                { icon: '📦', label: 'Conditionnement', value: product.unit },
-                { icon: '📊', label: 'Stock', value: product.stock > 0 ? `${product.stock} sacs` : 'Rupture' },
+                { icon: '📦', label: 'Conditionnement', value: activeOffer.unit },
+                { icon: '📊', label: 'Stock', value: activeOffer.stock > 0 ? `${activeOffer.stock} sacs` : 'Rupture' },
                 {
                   icon: product.saleType === 'WHOLESALE' ? '📦' : product.saleType === 'RETAIL' ? '🛒' : '✅',
                   label: 'Type de vente',
@@ -225,8 +242,8 @@ export default function ProductPage() {
                 {
                   icon: '📦',
                   label: 'Prix en gros',
-                  value: (product.saleType === 'WHOLESALE' || product.saleType === 'BOTH') && product.wholesalePrice
-                    ? `${fmt(product.wholesalePrice)} FCFA / sac${product.minWholesaleQty ? ` · min. ${product.minWholesaleQty} sac${product.minWholesaleQty > 1 ? 's' : ''}` : ''}`
+                  value: (activeOffer.saleType === 'WHOLESALE' || activeOffer.saleType === 'BOTH') && activeOffer.wholesalePrice
+                    ? `${fmt(activeOffer.wholesalePrice)} FCFA / sac${activeOffer.minWholesaleQty ? ` · min. ${activeOffer.minWholesaleQty} sac${activeOffer.minWholesaleQty > 1 ? 's' : ''}` : ''}`
                     : null,
                 },
               ].filter(x => x.value).map(({ icon, label, value }) => (
@@ -239,6 +256,32 @@ export default function ProductPage() {
                 </div>
               ))}
             </div>
+
+            {/* Choix de taille de sac (LOT VARIANTS, retour utilisateur) */}
+            {product.variants?.length > 0 && (
+              <div>
+                <p className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40 mb-2">Choisir la taille</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => { setSelectedVariant(null); setQty(1) }}
+                    className={`px-4 py-2.5 rounded-2xl font-syne text-sm font-bold border-2 transition-colors ${
+                      !selectedVariant ? 'border-forest bg-forest/10 text-forest' : 'border-charcoal/10 text-charcoal/60 hover:border-charcoal/30'
+                    }`}>
+                    {product.unit} · {fmt(product.price)} FCFA
+                  </button>
+                  {product.variants.map(v => (
+                    <button key={v.id}
+                      onClick={() => { setSelectedVariant(v); setQty(1) }}
+                      disabled={v.stock === 0}
+                      className={`px-4 py-2.5 rounded-2xl font-syne text-sm font-bold border-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                        selectedVariant?.id === v.id ? 'border-forest bg-forest/10 text-forest' : 'border-charcoal/10 text-charcoal/60 hover:border-charcoal/30'
+                      }`}>
+                      {v.unit} · {fmt(v.price)} FCFA {v.stock === 0 && '(rupture)'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Bannière conflit multi-boutique */}
             <AnimatePresence>
@@ -277,13 +320,13 @@ export default function ProductPage() {
                   <Minus size={14} />
                 </button>
                 <span className="font-syne font-bold text-charcoal w-6 text-center">{qty}</span>
-                <button onClick={() => setQty(q => Math.min(product.stock, q + 1))}
+                <button onClick={() => setQty(q => Math.min(activeOffer.stock, q + 1))}
                   className="w-7 h-7 rounded-full bg-charcoal/5 hover:bg-charcoal/10 flex items-center justify-center transition-colors">
                   <Plus size={14} />
                 </button>
               </div>
 
-              <motion.button onClick={handleAdd} whileTap={{ scale: 0.97 }} disabled={product.stock === 0}
+              <motion.button onClick={handleAdd} whileTap={{ scale: 0.97 }} disabled={activeOffer.stock === 0}
                 className={`flex-1 flex items-center justify-center gap-3 font-syne font-bold text-base py-4 rounded-full transition-all duration-300 disabled:opacity-50 ${added ? 'bg-green-500 text-cream' : 'bg-forest text-cream hover:bg-forest-light'}`}>
                 <AnimatePresence mode="wait">
                   {added ? (
@@ -293,7 +336,7 @@ export default function ProductPage() {
                   ) : (
                     <motion.span key="add" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
                       <ShoppingBag size={18} />
-                      {product.stock === 0 ? 'Rupture de stock' : `Ajouter · ${fmt(effectiveUnitPrice(product, qty) * qty)} FCFA`}
+                      {activeOffer.stock === 0 ? 'Rupture de stock' : `Ajouter · ${fmt(effectiveUnitPrice(activeOffer, qty) * qty)} FCFA`}
                     </motion.span>
                   )}
                 </AnimatePresence>

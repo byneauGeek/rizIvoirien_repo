@@ -37,6 +37,10 @@ export const STATUS_DOT = {
 export const fmt = (n) => n?.toLocaleString('fr-FR') ?? '0'
 export const fmtDate = (d) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 
-export const fmtOrderId  = (id, createdAt) => `CMD-${createdAt ? new Date(createdAt).getFullYear() : new Date().getFullYear()}-${String(id ?? 0).padStart(5, '0')}`
+// LOT NUMEROTATION (retour utilisateur) : si une référence persistée existe
+// (Order.reference, générée via accountingSequence côté serveur), elle prime
+// — sinon on retombe sur l'ancien format reconstruit depuis l'id brut (seule
+// option pour les commandes créées avant ce lot, qui n'ont pas de reference).
+export const fmtOrderId  = (id, createdAt, reference) => reference || `CMD-${createdAt ? new Date(createdAt).getFullYear() : new Date().getFullYear()}-${String(id ?? 0).padStart(5, '0')}`
 export const fmtShopId   = (id) => `BT-${String(id ?? 0).padStart(4, '0')}`
 export const fmtDriverId = (id) => `LV-${String(id ?? 0).padStart(4, '0')}`

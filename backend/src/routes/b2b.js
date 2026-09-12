@@ -29,17 +29,20 @@ const PROFILE_MODEL = {
 // LOT AUDIT-G13 (audit XXX RIZ) : documentUrl éditable sur les 5 profils —
 // permet au titulaire de fournir une pièce justificative (RCCM, identité...)
 // avant de demander la vérification admin (POST .../request-verification).
+// LOT GEOLOC (retour utilisateur) : latitude/longitude éditables pour
+// PRODUCER et COOPERATIVE — solution additionnelle aux champs
+// region/department/commune/zone existants, jamais un remplacement.
 const EDITABLE_FIELDS = {
-  PRODUCER: ['region', 'department', 'commune', 'locality', 'farmType', 'surfaceHa', 'capacityKg', 'photo', 'description', 'documentUrl'],
+  PRODUCER: ['region', 'department', 'commune', 'locality', 'farmType', 'surfaceHa', 'capacityKg', 'photo', 'description', 'documentUrl', 'latitude', 'longitude'],
   // LOT AUDIT-ACC-05 : commissionRate éditable — taux que LA COOPÉRATIVE
   // (pas la plateforme) prélève sur les ventes de ses membres.
-  COOPERATIVE: ['name', 'responsable', 'region', 'zone', 'description', 'documentUrl', 'commissionRate'],
+  COOPERATIVE: ['name', 'responsable', 'region', 'zone', 'description', 'documentUrl', 'commissionRate', 'latitude', 'longitude'],
   TRADER: ['companyName', 'activity', 'zones', 'documentUrl'],
   PROCESSOR: ['companyName', 'zones', 'documentUrl'],
   EXPORTER: ['companyName', 'capacityKg', 'zones', 'documentUrl'],
 }
 
-const NUMERIC_FIELDS = new Set(['surfaceHa', 'capacityKg', 'commissionRate'])
+const NUMERIC_FIELDS = new Set(['surfaceHa', 'capacityKg', 'commissionRate', 'latitude', 'longitude'])
 
 const B2B_ROLES = Object.keys(PROFILE_MODEL)
 
@@ -92,6 +95,12 @@ router.put('/my-profile', authenticate, requireB2BRole, async (req, res) => {
     }
     if (data.commissionRate !== undefined && (!Number.isFinite(data.commissionRate) || data.commissionRate < 0 || data.commissionRate > 100)) {
       return res.status(400).json({ error: 'Taux de commission invalide (0 à 100)' })
+    }
+    if (data.latitude !== undefined && data.latitude !== null && (!Number.isFinite(data.latitude) || data.latitude < -90 || data.latitude > 90)) {
+      return res.status(400).json({ error: 'Latitude invalide (-90 à 90)' })
+    }
+    if (data.longitude !== undefined && data.longitude !== null && (!Number.isFinite(data.longitude) || data.longitude < -180 || data.longitude > 180)) {
+      return res.status(400).json({ error: 'Longitude invalide (-180 à 180)' })
     }
 
     const updated = await prisma[actor.modelName].update({ where: { id: actor.profile.id }, data })

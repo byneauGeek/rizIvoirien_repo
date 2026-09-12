@@ -130,7 +130,7 @@ export default function CartPage() {
             <div className="space-y-4">
               <AnimatePresence>
                 {items.map((item) => (
-                  <motion.div key={item.id} layout
+                  <motion.div key={`${item.id}-${item.variantId ?? 'base'}`} layout
                     initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 20, height: 0, marginBottom: 0 }}
                     transition={{ duration: 0.25 }}
@@ -147,7 +147,7 @@ export default function CartPage() {
                           <p className="font-dm text-sm text-charcoal/40 mt-0.5">{item.shopName || item.shop?.name}</p>
                           {item.unit && <p className="font-dm text-xs text-charcoal/30 mt-0.5">{item.unit} · {item.qty * parseFloat(String(item.unit).match(/^(\d+(?:\.\d+)?)/)?.[1] || 0)} kg au total</p>}
                         </div>
-                        <button onClick={() => dispatch({ type: 'REMOVE', id: item.id })}
+                        <button onClick={() => dispatch({ type: 'REMOVE', id: item.id, variantId: item.variantId })}
                           className="p-2 rounded-xl text-charcoal/30 hover:text-terra hover:bg-terra/10 transition-colors shrink-0">
                           <Trash2 size={16} />
                         </button>
@@ -156,14 +156,14 @@ export default function CartPage() {
                         <div className="flex items-center gap-3 bg-cream rounded-2xl px-3 py-2">
                           <button
                             onClick={() => item.qty === 1
-                              ? dispatch({ type: 'REMOVE', id: item.id })
-                              : dispatch({ type: 'UPDATE_QTY', id: item.id, qty: item.qty - 1 })}
+                              ? dispatch({ type: 'REMOVE', id: item.id, variantId: item.variantId })
+                              : dispatch({ type: 'UPDATE_QTY', id: item.id, variantId: item.variantId, qty: item.qty - 1 })}
                             className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-charcoal hover:bg-forest/10 transition-colors">
                             <Minus size={12} />
                           </button>
                           <span className="font-syne font-bold text-sm text-charcoal w-6 text-center">{item.qty}</span>
                           <button
-                            onClick={() => dispatch({ type: 'UPDATE_QTY', id: item.id, qty: item.qty + 1 })}
+                            onClick={() => dispatch({ type: 'UPDATE_QTY', id: item.id, variantId: item.variantId, qty: item.qty + 1 })}
                             className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-charcoal hover:bg-forest/10 transition-colors">
                             <Plus size={12} />
                           </button>

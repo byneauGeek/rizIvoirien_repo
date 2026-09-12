@@ -8,8 +8,30 @@ const { sendMail } = require('../services/mailer')
 const { parseWeightKg, geocodeAddress, calcDeliveryFee, estimateDelivery, haversineKm, ROAD_FACTOR } = require('../services/deliveryService')
 const { randomUUID } = require('crypto')
 const stockEngine = require('../services/stockEngine')
+const variantStockEngine = require('../services/variantStockEngine')
+const { nextReference } = require('../services/accountingSequence')
 
 const fmt = (n) => Number(n).toLocaleString('fr-FR')
+
+// LOT VARIANTS (retour utilisateur) : résout le prix/stock/libellé d'une
+// ligne de panier — soit la taille de base du produit (comportement
+// historique inchangé, variant=null), soit une ProductVariant choisie
+// explicitement. Jamais de fallback silencieux vers la taille de base si une
+// variante invalide est demandée : on préfère un 400 explicite à une
+// commande passée sur la mauvaise taille.
+function resolveLineItem(item, product, variantsById) {
+  if (item.variantId) {
+    const variant = variantsById.get(item.variantId)
+    if (!variant || variant.productId !== product.id || !variant.active) {
+      throw Object.assign(new Error(`Taille indisponible pour ${product.name}`), { status: 400 })
+    }
+    const price = product.saleType !== 'RETAIL' && variant.wholesalePrice && item.quantity >= (variant.minWholesaleQty || 1)
+      ? variant.wholesalePrice
+      : variant.price
+    return { price, stock: variant.stock, unitLabel: variant.unit, variant }
+  }
+  return { price: unitPriceFor(product, item.quantity), stock: product.stock, unitLabel: product.unit, variant: null }
+}
 
 // LOT AUDIT-G1 (audit XXX RIZ) : wholesalePrice/minWholesaleQty existaient
 // (saisis vendeur, affichés en badge sur ProductPage.jsx) mais n'étaient
@@ -44,11 +66,15 @@ router.post('/estimate-delivery', authenticate, async (req, res) => {
   const serviceLevel = requestedServiceLevel && VALID_SERVICE_LEVELS.includes(requestedServiceLevel) ? requestedServiceLevel : 'STANDARD'
 
   try {
-    const productIds = items.map(i => i.productId)
+    const productIds = [...new Set(items.map(i => i.productId))]
     const products = await prisma.product.findMany({
       where: { id: { in: productIds }, active: true },
       include: { shop: { select: { id: true, name: true, latitude: true, longitude: true, location: true, zoneId: true } } },
     })
+    const variantIds = [...new Set(items.map(i => i.variantId).filter(Boolean))]
+    const variantsById = variantIds.length
+      ? new Map((await prisma.productVariant.findMany({ where: { id: { in: variantIds } } })).map(v => [v.id, v]))
+      : null
 
     const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
     const vehicleTypes = await prisma.vehicleType.findMany({ where: { active: true } })
@@ -72,7 +98,7 @@ router.post('/estimate-delivery', authenticate, async (req, res) => {
 
     const result = await estimateDelivery({
       items, products, shopCoords, deliveryAddress: address, settings, additionalShops, vehicleTypes,
-      prisma, segment: 'SMALL_MEDIUM', serviceLevel, originZoneId: shop?.zoneId ?? null,
+      prisma, segment: 'SMALL_MEDIUM', serviceLevel, originZoneId: shop?.zoneId ?? null, variantsById,
     })
     res.json({
       ...result,
@@ -101,7 +127,11 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
   }
 
   try {
-    const productIds = items.map(i => i.productId)
+    // Dédupliqué : deux lignes de panier peuvent partager le même productId
+    // depuis LOT VARIANTS (ex. 25kg ET 50kg du même produit) — sans ça, la
+    // vérification products.length !== productIds.length ci-dessous
+    // déclencherait un faux positif "produit introuvable".
+    const productIds = [...new Set(items.map(i => i.productId))]
     const products = await prisma.product.findMany({
       where: { id: { in: productIds }, active: true },
       include: { shop: { select: { id: true, name: true, latitude: true, longitude: true, location: true, userId: true, notifyEmail: true, zoneId: true } } },
@@ -112,11 +142,18 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
       return res.status(400).json({ error: `Produit(s) introuvable(s) ou inactif(s) : ${missingIds.join(', ')}` })
     }
 
-    // Vérifier le stock
+    // Variantes référencées par le panier (LOT VARIANTS) — chargées une seule
+    // fois, résolues/vérifiées ligne par ligne par resolveLineItem().
+    const variantIds = [...new Set(items.map(i => i.variantId).filter(Boolean))]
+    const variants = variantIds.length ? await prisma.productVariant.findMany({ where: { id: { in: variantIds } } }) : []
+    const variantsById = new Map(variants.map(v => [v.id, v]))
+
+    // Vérifier le stock (taille de base OU variante, selon la ligne)
     for (const item of items) {
       const product = products.find(p => p.id === item.productId)
-      if (product.stock < item.quantity) {
-        return res.status(400).json({ error: `Stock insuffisant pour ${product.name}` })
+      const { stock, unitLabel } = resolveLineItem(item, product, variantsById)
+      if (stock < item.quantity) {
+        return res.status(400).json({ error: `Stock insuffisant pour ${product.name}${item.variantId ? ` (${unitLabel})` : ''}` })
       }
     }
 
@@ -133,7 +170,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
 
     const subtotal = items.reduce((sum, item) => {
       const product = products.find(p => p.id === item.productId)
-      return sum + unitPriceFor(product, item.quantity) * item.quantity
+      return sum + resolveLineItem(item, product, variantsById).price * item.quantity
     }, 0)
 
     // Valider le code promo
@@ -182,7 +219,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
           else if (geo?.location) shopCoords = await geocodeAddress(geo.location)
           const est = await estimateDelivery({
             items: groups[0].items, products: groups[0].products, shopCoords, deliveryAddress: address, settings, additionalShops, vehicleTypes,
-            prisma, segment: 'SMALL_MEDIUM', serviceLevel, originZoneId: geo?.zoneId ?? null,
+            prisma, segment: 'SMALL_MEDIUM', serviceLevel, originZoneId: geo?.zoneId ?? null, variantsById,
           })
           shopFees.push(est.deliveryFee)
           pricingBreakdown = { internalCost: est.internalCost, platformMargin: est.platformMargin }
@@ -206,11 +243,16 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
         const { shop, items: gItems } = groups[i]
         const groupSubtotal = gItems.reduce((sum, item) => {
           const product = products.find(p => p.id === item.productId)
-          return sum + unitPriceFor(product, item.quantity) * item.quantity
+          return sum + resolveLineItem(item, product, variantsById).price * item.quantity
         }, 0)
         const groupDiscount = i === 0 ? discount : 0
+        // LOT NUMEROTATION : une référence persistée par commande, générée
+        // via le même compteur atomique que les documents comptables
+        // (services/accountingSequence.js) — jamais un nouveau mécanisme parallèle.
+        const reference = await nextReference('CMD')
         const order = await tx.order.create({
           data: {
+            reference,
             buyerId: req.user.id,
             shopId: shop.id,
             address,
@@ -228,7 +270,15 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
             items: {
               create: gItems.map(item => {
                 const product = products.find(p => p.id === item.productId)
-                return { productId: item.productId, quantity: item.quantity, price: unitPriceFor(product, item.quantity), name: product.name }
+                const resolved = resolveLineItem(item, product, variantsById)
+                return {
+                  productId: item.productId,
+                  variantId: item.variantId || null,
+                  unitLabel: resolved.unitLabel,
+                  quantity: item.quantity,
+                  price: resolved.price,
+                  name: product.name,
+                }
               }),
             },
             statusHistory: {
@@ -247,13 +297,23 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
         orders.push(order)
 
         // Décrémentation atomique du stock, par article de CETTE commande —
-        // si un produit passe sous 0, InsufficientStockError → rollback auto.
+        // taille de base (Stock Engine) ou variante (variantStockEngine),
+        // selon la ligne. Si un produit/variante passe sous 0,
+        // (Insufficient)StockError → rollback auto de toute la transaction.
         for (const item of gItems) {
           const product = products.find(p => p.id === item.productId)
-          const { position } = await stockEngine.recordSale(tx, {
-            productId: item.productId, quantity: item.quantity, orderId: order.id, actorId: req.user.id,
-          })
-          updates.push({ stock: position.quantity, name: product.name, shopId: product.shopId })
+          const resolved = resolveLineItem(item, product, variantsById)
+          if (item.variantId) {
+            const { variant } = await variantStockEngine.recordVariantSale(tx, {
+              variantId: item.variantId, quantity: item.quantity, orderId: order.id, actorId: req.user.id,
+            })
+            updates.push({ stock: variant.stock, name: `${product.name} (${resolved.unitLabel})`, shopId: product.shopId })
+          } else {
+            const { position } = await stockEngine.recordSale(tx, {
+              productId: item.productId, quantity: item.quantity, orderId: order.id, actorId: req.user.id,
+            })
+            updates.push({ stock: position.quantity, name: product.name, shopId: product.shopId })
+          }
         }
       }
       return { createdOrders: orders, stockUpdates: updates }
@@ -322,9 +382,10 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
       })
     }
   } catch (e) {
-    if (e instanceof stockEngine.InsufficientStockError) {
+    if (e instanceof stockEngine.InsufficientStockError || e instanceof variantStockEngine.InsufficientVariantStockError) {
       return res.status(400).json({ error: 'Stock insuffisant (concurrent). Veuillez actualiser votre panier.' })
     }
+    if (e.status) return res.status(e.status).json({ error: e.message })
     sendError(res, e)
   }
 })

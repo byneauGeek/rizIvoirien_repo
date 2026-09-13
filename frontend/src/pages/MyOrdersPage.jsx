@@ -604,11 +604,16 @@ export default function MyOrdersPage() {
   const [orders, setOrders] = useState([])
   const [disputes, setDisputes] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [disputeTarget, setDisputeTarget] = useState(null)
   const [cancelError, setCancelError] = useState(null)
   const [rateError, setRateError] = useState(null)
   const successId = params.get('success')
 
+  // Corrigé (phase 1 post-audit) : une vraie panne réseau/serveur affichait
+  // EXACTEMENT le même écran que "Aucune commande" (l'état vide légitime),
+  // indiscernables l'un de l'autre pour l'acheteur — même anti-pattern déjà
+  // corrigé ailleurs dans ce projet (cf. ShopDetailPage.jsx).
   const loadData = async () => {
     try {
       const [ords, disps] = await Promise.all([
@@ -617,8 +622,9 @@ export default function MyOrdersPage() {
       ])
       setOrders(ords)
       setDisputes(disps)
-    } catch {
-      // silencieux
+      setLoadError(null)
+    } catch (e) {
+      setLoadError(e.message || 'Erreur de chargement')
     } finally {
       setLoading(false)
     }
@@ -709,6 +715,13 @@ export default function MyOrdersPage() {
         {loading ? (
           <div className="space-y-4">
             {[...Array(3)].map((_, i) => <div key={i} className="bg-white rounded-3xl h-32 animate-pulse shadow-card" />)}
+          </div>
+        ) : loadError && orders.length === 0 ? (
+          <div className="text-center py-24">
+            <AlertTriangle size={48} className="mx-auto text-red-300 mb-4" />
+            <h2 className="font-playfair text-2xl font-bold text-charcoal mb-2">Impossible de charger vos commandes</h2>
+            <p className="font-dm text-charcoal/50 mb-6">{loadError}</p>
+            <button onClick={loadData} className="btn-primary">Réessayer</button>
           </div>
         ) : orders.length === 0 ? (
           <div className="text-center py-24">

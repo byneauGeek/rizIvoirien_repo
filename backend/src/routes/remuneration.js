@@ -17,52 +17,44 @@ const prisma = require('../lib/prisma')
 const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { requirePermission } = require('../middleware/accounting')
-const { getSettings, driverRate, sellerRate } = require('../lib/settings')
 const { nextReference } = require('../services/accountingSequence')
 const { logAction } = require('../services/adminLog')
+const { computeDriverEarnings, computeSellerEarnings } = require('../services/remunerationCalc')
 
 const BENEFICIARY_TYPES = ['DRIVER', 'SELLER', 'COOPERATIVE', 'EMPLOYEE']
 const AUTO_CALC_TYPES = ['DRIVER', 'SELLER'] // les seuls où la plateforme a réellement encaissé l'argent
 
 // ─── Calcul (§13/§14) ─────────────────────────────────────────────────────────
-// Réutilise exactement la logique déjà en place dans admin.js
-// (GET /drivers/:id/payslip, GET /shops/:id/payslip) plutôt que de la
-// dupliquer sous une forme légèrement différente.
+// Délègue à services/remunerationCalc.js — LE MÊME calcul que la fiche de
+// paie Commercial (GET /admin/drivers/:id/payslip, GET /admin/shops/:id/payslip),
+// pas juste "une logique équivalente" maintenue séparément (cf. l'historique
+// des deux écarts documenté dans remunerationCalc.js).
 
 async function calculateDriverRemuneration(beneficiaryUserId, periodStart, periodEnd) {
   const driver = await prisma.driver.findUnique({ where: { userId: beneficiaryUserId } })
   if (!driver) return { error: 'Ce compte n\'a pas de profil livreur' }
 
-  const settings = await getSettings()
-  const share = driverRate(settings, driver.plan)
+  const calc = await computeDriverEarnings(driver.id, periodStart, periodEnd)
+  if (calc.error) return { error: calc.error }
+  if (calc.totalDeliveries === 0) return { error: 'Aucune livraison DELIVERED sur cette période pour ce livreur' }
 
-  const orders = await prisma.order.findMany({
-    where: { driverId: driver.id, status: 'DELIVERED', updatedAt: { gte: periodStart, lte: periodEnd } },
-    select: { id: true, deliveryFee: true },
-  })
-  if (orders.length === 0) return { error: 'Aucune livraison DELIVERED sur cette période pour ce livreur' }
-
-  const grossAmount = orders.reduce((s, o) => s + (o.deliveryFee || 0), 0)
-  const lines = orders.map(o => ({ orderId: o.id, deliveryFee: o.deliveryFee || 0, earning: Math.round((o.deliveryFee || 0) * share) }))
-  return { grossAmount, appliedRate: share, lines, sourceType: 'DELIVERIES' }
+  const lines = [
+    ...calc.orders.map(o => ({ orderId: o.id, deliveryFee: o.deliveryFee || 0, earning: Math.round((o.deliveryFee || 0) * calc.driverShare) })),
+    ...calc.b2bShipments.map(sh => ({ b2bTransactionId: sh.b2bTransactionId, deliveryFee: sh.b2bTransaction?.deliveryFee || 0, earning: Math.round((sh.b2bTransaction?.deliveryFee || 0) * calc.driverShare) })),
+  ]
+  return { grossAmount: calc.grossDeliveryFees, appliedRate: calc.driverShare, lines, sourceType: 'DELIVERIES' }
 }
 
 async function calculateSellerRemuneration(beneficiaryUserId, periodStart, periodEnd) {
   const shop = await prisma.shop.findUnique({ where: { userId: beneficiaryUserId } })
   if (!shop) return { error: 'Ce compte n\'a pas de profil boutique' }
 
-  const settings = await getSettings()
-  const rate = sellerRate(settings, shop.plan)
+  const calc = await computeSellerEarnings(shop.id, periodStart, periodEnd)
+  if (calc.error) return { error: calc.error }
+  if (calc.totalOrders === 0) return { error: 'Aucune commande DELIVERED sur cette période pour cette boutique' }
 
-  const orders = await prisma.order.findMany({
-    where: { shopId: shop.id, status: 'DELIVERED', updatedAt: { gte: periodStart, lte: periodEnd } },
-    select: { id: true, total: true },
-  })
-  if (orders.length === 0) return { error: 'Aucune commande DELIVERED sur cette période pour cette boutique' }
-
-  const grossAmount = orders.reduce((s, o) => s + (o.total || 0), 0)
-  const lines = orders.map(o => ({ orderId: o.id, orderTotal: o.total || 0, earning: Math.round((o.total || 0) * (1 - rate)) }))
-  return { grossAmount, appliedRate: rate, lines, sourceType: 'SALES', netIsGrossMinusRate: true }
+  const lines = calc.orders.map(o => ({ orderId: o.id, orderTotal: o.total || 0, earning: Math.round((o.total || 0) * (1 - calc.commissionRate)) }))
+  return { grossAmount: calc.grossRevenue, appliedRate: calc.commissionRate, lines, sourceType: 'SALES', netIsGrossMinusRate: true }
 }
 
 // POST /api/accounting/remunerations/calculate

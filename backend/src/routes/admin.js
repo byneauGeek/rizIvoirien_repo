@@ -7,7 +7,8 @@ const { notify } = require('../services/notifications')
 const { pushToUser } = require('../services/sse')
 const { computeScore } = require('../services/assignmentEngine')
 const { isFreshLocation, haversineKm } = require('../lib/gps')
-const { getSettings, driverRate } = require('../lib/settings')
+const { getSettings } = require('../lib/settings')
+const { computeDriverEarnings, computeSellerEarnings } = require('../services/remunerationCalc')
 const deliveryLifecycle = require('../services/deliveryLifecycle')
 const { ensureDefaultVehicleTypes } = require('../lib/vehicleTypes')
 
@@ -1320,59 +1321,12 @@ router.get('/drivers/:id/payslip', ...commercialGuard, async (req, res) => {
   }
 
   try {
-    const [settings, driver] = await Promise.all([
-      getSettings(),
-      prisma.driver.findUnique({
-        where: { id: driverId },
-        include: { user: { select: { name: true, email: true, phone: true } } },
-      }),
-    ])
-    if (!driver) return res.status(404).json({ error: 'Livreur introuvable' })
-
-    const driverShare   = driverRate(settings, driver.plan)
-    const platformShare = 1 - driverShare
-
-    // Toutes les commandes livrées dans la période
-    const orders = await prisma.order.findMany({
-      where: {
-        driverId,
-        status: 'DELIVERED',
-        updatedAt: { gte: startDate, lte: now },
-      },
-      include: {
-        buyer: { select: { name: true } },
-        shop:  { select: { name: true } },
-        statusHistory: {
-          where: { status: 'DELIVERED' },
-          orderBy: { createdAt: 'asc' },
-          take: 1,
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    // LOT 8 (Arbitrage XXX RIZ) : avant ce lot, la fiche de paie ne listait
-    // que des Order (B2C) — un livreur ayant fait des livraisons B2B pendant
-    // la période voyait une fiche INCOHÉRENTE avec ce qu'il a réellement
-    // touché (Driver.monthlyEarnings/DriverMetric.earnings, déjà crédités par
-    // payDriverForDelivery pour le B2B aussi). Le driverId vit sur Shipment,
-    // pas sur B2BTransaction — d'où la requête via Shipment plutôt qu'un
-    // findMany direct sur b2BTransaction.
-    const b2bShipments = await prisma.shipment.findMany({
-      where: {
-        driverId, status: 'DELIVERED', b2bTransactionId: { not: null },
-        updatedAt: { gte: startDate, lte: now },
-      },
-      include: { b2bTransaction: { include: { buyer: { select: { name: true } }, seller: { select: { name: true } } } } },
-      orderBy: { updatedAt: 'desc' },
-    })
-
-    const grossDeliveryFeesB2C = orders.reduce((s, o) => s + (o.deliveryFee || 0), 0)
-    const grossDeliveryFeesB2B = b2bShipments.reduce((s, sh) => s + (sh.b2bTransaction?.deliveryFee || 0), 0)
-    const grossDeliveryFees    = grossDeliveryFeesB2C + grossDeliveryFeesB2B
-    const totalDeliveries      = orders.length + b2bShipments.length
-    const driverEarnings       = Math.round(grossDeliveryFees * driverShare)
-    const platformEarnings     = Math.round(grossDeliveryFees * platformShare)
+    // Calcul partagé avec calculateDriverRemuneration (remuneration.js) — voir
+    // services/remunerationCalc.js pour l'historique des deux écarts que ce
+    // partage a fermés (B2B manquant côté rémunération réelle).
+    const calc = await computeDriverEarnings(driverId, startDate, now)
+    if (calc.error) return res.status(404).json({ error: calc.error })
+    const { driver, driverShare, platformShare, totalDeliveries, grossDeliveryFees, driverEarnings, platformEarnings, orders, b2bShipments } = calc
 
     res.json({
       driver,
@@ -1428,38 +1382,15 @@ router.get('/shops/:id/payslip', ...commercialGuard, async (req, res) => {
   }
 
   try {
-    const [settings, shop] = await Promise.all([
-      getSettings(),
-      prisma.shop.findUnique({
-        where: { id: shopId },
-        include: { user: { select: { name: true, email: true, phone: true } } },
-      }),
-    ])
-    if (!shop) return res.status(404).json({ error: 'Boutique introuvable' })
-
-    const commissionRate = settings.commissionRate
-
-    const orders = await prisma.order.findMany({
-      where: {
-        shopId,
-        status: 'DELIVERED',
-        updatedAt: { gte: startDate, lte: now },
-      },
-      include: {
-        buyer: { select: { name: true } },
-        statusHistory: {
-          where: { status: 'DELIVERED' },
-          orderBy: { createdAt: 'asc' },
-          take: 1,
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    const totalOrders      = orders.length
-    const grossRevenue     = orders.reduce((s, o) => s + (o.total || 0), 0)
-    const platformFees     = Math.round(grossRevenue * commissionRate)
-    const vendorEarnings   = grossRevenue - platformFees
+    // Calcul partagé avec calculateSellerRemuneration (remuneration.js) — voir
+    // services/remunerationCalc.js. Cette route utilisait auparavant le taux
+    // plat settings.commissionRate au lieu de sellerRate(settings, shop.plan)
+    // : une boutique CERTIFIÉE voyait ici un chiffre "Commercial" faux (5% au
+    // lieu du 3% réellement appliqué par la Comptabilité) — corrigé par ce
+    // partage, plus par une correction ad hoc isolée.
+    const calc = await computeSellerEarnings(shopId, startDate, now)
+    if (calc.error) return res.status(404).json({ error: calc.error })
+    const { shop, commissionRate, totalOrders, grossRevenue, platformFees, vendorEarnings, orders } = calc
 
     res.json({
       shop,

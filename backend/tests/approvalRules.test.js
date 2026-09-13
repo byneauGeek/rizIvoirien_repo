@@ -18,6 +18,16 @@ async function createProduct(seller, overrides = {}) {
     .send({ name: 'Riz test', category: 'Riz Parfumé', price: 2500, stock: 10, ...overrides })
 }
 
+// Portée globale au fichier (pas juste au bloc "Moteur d'approbation") : une
+// règle active laissée par N'IMPORTE QUEL test d'ici (ex. "File de
+// modération" crée aussi des règles FLAG_FOR_REVIEW) reste dans la même base
+// SQLite partagée par TOUS les fichiers de test — elle continuerait sinon à
+// s'appliquer à chaque création de produit des fichiers exécutés après
+// celui-ci, jusqu'à la fin de `npm test`.
+afterEach(async () => {
+  await prisma.approvalRule.updateMany({ data: { active: false } })
+})
+
 describe('Règles d\'approbation — CRUD (ADMIN uniquement)', () => {
   test('COMMERCIAL ne peut pas créer/modifier/supprimer une règle', async () => {
     const commercial = await createUser('COMMERCIAL')

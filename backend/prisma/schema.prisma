@@ -766,7 +766,7 @@ model ProductHistory {
 }
 
 model Order {
-  id                   Int       @id @default(autoincrement())
+  id                    Int       @id @default(autoincrement())
   // LOT NUMEROTATION (retour utilisateur) : jusqu'ici affiché uniquement en
   // reformatant l'id brut à la volée (CMD-2026-00042, jamais persisté, donc
   // jamais garanti unique/séquentiel en soi — juste l'id). Référence réelle,
@@ -782,20 +782,20 @@ model Order {
   // même chaîne affichée, cas rarissime et sans ambiguïté réelle pour
   // l'acheteur/vendeur (jamais comparés entre boutiques), préférable à des
   // initiales moins lisibles pour l'éliminer entièrement.
-  reference            String?
-  buyerId              Int
-  buyer                User      @relation("BuyerOrders", fields: [buyerId], references: [id])
-  shopId               Int
-  shop                 Shop      @relation(fields: [shopId], references: [id])
-  driverId             Int?
-  driver               Driver?   @relation(fields: [driverId], references: [id])
-  status               String    @default("PENDING")
-  total                Float
-  deliveryFee          Float     @default(0)
-  discount             Float     @default(0)
-  promoCode            String?
-  address              String
-  note                 String?
+  reference             String?
+  buyerId               Int
+  buyer                 User      @relation("BuyerOrders", fields: [buyerId], references: [id])
+  shopId                Int
+  shop                  Shop      @relation(fields: [shopId], references: [id])
+  driverId              Int?
+  driver                Driver?   @relation(fields: [driverId], references: [id])
+  status                String    @default("PENDING")
+  total                 Float
+  deliveryFee           Float     @default(0)
+  discount              Float     @default(0)
+  promoCode             String?
+  address               String
+  note                  String?
   // LOT 6 (Arbitrage XXX RIZ) : deliveryFee reste le prix CLIENT (déjà
   // existant). deliveryInternalCost/deliveryMargin sont la décomposition
   // financière (coût réel plateforme / marge ou subvention) quand une
@@ -803,20 +803,32 @@ model Order {
   // forfait (aucune règle configurée pour ce corridor). serviceLevel choisi
   // par l'acheteur à la commande, indépendant du segment (implicite B2C =
   // SMALL_MEDIUM ici, pas stocké car non ambigu pour ce modèle).
-  serviceLevel         String    @default("STANDARD") // ECONOMIC | STANDARD | EXPRESS
-  deliveryInternalCost Float?
-  deliveryMargin       Float?
-  groupId              String?
-  idempotencyKey       String?
-  paymentMethod        String    @default("CASH_ON_DELIVERY")
-  driverRated          Boolean   @default(false)
+  serviceLevel          String    @default("STANDARD") // ECONOMIC | STANDARD | EXPRESS
+  deliveryInternalCost  Float?
+  deliveryMargin        Float?
+  groupId               String?
+  idempotencyKey        String?
+  paymentMethod         String    @default("CASH_ON_DELIVERY")
+  driverRated           Boolean   @default(false)
   // LOT AUDIT-G11 (audit XXX RIZ) : PENDING_VALIDATION bloquait le stock
   // indéfiniment si personne ne traitait la commande. orderValidationExpiry.js
   // avertit le staff commercial à 24h puis annule+restocke à 48h ; ce champ
   // évite de renvoyer l'alerte à chaque passage du moteur (horaire).
-  expiryWarnedAt       DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  expiryWarnedAt        DateTime?
+  // LOT INTEGRITE-COMPTABLE (phase 1 post-audit) : GET /admin/finance
+  // recalculait la commission de TOUT l'historique livré avec le taux ACTUEL
+  // des réglages (settings.commissionRate), ignorant à la fois le plan de la
+  // boutique (une CERTIFIÉE payait déjà 3% en réalité, comptée à 5% ici) et
+  // toute évolution future du taux (qui aurait fait bouger rétroactivement
+  // des chiffres déjà rapportés). Même principe de gel déjà appliqué ailleurs
+  // dans ce projet (Remuneration.appliedCommissionRate, OrderItem.unitLabel,
+  // SupportTicket.priority) : figé une fois, à la création, jamais recalculé.
+  // Nullable : les commandes déjà existantes n'en ont pas — la lecture
+  // retombe sur le taux plat actuel pour elles uniquement (aucun backfill
+  // rétroactif fabriqué).
+  appliedCommissionRate Float?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   items         OrderItem[]
   statusHistory OrderStatusHistory[]

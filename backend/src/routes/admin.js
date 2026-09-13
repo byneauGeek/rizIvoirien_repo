@@ -1248,47 +1248,55 @@ router.get('/finance', ...guard, async (req, res) => {
     const rate = settings.commissionRate
     const deliveryShare = settings.driverCommission
 
-    const [totalRevAgg, monthRevAgg, deliveredCount, totalDeliveryAgg, b2bDeliveryAgg] = await Promise.all([
-      prisma.order.aggregate({ where: { status: 'DELIVERED' }, _sum: { total: true, deliveryFee: true } }),
-      prisma.order.aggregate({
-        where: { status: 'DELIVERED', createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } },
-        _sum: { total: true, deliveryFee: true },
+    // LOT INTEGRITE-COMPTABLE (phase 1 post-audit) : ceci recalculait la
+    // commission de TOUT l'historique avec le taux PLAT actuel — ignorant à
+    // la fois le plan de chaque boutique (une CERTIFIÉE paie 3%, pas le taux
+    // plat) et toute évolution future du taux (qui aurait fait bouger
+    // rétroactivement des chiffres déjà rapportés). Chaque commande porte
+    // maintenant son propre taux figé à la création (appliedCommissionRate) ;
+    // seules les commandes antérieures à ce lot n'en ont pas et retombent sur
+    // le taux plat actuel, faute de mieux, jamais de valeur fabriquée.
+    const [deliveredOrders, deliveredCount, totalDeliveryAgg, b2bDeliveryAgg] = await Promise.all([
+      prisma.order.findMany({
+        where: { status: 'DELIVERED' },
+        select: { total: true, deliveryFee: true, appliedCommissionRate: true, createdAt: true },
       }),
       prisma.order.count({ where: { status: 'DELIVERED' } }),
       prisma.order.aggregate({ where: { status: 'DELIVERED' }, _sum: { deliveryFee: true } }),
       prisma.b2BTransaction.aggregate({ where: { status: 'DELIVERED', needsLogistics: true }, _sum: { deliveryFee: true } }),
     ])
 
-    const totalGMV = totalRevAgg._sum.total || 0
-    const monthGMV = monthRevAgg._sum.total || 0
+    const weightedCommission = (orders) => orders.reduce((sum, o) => sum + o.total * (o.appliedCommissionRate ?? rate), 0)
+
+    const now = new Date()
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const monthOrders = deliveredOrders.filter(o => o.createdAt >= startOfMonth)
+
+    const totalGMV = deliveredOrders.reduce((s, o) => s + o.total, 0)
+    const monthGMV = monthOrders.reduce((s, o) => s + o.total, 0)
     const b2cDeliveryFees = totalDeliveryAgg._sum.deliveryFee || 0
     const b2bDeliveryFees = b2bDeliveryAgg._sum.deliveryFee || 0
     const totalDeliveryFees = b2cDeliveryFees + b2bDeliveryFees
-    const platformCommission = Math.round(totalGMV * rate)
+    const platformCommission = Math.round(weightedCommission(deliveredOrders))
     const driverPayouts = Math.round(totalDeliveryFees * deliveryShare)
     const netRevenue = platformCommission + Math.round(totalDeliveryFees * (1 - deliveryShare))
 
     // Monthly breakdown (last 6 months)
-    const now = new Date()
     const monthly = []
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
       const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1)
-      const [agg, b2bAgg] = await Promise.all([
-        prisma.order.aggregate({
-          where: { status: 'DELIVERED', createdAt: { gte: d, lt: end } },
-          _sum: { total: true, deliveryFee: true },
-        }),
-        prisma.b2BTransaction.aggregate({
-          where: { status: 'DELIVERED', needsLogistics: true, createdAt: { gte: d, lt: end } },
-          _sum: { deliveryFee: true },
-        }),
-      ])
+      const ordersInMonth = deliveredOrders.filter(o => o.createdAt >= d && o.createdAt < end)
+      const b2bAgg = await prisma.b2BTransaction.aggregate({
+        where: { status: 'DELIVERED', needsLogistics: true, createdAt: { gte: d, lt: end } },
+        _sum: { deliveryFee: true },
+      })
+      const gmv = ordersInMonth.reduce((s, o) => s + o.total, 0)
       monthly.push({
         month: d.toLocaleString('fr-FR', { month: 'short' }),
-        gmv: agg._sum.total || 0,
-        commission: Math.round((agg._sum.total || 0) * rate),
-        deliveryFees: (agg._sum.deliveryFee || 0) + (b2bAgg._sum.deliveryFee || 0),
+        gmv,
+        commission: Math.round(weightedCommission(ordersInMonth)),
+        deliveryFees: ordersInMonth.reduce((s, o) => s + (o.deliveryFee || 0), 0) + (b2bAgg._sum.deliveryFee || 0),
       })
     }
 

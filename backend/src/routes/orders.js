@@ -10,6 +10,7 @@ const { randomUUID } = require('crypto')
 const stockEngine = require('../services/stockEngine')
 const variantStockEngine = require('../services/variantStockEngine')
 const { nextShopOrderNumber } = require('../services/accountingSequence')
+const { sellerRate } = require('../lib/settings')
 
 const fmt = (n) => Number(n).toLocaleString('fr-FR')
 
@@ -134,7 +135,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
     const productIds = [...new Set(items.map(i => i.productId))]
     const products = await prisma.product.findMany({
       where: { id: { in: productIds }, active: true },
-      include: { shop: { select: { id: true, name: true, latitude: true, longitude: true, location: true, userId: true, notifyEmail: true, zoneId: true } } },
+      include: { shop: { select: { id: true, name: true, latitude: true, longitude: true, location: true, userId: true, notifyEmail: true, zoneId: true, plan: true } } },
     })
     if (products.length !== productIds.length) {
       const foundIds = new Set(products.map(p => p.id))
@@ -267,6 +268,9 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
             groupId,
             idempotencyKey: i === 0 && idempotencyKey ? idempotencyKey : null,
             status: autoValidate ? 'CONFIRMED' : 'PENDING_VALIDATION',
+            // LOT INTEGRITE-COMPTABLE (phase 1 post-audit) : figé une fois pour
+            // toutes ici, jamais recalculé — voir commentaire schema.prisma.
+            appliedCommissionRate: sellerRate(settings, shop.plan),
             items: {
               create: gItems.map(item => {
                 const product = products.find(p => p.id === item.productId)

@@ -72,14 +72,16 @@ describe('Boost de recherche produit pour les boutiques certifiées', () => {
 
     // Prix délibérément défavorable au tri "price_asc" pour la boutique
     // certifiée — si le boost ne fonctionnait pas, elle apparaîtrait après.
-    await createProduct(basicSeller, { name: 'Riz Basique', price: 1000 })
-    await createProduct(certifiedSeller, { name: 'Riz Certifie', price: 9000 })
+    // Catégorie unique à ce test (pas juste un `limit` élevé) : la base est
+    // partagée par tout le fichier de tests sans réinitialisation, un simple
+    // `limit` reste dépendant du nombre total de produits déjà créés par les
+    // AUTRES tests au moment où celui-ci s'exécute — un filtre par catégorie
+    // isole le résultat quel que soit ce nombre.
+    const category = `CatBoost-${Date.now()}`
+    await createProduct(basicSeller, { name: 'Riz Basique', price: 1000, category })
+    await createProduct(certifiedSeller, { name: 'Riz Certifie', price: 9000, category })
 
-    // limit élevé : la base de test est partagée par tout le fichier de tests
-    // (aucune réinitialisation entre fichiers) — d'autres tests peuvent avoir
-    // créé des dizaines de produits avant celui-ci, le défaut take=20
-    // pourrait exclure nos deux produits de la première page.
-    const res = await request(app).get('/api/products?sort=price_asc&limit=200')
+    const res = await request(app).get(`/api/products?sort=price_asc&category=${category}`)
     expect(res.status).toBe(200)
     const names = res.body.products.map(p => p.name)
     expect(names.indexOf('Riz Certifie')).toBeLessThan(names.indexOf('Riz Basique'))

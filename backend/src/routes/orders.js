@@ -249,7 +249,7 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
         // LOT NUMEROTATION (v2, retour utilisateur) : initiales de boutique +
         // compteur propre à CETTE boutique (ex. RDB-0001), même mécanisme
         // atomique que les documents comptables (accountingSequence.js).
-        const reference = await nextShopOrderNumber(shop.id, shop.name)
+        const reference = await nextShopOrderNumber(shop.id, shop.name, tx)
         const order = await tx.order.create({
           data: {
             reference,

@@ -20,23 +20,33 @@ async function createStuckPayment(createdAt, overrides = {}) {
 
 describe('checkStalePayments', () => {
   test('alerte un paiement PROCESSING au-delà du seuil, une seule fois', async () => {
+    // NB : les tests tournent tous contre la même base SQLite partagée sur
+    // toute la durée de `npm test` (aucune réinitialisation entre fichiers) —
+    // un autre fichier (ex. accountingControls.test.js) peut déjà avoir créé
+    // son propre paiement PROCESSING ancien avant que ce test ne s'exécute.
+    // On vérifie donc le comportement sur NOTRE paiement précisément, jamais
+    // un compte global exact.
     const admin = await createUser('ADMIN')
     const old = new Date(Date.now() - (STALE_HOURS + 1) * 60 * 60 * 1000)
     const payment = await createStuckPayment(old)
 
     const first = await checkStalePayments()
-    expect(first.alerted).toBe(1)
+    expect(first.alerted).toBeGreaterThanOrEqual(1)
 
     const refreshed = await prisma.payment.findUnique({ where: { id: payment.id } })
     expect(refreshed.staleAlertedAt).toBeTruthy()
 
-    const notif = await prisma.notification.findFirst({ where: { userId: admin.id, type: 'STALE_PAYMENT' } })
+    // D'autres paiements bloqués (créés par un autre fichier de test partageant
+    // la même base) peuvent aussi générer une notification STALE_PAYMENT pour
+    // ce même admin — on cible précisément celle de NOTRE paiement via sa
+    // référence, jamais "la première notification STALE_PAYMENT trouvée".
+    const notif = await prisma.notification.findFirst({ where: { userId: admin.id, type: 'STALE_PAYMENT', message: { contains: payment.reference } } })
     expect(notif).toBeTruthy()
-    expect(notif.message).toContain(payment.reference)
 
-    // Deuxième passage : déjà alerté, pas de nouvelle notification.
-    const second = await checkStalePayments()
-    expect(second.alerted).toBe(0)
+    // Deuxième passage : déjà alerté, pas de deuxième notification pour CE paiement.
+    await checkStalePayments()
+    const notifCount = await prisma.notification.count({ where: { userId: admin.id, type: 'STALE_PAYMENT', message: { contains: payment.reference } } })
+    expect(notifCount).toBe(1)
   })
 
   test('ignore les paiements PROCESSING encore récents', async () => {

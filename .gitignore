@@ -15,6 +15,9 @@ backend/prisma/dev.db
 backend/prisma/dev.db-journal
 backend/prisma/*.db
 
+# Variante SQLite du schéma, générée à la volée pour les tests (tests/globalSetup.js)
+backend/prisma/schema.test.prisma
+
 # Uploads locaux (migration vers Cloudinary en prod)
 backend/uploads/
 

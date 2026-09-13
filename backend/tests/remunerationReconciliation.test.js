@@ -15,6 +15,21 @@ async function makeAccountant(admin, permissions) {
 }
 async function makeBuyer() { return createUser('BUYER') }
 
+// GET /admin/.../payslip?period=monthly calcule sa fenêtre par rapport à
+// "maintenant" (début du mois civil en cours), contrairement à
+// POST /remunerations/calculate qui prend periodStart/periodEnd explicites —
+// une date de commande codée en dur (ex. '2026-08-15') ne tombe dans la
+// fenêtre "monthly" du payslip que si le test tourne en août 2026. Ces deux
+// fonctions calculent donc tout par rapport à la vraie date d'exécution.
+function currentMonthBounds() {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+  // periodEnd = "maintenant" (pas fin de mois) : suffit à couvrir la commande
+  // créée juste après, sans dépendre d'un jour du mois précis (fin de mois
+  // civil aurait pu tomber AVANT "now" si le test tourne le dernier jour du mois).
+  return { now, periodStartIso: start.toISOString(), periodEndIso: new Date(now.getTime() + 60000).toISOString() }
+}
+
 describe('Réconciliation payslip Commercial ↔ rémunération Comptabilité', () => {
   test('une boutique CERTIFIÉE : le payslip Commercial et le calcul réel appliquent le même taux réduit', async () => {
     const admin = await createUser('ADMIN')
@@ -27,8 +42,9 @@ describe('Réconciliation payslip Commercial ↔ rémunération Comptabilité', 
       update: { commissionRate: 0.05, certifiedCommissionRate: 0.03 },
     })
 
+    const { now, periodStartIso, periodEndIso } = currentMonthBounds()
     await prisma.order.create({
-      data: { buyerId: buyer.id, shopId: shop.id, status: 'DELIVERED', total: 10000, deliveryFee: 0, address: 'A', updatedAt: new Date('2026-08-15') },
+      data: { buyerId: buyer.id, shopId: shop.id, status: 'DELIVERED', total: 10000, deliveryFee: 0, address: 'A', updatedAt: now },
     })
 
     const payslip = await request(app).get(`/api/admin/shops/${shop.id}/payslip?period=monthly`)
@@ -41,7 +57,7 @@ describe('Réconciliation payslip Commercial ↔ rémunération Comptabilité', 
 
     const calc = await request(app).post('/api/accounting/remunerations/calculate')
       .set('Authorization', `Bearer ${signToken(accountant)}`)
-      .send({ beneficiaryUserId: sellerUser.id, beneficiaryType: 'SELLER', periodStart: '2026-08-01', periodEnd: '2026-08-31' })
+      .send({ beneficiaryUserId: sellerUser.id, beneficiaryType: 'SELLER', periodStart: periodStartIso, periodEnd: periodEndIso })
     expect(calc.body.appliedCommissionRate).toBe(0.03)
     expect(calc.body.netAmount).toBe(9700)
 
@@ -56,8 +72,9 @@ describe('Réconciliation payslip Commercial ↔ rémunération Comptabilité', 
     const { shop } = await createShopUser()
     const { user: driverUser, driver } = await createDriverUser({ driverData: { plan: 'BASIC' } })
 
+    const { now, periodStartIso, periodEndIso } = currentMonthBounds()
     await prisma.order.create({
-      data: { buyerId: buyer.id, shopId: shop.id, driverId: driver.id, status: 'DELIVERED', total: 5000, deliveryFee: 1000, address: 'A', updatedAt: new Date('2026-09-05') },
+      data: { buyerId: buyer.id, shopId: shop.id, driverId: driver.id, status: 'DELIVERED', total: 5000, deliveryFee: 1000, address: 'A', updatedAt: now },
     })
 
     const b2bBuyer = await createUser('TRADER')
@@ -69,7 +86,7 @@ describe('Réconciliation payslip Commercial ↔ rémunération Comptabilité', 
       },
     })
     await prisma.shipment.create({
-      data: { b2bTransactionId: tx.id, driverId: driver.id, status: 'DELIVERED', dropoffAddress: 'Entrepot', updatedAt: new Date('2026-09-10') },
+      data: { b2bTransactionId: tx.id, driverId: driver.id, status: 'DELIVERED', dropoffAddress: 'Entrepot', updatedAt: now },
     })
 
     const settings = await prisma.platformSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } })
@@ -80,7 +97,7 @@ describe('Réconciliation payslip Commercial ↔ rémunération Comptabilité', 
 
     const calc = await request(app).post('/api/accounting/remunerations/calculate')
       .set('Authorization', `Bearer ${signToken(accountant)}`)
-      .send({ beneficiaryUserId: driverUser.id, beneficiaryType: 'DRIVER', periodStart: '2026-09-01', periodEnd: '2026-09-30' })
+      .send({ beneficiaryUserId: driverUser.id, beneficiaryType: 'DRIVER', periodStart: periodStartIso, periodEnd: periodEndIso })
     // Avant la réconciliation, ceci ne comptait que les 1000 FCFA B2C.
     expect(calc.body.grossAmount).toBe(5000)
     expect(calc.body.netAmount).toBe(Math.round(5000 * settings.driverCommission))

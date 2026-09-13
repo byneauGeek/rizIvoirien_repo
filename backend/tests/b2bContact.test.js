@@ -436,7 +436,14 @@ describe('B2B — admin : vérification, modération, stats', () => {
   })
 
   // LOT AUDIT-B2B-05 (audit XXX RIZ)
-  test('la soumission notifie le candidat (confirmation) et l\'admin (id 1)', async () => {
+  test('la soumission notifie le candidat (confirmation) et TOUS les admins', async () => {
+    // Correctif test-infra (phase 2 post-audit) : cette assertion supposait
+    // que "l'admin" était toujours userId=1 — vrai par coïncidence seulement
+    // si aucun autre test n'avait encore créé d'utilisateur dans la même
+    // base partagée. b2b.js notifie via notifyAdmins() (TOUS les admins,
+    // jamais un id fixe) — un admin créé ICI, dans ce test, est la seule
+    // façon fiable de vérifier ce comportement.
+    const admin = await createUser('ADMIN')
     const seller = await registerB2B('PRODUCER', { region: 'Soubré' })
     const sellerUserId = seller.body.user.id
     await request(app).put('/api/b2b/my-profile')
@@ -451,7 +458,7 @@ describe('B2B — admin : vérification, modération, stats', () => {
     expect(confirmation).toBeTruthy()
     expect(confirmation.message).toMatch(/transmise/)
 
-    const adminNotif = await prisma.notification.findFirst({ where: { userId: 1, type: 'B2B_NEW_APPLICATION' } })
+    const adminNotif = await prisma.notification.findFirst({ where: { userId: admin.id, type: 'B2B_NEW_APPLICATION' } })
     expect(adminNotif).toBeTruthy()
     expect(adminNotif.message).toContain('PRODUCER')
   })

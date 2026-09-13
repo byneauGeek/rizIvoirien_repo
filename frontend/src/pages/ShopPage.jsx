@@ -25,9 +25,13 @@ export default function ShopPage() {
   const [priceMax, setPriceMax] = useState(10000)
   const [certifiedOnly, setCertifiedOnly] = useState(params.get('certified') === 'true')
   const [activeCategory, setActiveCategory] = useState(params.get('category') || '')
+  const [activeOrigin, setActiveOrigin] = useState(params.get('origin') || '')
+  const [activeUnit, setActiveUnit] = useState(params.get('unit') || '')
   usePageTitle(activeCategory ? `${activeCategory} — Produits` : 'Tous nos produits')
 
   const [categories, setCategories] = useState([])
+  const [origins, setOrigins] = useState([])
+  const [units, setUnits] = useState([])
   const [products, setProducts] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -39,6 +43,8 @@ export default function ShopPage() {
   // catégorie (liste vide), sans empêcher la page de fonctionner.
   useEffect(() => {
     api.get('/products/categories').then(setCategories).catch(() => {})
+    api.get('/products/origins').then(setOrigins).catch(() => {})
+    api.get('/products/units').then(setUnits).catch(() => {})
   }, [])
 
   // Charger produits avec filtres — un échec ici NE doit jamais ressembler à
@@ -52,6 +58,8 @@ export default function ShopPage() {
       offset: page * LIMIT,
       sort,
       ...(activeCategory && { category: activeCategory }),
+      ...(activeOrigin && { origin: activeOrigin }),
+      ...(activeUnit && { unit: activeUnit }),
       ...(certifiedOnly && { certified: 'true' }),
       ...(priceMax < 10000 && { priceMax }),
       ...(search && { search }),
@@ -60,7 +68,7 @@ export default function ShopPage() {
       .then(d => { setProducts(d.products || []); setTotal(d.total || 0) })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
-  }, [activeCategory, certifiedOnly, priceMax, sort, page, params])
+  }, [activeCategory, activeOrigin, activeUnit, certifiedOnly, priceMax, sort, page, params])
 
   useEffect(() => { load() }, [load])
 
@@ -129,7 +137,27 @@ export default function ShopPage() {
                   <input type="range" min={500} max={10000} step={500} value={priceMax}
                     onChange={e => setPriceMax(Number(e.target.value))} className="w-full accent-forest" />
                 </div>
-                <button onClick={() => { setCertifiedOnly(false); setPriceMax(10000); setActiveCategory(''); setFilterOpen(false) }}
+                {origins.length > 0 && (
+                  <div className="mb-6">
+                    <span className="font-syne text-xs font-bold text-charcoal/50 uppercase tracking-wider block mb-3">Région d'origine</span>
+                    <select value={activeOrigin} onChange={e => { setActiveOrigin(e.target.value); setPage(0) }}
+                      className="w-full bg-cream border-2 border-charcoal/10 rounded-xl px-3 py-2.5 font-dm text-sm">
+                      <option value="">Toutes les régions</option>
+                      {origins.map(({ origin, count }) => <option key={origin} value={origin}>{origin} ({count})</option>)}
+                    </select>
+                  </div>
+                )}
+                {units.length > 0 && (
+                  <div className="mb-6">
+                    <span className="font-syne text-xs font-bold text-charcoal/50 uppercase tracking-wider block mb-3">Taille de sac</span>
+                    <select value={activeUnit} onChange={e => { setActiveUnit(e.target.value); setPage(0) }}
+                      className="w-full bg-cream border-2 border-charcoal/10 rounded-xl px-3 py-2.5 font-dm text-sm">
+                      <option value="">Toutes les tailles</option>
+                      {units.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                )}
+                <button onClick={() => { setCertifiedOnly(false); setPriceMax(10000); setActiveCategory(''); setActiveOrigin(''); setActiveUnit(''); setFilterOpen(false) }}
                   className="w-full font-syne text-xs font-bold text-terra hover:text-terra/70 transition-colors py-2">Réinitialiser</button>
               </motion.div>
             </motion.div>
@@ -163,7 +191,27 @@ export default function ShopPage() {
                   <span className="font-dm text-xs text-charcoal/40">10 000 FCFA</span>
                 </div>
               </div>
-              <button onClick={() => { setCertifiedOnly(false); setPriceMax(10000); setActiveCategory(''); setPage(0) }}
+              {origins.length > 0 && (
+                <div className="mb-6">
+                  <span className="font-syne text-xs font-bold text-charcoal/50 uppercase tracking-wider block mb-3">Région d'origine</span>
+                  <select value={activeOrigin} onChange={e => { setActiveOrigin(e.target.value); setPage(0) }}
+                    className="w-full bg-cream border-2 border-charcoal/10 rounded-xl px-3 py-2.5 font-dm text-sm">
+                    <option value="">Toutes les régions</option>
+                    {origins.map(({ origin, count }) => <option key={origin} value={origin}>{origin} ({count})</option>)}
+                  </select>
+                </div>
+              )}
+              {units.length > 0 && (
+                <div className="mb-6">
+                  <span className="font-syne text-xs font-bold text-charcoal/50 uppercase tracking-wider block mb-3">Taille de sac</span>
+                  <select value={activeUnit} onChange={e => { setActiveUnit(e.target.value); setPage(0) }}
+                    className="w-full bg-cream border-2 border-charcoal/10 rounded-xl px-3 py-2.5 font-dm text-sm">
+                    <option value="">Toutes les tailles</option>
+                    {units.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              )}
+              <button onClick={() => { setCertifiedOnly(false); setPriceMax(10000); setActiveCategory(''); setActiveOrigin(''); setActiveUnit(''); setPage(0) }}
                 className="w-full font-syne text-xs font-bold text-terra hover:text-terra/70 transition-colors py-2">Réinitialiser les filtres</button>
             </div>
           </aside>

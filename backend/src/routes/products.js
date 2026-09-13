@@ -102,7 +102,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans commentaire :
 
 // GET /api/products — public, filtres: category, shopId, certified, priceMax, search
 router.get('/', async (req, res) => {
-  const { category, shopId, certified, priceMax, search, sort = 'createdAt', limit = '20', offset = '0' } = req.query
+  const { category, shopId, certified, priceMax, search, origin, unit, sort = 'createdAt', limit = '20', offset = '0' } = req.query
   try {
     // LOT APPROVAL : `active` (interrupteur vendeur) et `moderationStatus`
     // (résultat du moteur de règles) sont deux gardes indépendantes — les
@@ -112,6 +112,13 @@ router.get('/', async (req, res) => {
     if (shopId) where.shopId = Number(shopId)
     if (search) where.name = { contains: search }
     if (priceMax) where.price = { lte: Number(priceMax) }
+    // LOT RECHERCHE (phase 1 post-audit) : origin/variantes existaient déjà
+    // sur Product/ProductVariant, jamais exposés comme filtre de recherche.
+    if (origin) where.origin = origin
+    // Une taille peut être la taille de base du produit OU l'une de ses
+    // variantes actives (ex. filtrer "50kg" doit remonter un produit dont
+    // seule une variante fait 50kg, même si sa taille de base est 25kg).
+    if (unit) where.OR = [{ unit }, { variants: { some: { unit, active: true } } }]
     // Only show products from active shops that have signed their contract
     where.shop = { status: 'ACTIVE', contractSigned: true }
     if (certified === 'true') where.shop.certified = true
@@ -158,6 +165,39 @@ router.get('/categories', async (req, res) => {
       orderBy: { _count: { id: 'desc' } },
     })
     res.json(raw.map(r => ({ category: r.category, count: r._count.id })))
+  } catch (e) {
+    sendError(res, e)
+  }
+})
+
+// GET /api/products/origins — régions/origines distinctes avec comptage,
+// pour le filtre de recherche (LOT RECHERCHE, phase 1 post-audit).
+router.get('/origins', async (req, res) => {
+  try {
+    const raw = await prisma.product.groupBy({
+      by: ['origin'],
+      where: { active: true, moderationStatus: 'APPROVED', origin: { not: null }, shop: { status: 'ACTIVE', contractSigned: true } },
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+    })
+    res.json(raw.filter(r => r.origin).map(r => ({ origin: r.origin, count: r._count.id })))
+  } catch (e) {
+    sendError(res, e)
+  }
+})
+
+// GET /api/products/units — tailles de sac distinctes disponibles à l'achat
+// (taille de base des produits + tailles de leurs variantes actives), pour
+// le filtre de recherche.
+router.get('/units', async (req, res) => {
+  try {
+    const visibility = { active: true, moderationStatus: 'APPROVED', shop: { status: 'ACTIVE', contractSigned: true } }
+    const [productUnits, variantUnits] = await Promise.all([
+      prisma.product.findMany({ where: visibility, select: { unit: true }, distinct: ['unit'] }),
+      prisma.productVariant.findMany({ where: { active: true, product: visibility }, select: { unit: true }, distinct: ['unit'] }),
+    ])
+    const units = [...new Set([...productUnits.map(p => p.unit), ...variantUnits.map(v => v.unit)])].sort()
+    res.json(units)
   } catch (e) {
     sendError(res, e)
   }

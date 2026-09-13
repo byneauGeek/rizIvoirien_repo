@@ -1,0 +1,20 @@
+{
+  "name": "RizIvoirien — Le riz local, livré chez vous",
+  "short_name": "RizIvoirien",
+  "description": "Marketplace du riz ivoirien. Achetez directement auprès des producteurs locaux de Côte d'Ivoire.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FDF6E3",
+  "theme_color": "#1B4332",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

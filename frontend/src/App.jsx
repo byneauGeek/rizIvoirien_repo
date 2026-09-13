@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { HelmetProvider } from 'react-helmet-async'
 import ErrorBoundary from './components/ErrorBoundary'
+import OfflineBanner from './components/OfflineBanner'
 import { CartProvider } from './context/CartContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { SEOProvider } from './context/SEOContext'
@@ -168,6 +169,7 @@ export default function App() {
             <SEOProvider>
               <CartProvider>
                 <AppRoutes />
+                <OfflineBanner />
               </CartProvider>
             </SEOProvider>
           </AuthProvider>

@@ -103,6 +103,8 @@ export default function ProductCard({ product, large = false }) {
             )}
             {user?.role === 'BUYER' && (
               <button onClick={handleWish}
+                aria-label={wished ? 'Retirer de la wishlist' : 'Ajouter à la wishlist'}
+                aria-pressed={wished}
                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${wished ? 'bg-terra text-cream' : 'bg-white/20 text-cream hover:bg-white/40'}`}>
                 <Heart size={14} fill={wished ? 'currentColor' : 'none'} />
               </button>

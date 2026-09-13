@@ -158,6 +158,7 @@ export default function Navbar() {
                 {resending ? 'Envoi…' : resendSent ? 'Envoyé ✓' : 'Renvoyer'}
               </button>
               <button onClick={() => { localStorage.removeItem('rz_email_unverified'); setEmailUnverified(false) }}
+                aria-label="Fermer"
                 className="text-white/70 hover:text-white">
                 <X size={14} />
               </button>
@@ -212,6 +213,7 @@ export default function Navbar() {
           <div className="flex items-center gap-1.5">
             {/* Search toggle */}
             <button onClick={() => { setSearchOpen(v => !v); setTimeout(() => searchRef.current?.focus(), 50) }}
+              aria-label={searchOpen ? 'Fermer la recherche' : 'Rechercher'}
               className={`hidden md:flex p-2 rounded-full transition-colors ${hoverBg} ${textColor}`}>
               <Search size={18} />
             </button>
@@ -241,6 +243,7 @@ export default function Navbar() {
                 {/* Notifications bell */}
                 <div className="relative">
                   <button onClick={() => setNotifOpen(v => !v)}
+                    aria-label="Notifications"
                     className={`relative p-2 rounded-full transition-colors ${hoverBg} ${textColor}`}>
                     <Bell size={18} />
                     {notifs.unread > 0 && (
@@ -374,7 +377,8 @@ export default function Navbar() {
             )}
 
             {/* Mobile hamburger */}
-            <button className={`md:hidden p-2 rounded-full transition-colors ${dark ? 'text-charcoal' : 'text-cream'}`} onClick={() => setMobileOpen(v => !v)}>
+            <button className={`md:hidden p-2 rounded-full transition-colors ${dark ? 'text-charcoal' : 'text-cream'}`} onClick={() => setMobileOpen(v => !v)}
+              aria-label={mobileOpen ? 'Fermer le menu' : 'Ouvrir le menu'}>
               {mobileOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
           </div>

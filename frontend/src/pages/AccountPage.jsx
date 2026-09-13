@@ -76,7 +76,7 @@ function ProfileTab({ user, onUpdate }) {
           <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 font-dm text-sm">
             <AlertCircle size={16} className="shrink-0" />
             <span className="flex-1">{profileError}</span>
-            <button type="button" onClick={() => setProfileError(null)}><X size={14} /></button>
+            <button type="button" onClick={() => setProfileError(null)} aria-label="Fermer"><X size={14} /></button>
           </div>
         )}
         <motion.button type="submit" whileTap={{ scale: 0.98 }} disabled={saving}
@@ -151,7 +151,7 @@ function AddressesTab() {
         <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 font-dm text-sm">
           <AlertCircle size={16} className="shrink-0" />
           <span className="flex-1">{addrError}</span>
-          <button onClick={() => setAddrError(null)}><X size={14} /></button>
+          <button onClick={() => setAddrError(null)} aria-label="Fermer"><X size={14} /></button>
         </div>
       )}
       {addresses.map(addr => (
@@ -205,10 +205,12 @@ function AddressesTab() {
                   <>
                     <span className="font-dm text-xs text-charcoal/50">Supprimer ?</span>
                     <button onClick={() => handleDelete(addr.id)}
+                      aria-label="Confirmer la suppression"
                       className="p-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors">
                       <Check size={13} />
                     </button>
                     <button onClick={() => setDeleteConfirmId(null)}
+                      aria-label="Annuler"
                       className="p-1.5 rounded-lg border border-charcoal/15 text-charcoal/50 hover:border-charcoal/30 transition-colors">
                       <X size={13} />
                     </button>
@@ -216,10 +218,12 @@ function AddressesTab() {
                 ) : (
                   <>
                     <button onClick={() => { setEditId(addr.id); setEditForm({ label: addr.label, address: addr.address, city: addr.city, latitude: addr.latitude, longitude: addr.longitude }) }}
+                      aria-label="Modifier l'adresse"
                       className="p-2 rounded-xl text-charcoal/40 hover:bg-charcoal/5 hover:text-charcoal transition-colors">
                       <Edit2 size={14} />
                     </button>
                     <button onClick={() => setDeleteConfirmId(addr.id)}
+                      aria-label="Supprimer l'adresse"
                       className="p-2 rounded-xl text-charcoal/40 hover:bg-terra/10 hover:text-terra transition-colors">
                       <Trash2 size={14} />
                     </button>
@@ -315,7 +319,7 @@ function WishlistTab() {
         <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 font-dm text-sm">
           <AlertCircle size={16} className="shrink-0" />
           <span className="flex-1">{wishError}</span>
-          <button onClick={() => setWishError(null)}><X size={14} /></button>
+          <button onClick={() => setWishError(null)} aria-label="Fermer"><X size={14} /></button>
         </div>
       )}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -339,6 +343,7 @@ function WishlistTab() {
               <div className="flex items-center justify-between mt-3">
                 <p className="font-playfair text-base font-bold text-charcoal">{fmt(p?.price)} F</p>
                 <button onClick={() => handleRemove(w.productId)}
+                  aria-label="Retirer de la wishlist"
                   className="p-1.5 rounded-lg text-charcoal/30 hover:bg-terra/10 hover:text-terra transition-colors">
                   <Trash2 size={14} />
                 </button>

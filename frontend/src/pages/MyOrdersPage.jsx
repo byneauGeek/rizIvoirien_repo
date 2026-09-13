@@ -233,7 +233,7 @@ function DisputeModal({ order, onClose, onSubmitted }) {
                 <p className="font-dm text-xs text-charcoal/40">Commande {fmtOrderId(order.id, order.createdAt, order.reference)}</p>
                 <h3 className="font-playfair text-xl font-bold text-charcoal">Signaler un problème</h3>
               </div>
-              <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-charcoal/6 transition-colors">
+              <button type="button" onClick={onClose} aria-label="Fermer" className="p-2 rounded-xl hover:bg-charcoal/6 transition-colors">
                 <X size={20} className="text-charcoal/50" />
               </button>
             </div>
@@ -375,7 +375,9 @@ function RatingStars({ value, onChange }) {
       {[1,2,3,4,5].map(i => (
         <button key={i} type="button"
           onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(0)}
-          onClick={() => onChange(i)}>
+          onClick={() => onChange(i)}
+          aria-label={`Noter ${i} étoile${i > 1 ? 's' : ''}`}
+          aria-pressed={i <= value}>
           <Star size={22} className={(hover || value) >= i ? 'fill-safran text-safran' : 'text-charcoal/20'} />
         </button>
       ))}
@@ -679,14 +681,14 @@ export default function MyOrdersPage() {
           <div className="mb-4 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-2xl px-4 py-3 font-dm text-sm">
             <AlertTriangle size={16} className="shrink-0" />
             <span className="flex-1">{cancelError}</span>
-            <button onClick={() => setCancelError(null)}><X size={14} /></button>
+            <button onClick={() => setCancelError(null)} aria-label="Fermer"><X size={14} /></button>
           </div>
         )}
         {rateError && (
           <div className="mb-4 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-2xl px-4 py-3 font-dm text-sm">
             <AlertTriangle size={16} className="shrink-0" />
             <span className="flex-1">{rateError}</span>
-            <button onClick={() => setRateError(null)}><X size={14} /></button>
+            <button onClick={() => setRateError(null)} aria-label="Fermer"><X size={14} /></button>
           </div>
         )}
 

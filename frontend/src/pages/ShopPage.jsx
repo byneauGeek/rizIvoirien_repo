@@ -114,11 +114,12 @@ export default function ShopPage() {
                 className="absolute inset-y-0 left-0 w-72 bg-white p-6 overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="font-syne font-bold text-xs tracking-widest uppercase text-charcoal/40">Filtres</h3>
-                  <button onClick={() => setFilterOpen(false)} className="w-8 h-8 rounded-full bg-charcoal/8 flex items-center justify-center"><X size={16} /></button>
+                  <button onClick={() => setFilterOpen(false)} aria-label="Fermer les filtres" className="w-8 h-8 rounded-full bg-charcoal/8 flex items-center justify-center"><X size={16} /></button>
                 </div>
                 <div className="mb-6">
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <div onClick={() => setCertifiedOnly(v => !v)} className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${certifiedOnly ? 'bg-forest border-forest' : 'border-charcoal/20'}`}>
+                    <input type="checkbox" checked={certifiedOnly} onChange={() => setCertifiedOnly(v => !v)} className="sr-only" />
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${certifiedOnly ? 'bg-forest border-forest' : 'border-charcoal/20'}`}>
                       {certifiedOnly && <span className="text-cream text-xs">✓</span>}
                     </div>
                     <span className="font-dm text-sm text-charcoal">Boutiques certifiées</span>
@@ -146,8 +147,8 @@ export default function ShopPage() {
               <h3 className="font-syne font-bold text-xs tracking-widest uppercase text-charcoal/40 mb-6">Filtres</h3>
               <div className="mb-6">
                 <label className="flex items-center gap-3 cursor-pointer group">
-                  <div onClick={() => { setCertifiedOnly(v => !v); setPage(0) }}
-                    className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${certifiedOnly ? 'bg-forest border-forest' : 'border-charcoal/20 group-hover:border-forest/50'}`}>
+                  <input type="checkbox" checked={certifiedOnly} onChange={() => { setCertifiedOnly(v => !v); setPage(0) }} className="sr-only" />
+                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${certifiedOnly ? 'bg-forest border-forest' : 'border-charcoal/20 group-hover:border-forest/50'}`}>
                     {certifiedOnly && <span className="text-cream text-xs">✓</span>}
                   </div>
                   <span className="font-dm text-sm text-charcoal">Boutiques certifiées</span>

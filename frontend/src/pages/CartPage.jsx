@@ -28,7 +28,7 @@ function AuthGateModal({ onClose, singleShop }) {
         className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b border-charcoal/8">
           <h3 className="font-playfair text-xl font-bold text-charcoal">Un compte est requis</h3>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-charcoal/6 transition-colors">
+          <button onClick={onClose} aria-label="Fermer" className="p-2 rounded-xl hover:bg-charcoal/6 transition-colors">
             <X size={18} className="text-charcoal/50" />
           </button>
         </div>
@@ -148,6 +148,7 @@ export default function CartPage() {
                           {item.unit && <p className="font-dm text-xs text-charcoal/30 mt-0.5">{item.unit} · {item.qty * parseFloat(String(item.unit).match(/^(\d+(?:\.\d+)?)/)?.[1] || 0)} kg au total</p>}
                         </div>
                         <button onClick={() => dispatch({ type: 'REMOVE', id: item.id, variantId: item.variantId })}
+                          aria-label="Supprimer l'article"
                           className="p-2 rounded-xl text-charcoal/30 hover:text-terra hover:bg-terra/10 transition-colors shrink-0">
                           <Trash2 size={16} />
                         </button>
@@ -158,12 +159,14 @@ export default function CartPage() {
                             onClick={() => item.qty === 1
                               ? dispatch({ type: 'REMOVE', id: item.id, variantId: item.variantId })
                               : dispatch({ type: 'UPDATE_QTY', id: item.id, variantId: item.variantId, qty: item.qty - 1 })}
+                            aria-label="Diminuer la quantité"
                             className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-charcoal hover:bg-forest/10 transition-colors">
                             <Minus size={12} />
                           </button>
                           <span className="font-syne font-bold text-sm text-charcoal w-6 text-center">{item.qty}</span>
                           <button
                             onClick={() => dispatch({ type: 'UPDATE_QTY', id: item.id, variantId: item.variantId, qty: item.qty + 1 })}
+                            aria-label="Augmenter la quantité"
                             className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-charcoal hover:bg-forest/10 transition-colors">
                             <Plus size={12} />
                           </button>

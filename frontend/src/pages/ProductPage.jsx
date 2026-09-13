@@ -24,6 +24,10 @@ function ReviewStars({ rating, size = 16, interactive = false, onChange }) {
           onMouseEnter={interactive ? () => setHover(i) : undefined}
           onMouseLeave={interactive ? () => setHover(0) : undefined}
           onClick={interactive ? () => onChange?.(i) : undefined}
+          aria-label={interactive ? `Noter ${i} étoile${i > 1 ? 's' : ''}` : undefined}
+          aria-pressed={interactive ? i <= rating : undefined}
+          tabIndex={interactive ? undefined : -1}
+          aria-hidden={interactive ? undefined : true}
           className={interactive ? 'cursor-pointer' : 'cursor-default'}>
           <Star size={size} className={(hover || rating) >= i ? 'fill-safran text-safran' : 'text-charcoal/20'} />
         </button>
@@ -316,11 +320,13 @@ export default function ProductPage() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3 bg-white rounded-full px-4 py-3 shadow-card">
                 <button onClick={() => setQty(q => Math.max(1, q - 1))}
+                  aria-label="Diminuer la quantité"
                   className="w-7 h-7 rounded-full bg-charcoal/5 hover:bg-charcoal/10 flex items-center justify-center transition-colors">
                   <Minus size={14} />
                 </button>
                 <span className="font-syne font-bold text-charcoal w-6 text-center">{qty}</span>
                 <button onClick={() => setQty(q => Math.min(activeOffer.stock, q + 1))}
+                  aria-label="Augmenter la quantité"
                   className="w-7 h-7 rounded-full bg-charcoal/5 hover:bg-charcoal/10 flex items-center justify-center transition-colors">
                   <Plus size={14} />
                 </button>
@@ -343,6 +349,8 @@ export default function ProductPage() {
               </motion.button>
 
               <button onClick={handleWish}
+                aria-label={wished ? 'Retirer de la wishlist' : 'Ajouter à la wishlist'}
+                aria-pressed={wished}
                 className={`p-4 rounded-full border-2 transition-all ${wished ? 'bg-terra border-terra text-cream' : 'border-charcoal/15 text-charcoal/50 hover:border-terra hover:text-terra'}`}>
                 <Heart size={20} fill={wished ? 'currentColor' : 'none'} />
               </button>
@@ -402,7 +410,7 @@ export default function ProductPage() {
                     <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-3 py-2 font-dm text-sm">
                       <AlertCircle size={15} className="shrink-0" />
                       <span className="flex-1">{reviewError}</span>
-                      <button type="button" onClick={() => setReviewError(null)}><X size={13} /></button>
+                      <button type="button" onClick={() => setReviewError(null)} aria-label="Fermer"><X size={13} /></button>
                     </div>
                   )}
                   <button type="submit" disabled={submittingReview}

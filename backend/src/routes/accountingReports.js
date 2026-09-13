@@ -150,6 +150,13 @@ const EXPORTS = {
       { key: 'receivedAmount', label: 'Montant encaissé' }, { key: 'status', label: 'Statut' }, { key: 'sourceType', label: 'Origine' },
     ],
   },
+  expenses: {
+    model: 'expense', dateField: 'date',
+    columns: [
+      { key: 'reference', label: 'Référence' }, { key: 'category', label: 'Catégorie' }, { key: 'amount', label: 'Montant' },
+      { key: 'supplier', label: 'Fournisseur' }, { key: 'status', label: 'Statut' }, { key: 'date', label: 'Date' },
+    ],
+  },
 }
 
 router.get('/reports/export', authenticate, requirePermission('accounting.documents.export'), async (req, res) => {

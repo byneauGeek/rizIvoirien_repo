@@ -43,6 +43,14 @@ export const DEBT_STATUS = {
 
 export const RECEIVABLE_STATUS = DEBT_STATUS
 
+export const EXPENSE_STATUS = {
+  DRAFT:              { label: 'Brouillon',              color: 'text-charcoal/40 bg-charcoal/5' },
+  PENDING_VALIDATION: { label: 'En attente de validation', color: 'text-amber-600 bg-amber-50' },
+  VALIDATED:          { label: 'Validée',                 color: 'text-green-600 bg-green-50' },
+  PAID:               { label: 'Payée',                   color: 'text-green-700 bg-green-100' },
+  REJECTED:           { label: 'Rejetée',                  color: 'text-red-600 bg-red-50' },
+}
+
 export const TRANSACTION_TYPE_LABEL = {
   DEBT_CREATED: 'Dette créée', RECEIVABLE_CREATED: 'Créance créée',
   PAYMENT_EXECUTED: 'Paiement exécuté', ENCAISSEMENT: 'Encaissement', DECAISSEMENT: 'Décaissement',

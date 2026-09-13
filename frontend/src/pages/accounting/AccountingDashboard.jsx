@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutDashboard, Receipt, CreditCard, Coins, Wallet, Users, FileBarChart, ShieldAlert, LogOut, ChevronRight, Menu, X, AlertCircle, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Receipt, CreditCard, Coins, Wallet, Users, FileBarChart, ShieldAlert, LogOut, ChevronRight, Menu, X, AlertCircle, ShieldCheck, Wallet2 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { api } from '../../api/client'
 import OverviewTab from './OverviewTab'
 import TransactionsTab from './TransactionsTab'
 import PaymentOrdersTab from './PaymentOrdersTab'
 import DebtsReceivablesTab from './DebtsReceivablesTab'
+import ExpensesTab from './ExpensesTab'
 import TreasuryTab from './TreasuryTab'
 import RemunerationsTab from './RemunerationsTab'
 import ReportsTab from './ReportsTab'
@@ -22,6 +23,7 @@ const TAB_DEFS = [
   { id: 'transactions',    label: 'Transactions',      icon: Receipt,         permission: 'accounting.transactions.view' },
   { id: 'payment-orders',  label: 'Paiements',         icon: CreditCard,      permission: 'accounting.payments.view' },
   { id: 'debts',           label: 'Dettes & Créances', icon: Coins,       permission: 'accounting.transactions.view' },
+  { id: 'expenses',        label: 'Dépenses',          icon: Wallet2,     permission: 'accounting.transactions.view' },
   { id: 'treasury',        label: 'Trésorerie',        icon: Wallet,          permission: 'accounting.treasury.view' },
   { id: 'remunerations',   label: 'Rémunérations',     icon: Users,           permission: 'accounting.payroll.view' },
   { id: 'reports',         label: 'Rapports',          icon: FileBarChart,    permission: 'accounting.reports.view' },
@@ -154,6 +156,7 @@ export default function AccountingDashboard() {
             {activeTab === 'transactions'   && <TransactionsTab />}
             {activeTab === 'payment-orders' && <PaymentOrdersTab permissions={access.permissions} />}
             {activeTab === 'debts'          && <DebtsReceivablesTab permissions={access.permissions} />}
+            {activeTab === 'expenses'       && <ExpensesTab permissions={access.permissions} />}
             {activeTab === 'treasury'       && <TreasuryTab permissions={access.permissions} />}
             {activeTab === 'remunerations'  && <RemunerationsTab permissions={access.permissions} />}
             {activeTab === 'reports'        && <ReportsTab permissions={access.permissions} />}

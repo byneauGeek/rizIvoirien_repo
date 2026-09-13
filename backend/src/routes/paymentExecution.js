@@ -45,6 +45,15 @@ async function cascadeToSource(tx, order, outcome) {
       await tx.debt.update({ where: { id: debt.id }, data: { paidAmount: newPaidAmount, status: newStatus } })
     }
   }
+  // EXPENSE n'a pas de notion de règlement partiel (contrairement à DEBT) —
+  // un seul ordre de paiement solde toute la dépense, déjà garanti par la
+  // validation à la création (montant == Expense.amount, cf. POST /payment-orders).
+  if (order.sourceType === 'EXPENSE' && order.sourceId && outcome === 'PAID') {
+    await tx.expense.updateMany({
+      where: { id: order.sourceId, status: 'VALIDATED' },
+      data: { status: 'PAID' },
+    })
+  }
 }
 
 // ─── Comptes de trésorerie disponibles pour l'exécution ──────────────────────
@@ -85,6 +94,14 @@ router.post('/payment-orders', authenticate, requirePermission('accounting.payme
       if (['PAID', 'CANCELLED'].includes(debt.status)) return res.status(400).json({ error: 'Cette dette est déjà soldée ou annulée' })
       const remaining = debt.initialAmount - debt.paidAmount
       if (amt > remaining) return res.status(400).json({ error: `Le montant dépasse le solde restant de la dette (${remaining})` })
+    }
+
+    if (sourceType === 'EXPENSE') {
+      if (!sourceId) return res.status(400).json({ error: 'sourceId requis pour sourceType=EXPENSE' })
+      const expense = await prisma.expense.findUnique({ where: { id: Number(sourceId) } })
+      if (!expense) return res.status(404).json({ error: 'Dépense introuvable' })
+      if (expense.status !== 'VALIDATED') return res.status(400).json({ error: 'Seule une dépense VALIDÉE peut être payée' })
+      if (amt !== expense.amount) return res.status(400).json({ error: `Le montant doit correspondre exactement à celui de la dépense (${expense.amount})` })
     }
 
     const reference = await nextReference('ORD')

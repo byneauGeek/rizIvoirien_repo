@@ -9,6 +9,7 @@ const EXPORTS = [
   { type: 'remunerations', label: 'Rémunérations' },
   { type: 'debts', label: 'Dettes' },
   { type: 'receivables', label: 'Créances' },
+  { type: 'expenses', label: 'Dépenses' },
 ]
 
 function Card({ title, children }) {

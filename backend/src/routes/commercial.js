@@ -283,6 +283,41 @@ router.get('/renewals', ...guard, async (req, res) => {
   }
 })
 
+// ─── Rappel renouvellement abonnement ──────────────────────────────────────
+// Même motif que remind-contract ci-dessous : GET /renewals affichait déjà
+// les abonnements arrivant à échéance sous 30 jours, mais aucune action de
+// relance n'existait depuis cet écran — contrairement au contrat, qui a la
+// sienne (remind-contract). Un abonnement qui expire sans relance retombe
+// silencieusement au plan BASIC à l'échéance.
+
+router.post('/subscriptions/:id/remind-renewal', ...guard, async (req, res) => {
+  try {
+    const subscription = await prisma.subscription.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { shop: { select: { id: true, name: true, userId: true } } },
+    })
+    if (!subscription) return res.status(404).json({ error: 'Abonnement introuvable' })
+
+    const daysRemaining = Math.ceil((new Date(subscription.endDate) - new Date()) / (1000 * 60 * 60 * 24))
+
+    await notify(
+      subscription.shop.userId,
+      'SUBSCRIPTION_RENEWAL_REMINDER',
+      'Votre abonnement arrive à échéance',
+      daysRemaining > 0
+        ? `Votre abonnement ${subscription.plan} expire dans ${daysRemaining} jour(s). Renouvelez-le pour conserver vos avantages.`
+        : `Votre abonnement ${subscription.plan} a expiré. Renouvelez-le pour conserver vos avantages.`,
+      { subscriptionId: subscription.id }
+    )
+    setImmediate(() =>
+      logAction(req.user.id, 'SUBSCRIPTION_RENEWAL_REMINDER', 'SHOP', subscription.shop.id, { shopName: subscription.shop.name, daysRemaining })
+    )
+    res.json({ ok: true })
+  } catch (e) {
+    sendError(res, e)
+  }
+})
+
 // ─── Détail boutique (vue agent commercial) ───────────────────────────────
 
 router.get('/shops/:id', ...guard, async (req, res) => {

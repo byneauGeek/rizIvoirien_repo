@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../api/client'
 import { fmt } from '../../utils/status'
+import { Bell, Check } from 'lucide-react'
 
 const urgencyColor = (days) => {
   if (days <= 7)  return 'bg-red-100 text-red-800 border-red-200'
@@ -12,6 +13,20 @@ export default function RenouvellementTab() {
   const [renewals, setRenewals] = useState([])
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState(null)
+  const [remindedIds, setRemindedIds] = useState(new Set())
+  const [reminding, setReminding] = useState(null)
+
+  const remind = async (id) => {
+    setReminding(id)
+    try {
+      await api.post(`/commercial/subscriptions/${id}/remind-renewal`)
+      setRemindedIds(s => new Set(s).add(id))
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setReminding(null)
+    }
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -103,6 +118,13 @@ export default function RenouvellementTab() {
                     Email
                   </a>
                 )}
+                <button
+                  onClick={() => remind(r.id)}
+                  disabled={reminding === r.id || remindedIds.has(r.id)}
+                  className="flex items-center gap-1 font-syne text-xs font-bold bg-forest/10 text-forest px-2.5 py-1 rounded-full hover:bg-forest/15 transition-colors disabled:opacity-50"
+                >
+                  {remindedIds.has(r.id) ? <><Check size={12} /> Relancé</> : <><Bell size={12} /> {reminding === r.id ? '…' : 'Relancer'}</>}
+                </button>
               </div>
             </div>
           ))}

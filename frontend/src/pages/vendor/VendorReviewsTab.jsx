@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import { fmtOrderId } from '../../utils/status'
-import { Star, MessageSquare, RefreshCw, TrendingUp, Package } from 'lucide-react'
+import { Star, MessageSquare, RefreshCw, TrendingUp, Package, CornerDownRight } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 const fmtDate = d => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -70,21 +70,64 @@ function ReviewSummary({ title, avg, total, reviews, emptyLabel }) {
   )
 }
 
-function ReviewCard({ review, productLabel }) {
+// Répondre à un avis n'existe que pour les avis PRODUIT (Review) — les avis
+// boutique (ShopReview) ne sont, à ce jour, jamais affichés publiquement
+// (ShopDetailPage n'expose que la note agrégée), y répondre n'aurait donc
+// aucun effet visible pour le client.
+function ReplyForm({ review, onDone, onCancel }) {
+  const [text, setText] = useState(review.sellerReply || '')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!text.trim() || saving) return
+    setSaving(true); setError('')
+    try {
+      const updated = await api.post(`/reviews/${review.id}/reply`, { reply: text.trim() })
+      onDone(updated)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-3 pl-12 space-y-2">
+      {error && <p className="font-dm text-xs text-red-600">{error}</p>}
+      <textarea rows={2} maxLength={1000} value={text} onChange={e => setText(e.target.value)}
+        placeholder="Votre réponse à cet avis…"
+        className="w-full bg-[#F0F2F5] rounded-2xl px-4 py-2.5 font-dm text-sm resize-none focus:outline-none focus:ring-2 focus:ring-forest/20" />
+      <div className="flex items-center gap-2">
+        <button type="submit" disabled={saving || !text.trim()}
+          className="bg-forest text-white font-syne text-xs font-bold px-4 py-2 rounded-xl disabled:opacity-50">
+          {saving ? 'Envoi…' : 'Publier la réponse'}
+        </button>
+        <button type="button" onClick={onCancel} className="font-dm text-xs text-charcoal/40">Annuler</button>
+      </div>
+    </form>
+  )
+}
+
+function ReviewCard({ review, productLabel, canReply, onReplied }) {
+  const [replying, setReplying] = useState(false)
+  const [current, setCurrent] = useState(review)
+
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
       className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-[#E8A217]/10 flex items-center justify-center shrink-0">
-            <span className="font-playfair font-bold text-[#E8A217] text-sm">{review.user?.name?.[0] || '?'}</span>
+            <span className="font-playfair font-bold text-[#E8A217] text-sm">{current.user?.name?.[0] || '?'}</span>
           </div>
           <div>
-            <p className="font-syne text-sm font-bold text-charcoal">{review.user?.name || 'Client'}</p>
-            <Stars rating={review.rating} size={12} />
+            <p className="font-syne text-sm font-bold text-charcoal">{current.user?.name || 'Client'}</p>
+            <Stars rating={current.rating} size={12} />
           </div>
         </div>
-        <p className="font-dm text-xs text-charcoal/30 shrink-0">{fmtDate(review.createdAt)}</p>
+        <p className="font-dm text-xs text-charcoal/30 shrink-0">{fmtDate(current.createdAt)}</p>
       </div>
 
       {productLabel && (
@@ -95,16 +138,41 @@ function ReviewCard({ review, productLabel }) {
         </div>
       )}
 
-      {review.comment && (
-        <p className="font-dm text-sm text-charcoal/70 mt-3 leading-relaxed pl-12">"{review.comment}"</p>
+      {current.comment && (
+        <p className="font-dm text-sm text-charcoal/70 mt-3 leading-relaxed pl-12">"{current.comment}"</p>
       )}
 
-      {review.orderId && (
+      {current.orderId && (
         <div className="mt-2 pl-12">
           <span className="font-syne text-[10px] font-bold text-charcoal/30 bg-charcoal/5 px-2 py-0.5 rounded-full">
-            Commande {fmtOrderId(review.orderId)}
+            Commande {fmtOrderId(current.orderId)}
           </span>
         </div>
+      )}
+
+      {current.sellerReply && !replying && (
+        <div className="mt-3 ml-12 pl-4 border-l-2 border-forest/20">
+          <p className="font-syne text-xs font-bold text-forest flex items-center gap-1"><CornerDownRight size={11} /> Votre réponse</p>
+          <p className="font-dm text-sm text-charcoal/60 mt-1">{current.sellerReply}</p>
+          {canReply && (
+            <button onClick={() => setReplying(true)} className="font-syne text-xs font-bold text-charcoal/40 hover:text-charcoal mt-1">
+              Modifier
+            </button>
+          )}
+        </div>
+      )}
+
+      {canReply && !current.sellerReply && !replying && (
+        <button onClick={() => setReplying(true)}
+          className="mt-3 ml-12 flex items-center gap-1 font-syne text-xs font-bold text-forest hover:text-forest-dark">
+          <CornerDownRight size={12} /> Répondre
+        </button>
+      )}
+
+      {canReply && replying && (
+        <ReplyForm review={current}
+          onDone={(updated) => { setCurrent(updated); setReplying(false); onReplied?.(updated) }}
+          onCancel={() => setReplying(false)} />
       )}
     </motion.div>
   )
@@ -187,7 +255,8 @@ export default function VendorReviewsTab() {
             <div className="space-y-3">
               {merged.map(review => (
                 <ReviewCard key={`${review._kind}-${review.id}`} review={review}
-                  productLabel={review._kind === 'product' ? review.product?.name : null} />
+                  productLabel={review._kind === 'product' ? review.product?.name : null}
+                  canReply={review._kind === 'product'} />
               ))}
             </div>
           )}

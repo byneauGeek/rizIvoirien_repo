@@ -108,4 +108,35 @@ router.post('/', authenticate, requireRole('BUYER'), async (req, res) => {
   }
 })
 
+// POST /api/reviews/:id/reply — le vendeur répond publiquement à un avis
+// laissé sur l'un de ses produits. Une seule réponse par avis, ré-éditable
+// (pas un fil de discussion) — cf. commentaire schema.prisma sur Review.
+router.post('/:id/reply', authenticate, requireRole('SELLER'), async (req, res) => {
+  const { reply } = req.body
+  if (!reply || !reply.trim()) return res.status(400).json({ error: 'Réponse requise' })
+  if (reply.length > 1000) return res.status(400).json({ error: 'Réponse trop longue (1000 caractères max)' })
+
+  try {
+    const review = await prisma.review.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { product: { select: { shopId: true, name: true } } },
+    })
+    if (!review) return res.status(404).json({ error: 'Avis introuvable' })
+
+    const shop = await prisma.shop.findUnique({ where: { userId: req.user.id }, select: { id: true } })
+    if (!shop || shop.id !== review.product.shopId) return res.status(403).json({ error: 'Cet avis ne concerne pas votre boutique' })
+
+    const updated = await prisma.review.update({
+      where: { id: review.id },
+      data: { sellerReply: reply.trim(), sellerRepliedAt: new Date() },
+      include: { user: { select: { name: true } }, product: { select: { name: true, shopId: true } } },
+    })
+
+    await notify(review.userId, 'REVIEW_REPLY', 'Le vendeur a répondu à votre avis',
+      `"${review.product.name}" : ${reply.trim().slice(0, 100)}`, { productId: review.productId })
+
+    res.json(updated)
+  } catch (e) { sendError(res, e) }
+})
+
 module.exports = router

@@ -388,6 +388,12 @@ export default function ProductPage() {
                     <ReviewStars rating={r.rating} size={14} />
                   </div>
                   {r.comment && <p className="font-dm text-sm text-charcoal/70">{r.comment}</p>}
+                  {r.sellerReply && (
+                    <div className="mt-3 ml-4 pl-4 border-l-2 border-forest/20">
+                      <p className="font-syne text-xs font-bold text-forest">Réponse de {product.shop?.name}</p>
+                      <p className="font-dm text-sm text-charcoal/60 mt-1">{r.sellerReply}</p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

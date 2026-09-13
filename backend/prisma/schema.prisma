@@ -1468,15 +1468,23 @@ model Address {
 }
 
 model Review {
-  id        Int      @id @default(autoincrement())
-  productId Int
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  userId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orderId   Int?
-  rating    Int
-  comment   String?
-  createdAt DateTime @default(now())
+  id              Int       @id @default(autoincrement())
+  productId       Int
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId          Int
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId         Int?
+  rating          Int
+  comment         String?
+  createdAt       DateTime  @default(now())
+  // LOT REVIEW-REPLY (retour utilisateur — phase 2) : jusqu'ici un avis client
+  // était à sens unique, aucun moyen pour le vendeur de répondre publiquement
+  // (ex. corriger un malentendu, remercier). sellerRepliedAt distinct de
+  // createdAt de la réponse elle-même n'existe pas séparément : une seule
+  // réponse par avis, ré-éditable (sellerReply écrasé, sellerRepliedAt mis à
+  // jour), pas un fil de discussion.
+  sellerReply     String?
+  sellerRepliedAt DateTime?
 
   @@unique([productId, userId])
 }

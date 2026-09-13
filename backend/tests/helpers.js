@@ -50,4 +50,21 @@ async function createDriverUser(overrides = {}) {
   return { user, driver }
 }
 
-module.exports = { prisma, signToken, createUser, createShopUser, createDriverUser, uniqueEmail }
+// De nombreuses routes journalisent (logAction/notify) via
+// `setImmediate(() => …)` — délibéré, pour ne jamais faire attendre la
+// réponse HTTP sur une écriture d'audit non critique. Un test qui vérifie
+// CE genre d'effet de bord juste après avoir reçu la réponse peut donc, sous
+// charge (ex. la suite complète, 500+ tests), l'interroger avant qu'il ne
+// soit écrit — pas une histoire de données partagées entre fichiers, un pur
+// timing. `waitFor` sonde la condition au lieu de la lire une seule fois.
+async function waitFor(check, { timeout = 2000, interval = 20 } = {}) {
+  const deadline = Date.now() + timeout
+  for (;;) {
+    const result = await check()
+    if (result) return result
+    if (Date.now() >= deadline) return result
+    await new Promise((r) => setTimeout(r, interval))
+  }
+}
+
+module.exports = { prisma, signToken, createUser, createShopUser, createDriverUser, uniqueEmail, waitFor }

@@ -1,7 +1,7 @@
 const request = require('supertest')
 const express = require('express')
 const app = require('../src/index')
-const { createUser, prisma, signToken, uniqueEmail } = require('./helpers')
+const { createUser, prisma, signToken, uniqueEmail, waitFor } = require('./helpers')
 const { authenticate } = require('../src/middleware/auth')
 const { requirePermission } = require('../src/middleware/accounting')
 
@@ -59,7 +59,9 @@ describe('Comptabilité — gestion admin du rôle', () => {
     expect(res.status).toBe(200)
     expect(res.body.role).toBe('ACCOUNTANT')
 
-    const log = await prisma.adminLog.findFirst({ where: { action: 'ACCOUNTANT_PROMOTE', targetId: buyer.id } })
+    // logAction() est déclenché via setImmediate (ne bloque jamais la
+    // réponse HTTP) — sonde au lieu d'une lecture unique, cf. helpers.js.
+    const log = await waitFor(() => prisma.adminLog.findFirst({ where: { action: 'ACCOUNTANT_PROMOTE', targetId: buyer.id } }))
     expect(log).toBeTruthy()
   })
 

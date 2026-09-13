@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, ClipboardList, Package, Store, FileText, LogOut, ChevronRight, AlertTriangle, Bell, Star, BarChart2, Crown, Sprout } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Package, Store, FileText, LogOut, ChevronRight, AlertTriangle, Bell, Star, BarChart2, Crown, Sprout, Menu, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { api } from '../../api/client'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -26,6 +26,7 @@ const TABS = [
 
 export default function VendorDashboard() {
   const [tab, setTab]           = useState('overview')
+  const [menuOpen, setMenuOpen] = useState(false)
   const [shopStatus, setShopStatus] = useState(null)
   const [shopPlan, setShopPlan] = useState('BASIC')
   const [restrictions, setRestrictions] = useState({ basicCanAnalytics: true, basicMaxProducts: 0 })
@@ -42,6 +43,7 @@ export default function VendorDashboard() {
       if (!window.confirm('Vous avez des modifications non enregistrées. Quitter sans sauvegarder ?')) return
     }
     setTab(id)
+    setMenuOpen(false)
   }
 
   useEffect(() => {
@@ -80,20 +82,38 @@ export default function VendorDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F0F2F5] flex">
+      {/* Bouton menu mobile */}
+      <button onClick={() => setMenuOpen(true)}
+        className="md:hidden fixed top-4 left-4 z-30 w-10 h-10 bg-[#0F1923] rounded-xl flex items-center justify-center shadow-lg">
+        <Menu size={18} className="text-white" />
+      </button>
+
+      {/* Overlay mobile */}
+      {menuOpen && (
+        <div onClick={() => setMenuOpen(false)} className="md:hidden fixed inset-0 bg-black/40 z-40" />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-60 bg-[#0F1923] fixed inset-y-0 left-0 flex flex-col z-40 shadow-2xl">
+      <aside className={`w-60 bg-[#0F1923] fixed inset-y-0 left-0 flex flex-col z-50 shadow-2xl transition-transform duration-300 ${
+        menuOpen ? 'translate-x-0' : '-translate-x-full'
+      } md:translate-x-0`}>
         {/* Logo */}
-        <div className="px-5 py-5 border-b border-white/6">
-          <Link to="/" className="flex items-center gap-2.5">
-            <span className="text-xl">🌾</span>
-            <span className="font-playfair text-base font-bold text-white">
-              Riz<span className="text-[#E8A217]">Ivoirien</span>
-            </span>
-          </Link>
-          <div className="mt-2 inline-flex items-center gap-1.5 bg-[#E8A217]/15 px-2.5 py-1 rounded-full">
-            <Store size={9} className="text-[#E8A217]" />
-            <span className="font-syne text-[9px] font-bold tracking-widest uppercase text-[#E8A217]">Espace Vendeur</span>
+        <div className="px-5 py-5 border-b border-white/6 flex items-start justify-between">
+          <div>
+            <Link to="/" className="flex items-center gap-2.5">
+              <span className="text-xl">🌾</span>
+              <span className="font-playfair text-base font-bold text-white">
+                Riz<span className="text-[#E8A217]">Ivoirien</span>
+              </span>
+            </Link>
+            <div className="mt-2 inline-flex items-center gap-1.5 bg-[#E8A217]/15 px-2.5 py-1 rounded-full">
+              <Store size={9} className="text-[#E8A217]" />
+              <span className="font-syne text-[9px] font-bold tracking-widest uppercase text-[#E8A217]">Espace Vendeur</span>
+            </div>
           </div>
+          <button onClick={() => setMenuOpen(false)} className="md:hidden text-white/40 hover:text-white">
+            <X size={18} />
+          </button>
         </div>
 
         {/* Vendor info */}
@@ -183,14 +203,18 @@ export default function VendorDashboard() {
       </aside>
 
       {/* Main */}
-      <main className="ml-60 flex-1 min-h-screen">
-        <AnimatePresence mode="wait">
+      <main className="md:ml-60 flex-1 min-h-screen">
+        {/* Pas de mode="wait" : une animation de sortie qui ne se résout
+            jamais (onglet en arrière-plan) bloquait DÉFINITIVEMENT le
+            changement d'onglet — même bug déjà rencontré et corrigé sur
+            DriverDashboard.jsx/AdminDashboard.jsx (LOT3, Arbitrage XXX RIZ). */}
+        <AnimatePresence>
           <motion.div key={tab}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="p-6">
+            className="p-6 pt-20 md:pt-6">
             {tab === 'overview'      && <VendorOverviewTab shopStatus={shopStatus} />}
             {tab === 'orders'        && <VendorOrdersTab />}
             {tab === 'products'      && <VendorProductsTab />}

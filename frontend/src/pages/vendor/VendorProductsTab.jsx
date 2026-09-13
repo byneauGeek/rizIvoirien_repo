@@ -644,7 +644,7 @@ function ProductListCard({ product, index, selected, onToggleSelect, onEdit, onD
       {/* Image */}
       <div className="relative h-36 bg-gray-50">
         {cover ? (
-          <img src={cover} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+          <img src={cover} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Package size={28} className="text-charcoal/15" />

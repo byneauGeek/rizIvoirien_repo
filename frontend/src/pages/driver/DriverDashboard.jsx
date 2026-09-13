@@ -755,7 +755,7 @@ export default function DriverDashboard() {
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-white/8 flex items-center justify-center shrink-0 overflow-hidden">
               {driverAvatar
-                ? <img src={driverAvatar} alt="" className="w-full h-full object-cover" />
+                ? <img src={driverAvatar} alt="" className="w-full h-full object-cover" loading="lazy" />
                 : <span className="font-playfair font-bold text-white text-sm">{user?.name?.[0]}</span>
               }
             </div>

@@ -74,7 +74,7 @@ function ShopModal({ shop, onClose, onAction }) {
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-charcoal/5 overflow-hidden shrink-0">
               {shop.avatar
-                ? <img src={shop.avatar} alt="" className="w-full h-full object-cover" />
+                ? <img src={shop.avatar} alt="" className="w-full h-full object-cover" loading="lazy" />
                 : <Store size={18} className="m-auto mt-2.5 text-gray-400" />
               }
             </div>
@@ -97,7 +97,7 @@ function ShopModal({ shop, onClose, onAction }) {
           {/* Cover */}
           {shop.coverImage && (
             <div className="h-32 rounded-2xl overflow-hidden">
-              <img src={shop.coverImage} alt="Cover" className="w-full h-full object-cover" />
+              <img src={shop.coverImage} alt="Cover" className="w-full h-full object-cover" loading="lazy" />
             </div>
           )}
 
@@ -355,7 +355,7 @@ export default function ShopsAdminTab({ onBadgeUpdate }) {
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-charcoal/5 overflow-hidden shrink-0 flex items-center justify-center">
                           {s.avatar
-                            ? <img src={s.avatar} alt="" className="w-full h-full object-cover" />
+                            ? <img src={s.avatar} alt="" className="w-full h-full object-cover" loading="lazy" />
                             : <Store size={15} className="text-gray-300" />
                           }
                         </div>

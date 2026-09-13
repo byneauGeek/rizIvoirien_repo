@@ -330,7 +330,7 @@ function WishlistTab() {
           <div key={w.id} className="bg-white rounded-3xl overflow-hidden shadow-card group">
             <Link to={`/product/${p?.slug}`} className="block relative aspect-[4/3] overflow-hidden bg-forest/5">
               {img ? (
-                <img src={img} alt={p?.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                <img src={img} alt={p?.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-4xl">🌾</div>
               )}

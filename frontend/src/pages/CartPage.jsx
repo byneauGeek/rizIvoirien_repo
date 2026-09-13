@@ -137,7 +137,7 @@ export default function CartPage() {
                     className="bg-white rounded-3xl p-5 shadow-card flex gap-5">
                     <div className="w-24 h-24 rounded-2xl overflow-hidden shrink-0 bg-forest/5">
                       {firstImage(item.images) && (
-                        <img src={firstImage(item.images)} alt={item.name} className="w-full h-full object-cover" />
+                        <img src={firstImage(item.images)} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">

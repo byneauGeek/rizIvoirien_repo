@@ -156,7 +156,7 @@ export default function ImageDragDrop({ images = [], onChange }) {
                 <div className={`relative rounded-xl overflow-hidden border-2 transition-colors
                   ${idx === 0 ? 'border-[#E8A217]' : 'border-transparent group-hover:border-charcoal/20'}`}
                   style={{ width: 72, height: 72 }}>
-                  <img src={url} alt="" className="w-full h-full object-cover" />
+                  <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
 
                   {/* Overlay au survol */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors" />

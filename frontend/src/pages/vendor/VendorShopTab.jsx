@@ -117,13 +117,13 @@ function ShopMiniPreview({ form, shopId }) {
       {/* Cover */}
       <div className="relative h-20 bg-gradient-to-r from-[#0F1923] to-[#1B4332]">
         {form.coverImage && (
-          <img src={form.coverImage} alt="" className="w-full h-full object-cover" />
+          <img src={form.coverImage} alt="" className="w-full h-full object-cover" loading="lazy" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
         {/* Avatar */}
         <div className="absolute bottom-3 left-4 flex items-end gap-2.5">
           {form.avatar ? (
-            <img src={form.avatar} alt="" className="w-9 h-9 rounded-xl border-2 border-white object-cover" />
+            <img src={form.avatar} alt="" className="w-9 h-9 rounded-xl border-2 border-white object-cover" loading="lazy" />
           ) : (
             <div className="w-9 h-9 rounded-xl border-2 border-white bg-[#E8A217]/20 flex items-center justify-center">
               <Store size={14} className="text-[#E8A217]" />

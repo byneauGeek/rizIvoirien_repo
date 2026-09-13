@@ -55,7 +55,7 @@ function DocImage({ src, label, icon }) {
       <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden cursor-pointer hover:border-forest-light transition-colors group"
         onClick={() => setOpen(true)}>
         <div className="h-24 overflow-hidden">
-          <img src={src} alt={label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+          <img src={src} alt={label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" loading="lazy" />
         </div>
         <div className="px-3 py-2 flex items-center gap-1.5">
           {icon}
@@ -64,7 +64,7 @@ function DocImage({ src, label, icon }) {
       </div>
       {open && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80" onClick={() => setOpen(false)}>
-          <img src={src} alt={label} className="max-w-2xl max-h-[80vh] rounded-2xl object-contain" />
+          <img src={src} alt={label} className="max-w-2xl max-h-[80vh] rounded-2xl object-contain" loading="lazy" />
         </div>
       )}
     </>
@@ -387,7 +387,7 @@ function DriverModal({ driver, onClose, onAction, onPayslip, onPlanChange, onRef
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-charcoal overflow-hidden shrink-0 flex items-center justify-center">
               {driver.avatar
-                ? <img src={driver.avatar} alt="" className="w-full h-full object-cover" />
+                ? <img src={driver.avatar} alt="" className="w-full h-full object-cover" loading="lazy" />
                 : <Truck size={16} className="text-white/40" />
               }
             </div>
@@ -749,7 +749,7 @@ export default function DriversAdminTab({ onBadgeUpdate }) {
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-charcoal overflow-hidden shrink-0 flex items-center justify-center">
                           {d.avatar
-                            ? <img src={d.avatar} alt="" className="w-full h-full object-cover" />
+                            ? <img src={d.avatar} alt="" className="w-full h-full object-cover" loading="lazy" />
                             : <Truck size={14} className="text-white/40" />
                           }
                         </div>

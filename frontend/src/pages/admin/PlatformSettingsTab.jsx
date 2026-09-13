@@ -622,7 +622,7 @@ function SEOSection({ form, set }) {
         </Field>
         {form.seoOgImage && (
           <div className="rounded-xl overflow-hidden border border-gray-200 max-w-xs">
-            <img src={form.seoOgImage} alt="OG Preview" className="w-full h-36 object-cover" onError={e => e.target.style.display='none'} />
+            <img src={form.seoOgImage} alt="OG Preview" className="w-full h-36 object-cover" onError={e => e.target.style.display='none'} loading="lazy" />
             <p className="px-3 py-2 font-dm text-xs text-charcoal/50 bg-gray-50">Aperçu image OG</p>
           </div>
         )}

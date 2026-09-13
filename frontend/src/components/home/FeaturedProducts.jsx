@@ -63,7 +63,7 @@ export default function FeaturedProducts() {
           </div>
           <div className="relative shrink-0">
             <div className="w-64 h-64 blob overflow-hidden">
-              <img src="https://images.unsplash.com/photo-1499529112087-3cb3b73cec95?auto=format&fit=crop&w=500&q=80" alt="Producteur" className="w-full h-full object-cover" />
+              <img src="https://images.unsplash.com/photo-1499529112087-3cb3b73cec95?auto=format&fit=crop&w=500&q=80" alt="Producteur" className="w-full h-full object-cover" loading="lazy" />
             </div>
             <div className="absolute -bottom-4 -right-4 bg-safran rounded-2xl px-5 py-3 shadow-glow">
               <p className="font-playfair text-2xl font-bold text-charcoal">0</p>

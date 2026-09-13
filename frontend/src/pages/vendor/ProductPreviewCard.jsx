@@ -40,7 +40,7 @@ export default function ProductPreviewCard({ form, shopName, shopRating = 0 }) {
 
         {/* Image ou placeholder */}
         {hasImage ? (
-          <img src={coverImage} alt={name} className="absolute inset-0 w-full h-full object-cover" />
+          <img src={coverImage} alt={name} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
         ) : (
           <div className="absolute inset-0 bg-gradient-to-br from-charcoal/8 to-charcoal/20 flex flex-col items-center justify-center gap-2">
             <Package size={36} className="text-charcoal/20" />

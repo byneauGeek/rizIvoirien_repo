@@ -136,7 +136,7 @@ export default function ShopDetailPage() {
 
         <div className="absolute bottom-0 left-0 right-0 px-8 pb-8 flex items-end gap-5">
           {shop.avatar && (
-            <img src={shop.avatar} alt="" className="w-20 h-20 rounded-2xl border-4 border-cream object-cover shrink-0 shadow-xl" />
+            <img src={shop.avatar} alt="" className="w-20 h-20 rounded-2xl border-4 border-cream object-cover shrink-0 shadow-xl" loading="lazy" />
           )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2 flex-wrap">

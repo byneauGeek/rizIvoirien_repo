@@ -195,7 +195,7 @@ export default function ProductPage() {
                 {images.map((img, i) => (
                   <button key={i} onClick={() => setActiveImg(i)}
                     className={`w-20 h-20 rounded-2xl overflow-hidden border-2 transition-all ${activeImg === i ? 'border-forest shadow-card' : 'border-transparent opacity-60 hover:opacity-100'}`}>
-                    <img src={img} alt="" className="w-full h-full object-cover" />
+                    <img src={img} alt="" className="w-full h-full object-cover" loading="lazy" />
                   </button>
                 ))}
               </div>

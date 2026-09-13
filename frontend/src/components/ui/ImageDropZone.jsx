@@ -94,7 +94,7 @@ export default function ImageDropZone({
         {/* Aperçu image */}
         {url && !uploading && (
           <>
-            <img src={url} alt="" className={`w-full h-full object-cover ${rounded}`} />
+            <img src={url} alt="" className={`w-full h-full object-cover ${rounded}`} loading="lazy" />
             {/* Overlay hover */}
             <div className={`absolute inset-0 ${rounded} bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 hover:opacity-100`}>
               <div className="flex flex-col items-center gap-1 text-white">

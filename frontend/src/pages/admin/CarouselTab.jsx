@@ -194,7 +194,7 @@ function AutoGenerateModal({ onClose, onDone }) {
                           {/* Image / cover */}
                           <div className="h-20 bg-charcoal/10 relative">
                             {(shop.coverImage || shop.avatar) && (
-                              <img src={shop.coverImage || shop.avatar} alt="" className="w-full h-full object-cover" />
+                              <img src={shop.coverImage || shop.avatar} alt="" className="w-full h-full object-cover" loading="lazy" />
                             )}
                             <div className="absolute inset-0 bg-gradient-to-t from-charcoal/60 to-transparent" />
                             <div className="absolute bottom-2 left-3">
@@ -243,7 +243,7 @@ function AutoGenerateModal({ onClose, onDone }) {
                           }`}
                         >
                           <div className="h-20 bg-charcoal/10 relative">
-                            {img && <img src={img} alt="" className="w-full h-full object-cover" />}
+                            {img && <img src={img} alt="" className="w-full h-full object-cover" loading="lazy" />}
                             <div className="absolute inset-0 bg-gradient-to-t from-charcoal/60 to-transparent" />
                             <div className="absolute bottom-2 left-3">
                               <span className="font-syne text-[10px] font-bold text-green-300">🌾 Produit</span>
@@ -427,7 +427,7 @@ export default function CarouselTab() {
               <div className="flex items-stretch">
                 {/* Thumb */}
                 <div className="w-40 h-28 relative shrink-0 overflow-hidden cursor-pointer" onClick={() => setPreview(s)}>
-                  {s.image && <img src={s.image} alt="" className="w-full h-full object-cover" />}
+                  {s.image && <img src={s.image} alt="" className="w-full h-full object-cover" loading="lazy" />}
                   <div className="absolute inset-0" style={{ background: `${s.bg}CC` }} />
                   <div className="absolute inset-0 flex items-center justify-center p-2">
                     <p className="font-playfair text-xs font-bold text-cream leading-tight text-center">{s.title}</p>
@@ -496,7 +496,7 @@ export default function CarouselTab() {
             onClick={() => setPreview(null)}
           >
             <div className="relative w-full max-w-3xl h-80 rounded-3xl overflow-hidden" onClick={e => e.stopPropagation()}>
-              {preview.image && <img src={preview.image} alt="" className="w-full h-full object-cover" />}
+              {preview.image && <img src={preview.image} alt="" className="w-full h-full object-cover" loading="lazy" />}
               <div className="absolute inset-0" style={{ background: `linear-gradient(105deg, ${preview.bg}F0 35%, ${preview.bg}60 100%)` }} />
               <div className="absolute inset-0 flex flex-col justify-center px-12">
                 {preview.badge && (

@@ -405,7 +405,7 @@ export default function PayslipsAdminTab() {
                       <div className={`w-9 h-9 rounded-full overflow-hidden shrink-0 flex items-center justify-center ${isSelected ? 'ring-2 ring-[#1B4332]' : ''}`}
                         style={{ background: '#0F1923' }}>
                         {(item.avatar || item.logo)
-                          ? <img src={item.avatar || item.logo} alt="" className="w-full h-full object-cover" />
+                          ? <img src={item.avatar || item.logo} alt="" className="w-full h-full object-cover" loading="lazy" />
                           : mode === 'driver'
                             ? <Truck size={14} className="text-white/40" />
                             : <Store size={14} className="text-white/40" />

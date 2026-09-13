@@ -221,7 +221,7 @@ export default function AnalyticsTab() {
                     </td>
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2">
-                        {p.image && <img src={p.image} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />}
+                        {p.image && <img src={p.image} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" loading="lazy" />}
                         <span className="font-syne text-sm font-bold text-charcoal">{p.name}</span>
                         {i === 0 && <span className="text-xs">⭐</span>}
                       </div>

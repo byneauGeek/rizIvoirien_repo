@@ -36,7 +36,7 @@ export default function FeaturedShops() {
                 <div className="bg-white rounded-3xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-300 hover:-translate-y-1">
                   <div className="relative h-48 overflow-hidden">
                     {shop.coverImage
-                      ? <img src={shop.coverImage} alt={shop.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      ? <img src={shop.coverImage} alt={shop.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" loading="lazy" />
                       : <div className="w-full h-full bg-forest/10" />
                     }
                     <div className="absolute inset-0 bg-gradient-to-t from-charcoal/60 to-transparent" />
@@ -45,7 +45,7 @@ export default function FeaturedShops() {
                     )}
                     {shop.avatar && (
                       <div className="absolute -bottom-8 left-6">
-                        <img src={shop.avatar} alt={shop.name} className="w-16 h-16 rounded-2xl object-cover shadow-card" style={{ border: '3px solid white' }} />
+                        <img src={shop.avatar} alt={shop.name} className="w-16 h-16 rounded-2xl object-cover shadow-card" style={{ border: '3px solid white' }} loading="lazy" />
                       </div>
                     )}
                   </div>

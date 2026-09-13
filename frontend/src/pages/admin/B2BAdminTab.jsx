@@ -104,7 +104,7 @@ function ProfileDetailModal({ profileType, id, onClose }) {
                 <h4 className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40 mb-2 flex items-center gap-1.5"><FileText size={13} /> Documents</h4>
                 {profile.documentUrl ? (
                   <a href={profile.documentUrl} target="_blank" rel="noreferrer" className="block">
-                    <img src={profile.documentUrl} alt="Pièce justificative" className="max-h-64 rounded-xl border border-charcoal/10" />
+                    <img src={profile.documentUrl} alt="Pièce justificative" className="max-h-64 rounded-xl border border-charcoal/10" loading="lazy" />
                   </a>
                 ) : (
                   <p className="text-sm text-red-500">Aucune pièce justificative fournie</p>

@@ -95,7 +95,7 @@ function UploadField({ label, url, onUpload, accept = 'image/*', previewClass })
         </div>
       )}
       {url && previewClass && (
-        <img src={url} alt="aperçu" className={`mt-3 shadow-card ${previewClass}`} />
+        <img src={url} alt="aperçu" className={`mt-3 shadow-card ${previewClass}`} loading="lazy" />
       )}
     </div>
   )

@@ -82,6 +82,23 @@ export default function ListingsTab({ effectiveRole }) {
     }
   }
 
+  // LOT B2B-DEBLOCAGE (phase 1 post-audit) : PUT /offers/:id acceptait déjà
+  // status=AVAILABLE (aucun changement backend requis), mais rien dans cette
+  // vue ne le proposait — une offre RESERVED (déclaration partielle, stock
+  // restant > 0) devient invisible dans GET /b2b/offers (filtré sur
+  // status=AVAILABLE) et y restait indéfiniment, sans action de déblocage.
+  const unlock = async (id) => {
+    setBusyId(id)
+    try {
+      await api.put(`${endpoint}/${id}`, { status: 'AVAILABLE' })
+      load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -221,6 +238,12 @@ export default function ListingsTab({ effectiveRole }) {
                 <span className="font-syne text-xs font-bold px-3 py-1.5 rounded-full bg-charcoal/5 text-charcoal/60">
                   {statusLabels[item.status] || item.status}
                 </span>
+                {isOffer && item.status === 'RESERVED' && item.quantity > 0 && (
+                  <button onClick={() => unlock(item.id)} disabled={busyId === item.id}
+                    className="font-syne text-xs font-bold text-forest hover:text-forest-dark disabled:opacity-50">
+                    {busyId === item.id ? '…' : 'Remettre disponible'}
+                  </button>
+                )}
                 {!['DISABLED', 'CANCELLED', 'SOLD', 'FULFILLED'].includes(item.status) && (
                   <button onClick={() => disable(item.id)} disabled={busyId === item.id}
                     className="font-syne text-xs font-bold text-red-500 hover:text-red-700 disabled:opacity-50">

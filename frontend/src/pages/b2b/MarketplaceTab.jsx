@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Search, AlertCircle, Package, MessageCircle, Check, Flag } from 'lucide-react'
+import { Search, AlertCircle, Package, MessageCircle, Check, Flag, ShieldAlert } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { useB2BReferenceData } from '../../hooks/useB2BReferenceData'
@@ -33,6 +33,7 @@ export default function MarketplaceTab() {
   const [contactedIds, setContactedIds] = useState(new Set())
   const [contactError, setContactError] = useState(null)
   const [reportedIds, setReportedIds] = useState(new Set())
+  const [reportedProfileIds, setReportedProfileIds] = useState(new Set())
 
   const endpoint = view === 'offers' ? '/b2b/offers' : '/b2b/requests'
   const key = view === 'offers' ? 'offers' : 'requests'
@@ -95,6 +96,35 @@ export default function MarketplaceTab() {
     if (!reason) return
     api.post('/b2b/reports', { targetType: view === 'offers' ? 'OFFER' : 'REQUEST', targetId: item.id, reason })
       .then(() => setReportedIds(prev => new Set(prev).add(item.id)))
+      .catch((err) => setContactError(err.message))
+  }
+
+  // LOT B2B-SIGNALEMENT (phase 1 post-audit) : le backend acceptait déjà
+  // targetType=PROFILE (aucun changement requis côté API), mais l'interface
+  // ne l'envoyait jamais — impossible de signaler un producteur/coopérative/
+  // acheteur douteux, seulement son annonce. targetId est l'id du profil
+  // concerné (Producer/Cooperative/Trader/Processor/Exporter), pas celui de
+  // l'annonce — un profil recevant plusieurs annonces signalées séparément
+  // sinon n'aurait jamais permis de le signaler LUI, comme entité.
+  const profileFor = (item) => {
+    if (view === 'offers') {
+      if (item.producer) return { id: item.producer.id, label: item.producer.user?.name || 'ce producteur' }
+      if (item.cooperative) return { id: item.cooperative.id, label: item.cooperative.name || 'cette coopérative' }
+    } else {
+      if (item.trader) return { id: item.trader.id, label: item.trader.companyName || 'cet acheteur' }
+      if (item.processor) return { id: item.processor.id, label: item.processor.companyName || 'ce transformateur' }
+      if (item.exporter) return { id: item.exporter.id, label: item.exporter.companyName || 'cet exportateur' }
+    }
+    return null
+  }
+
+  const handleReportProfile = (item) => {
+    const profile = profileFor(item)
+    if (!profile) return
+    const reason = window.prompt(`Pourquoi signalez-vous ${profile.label} ?`)
+    if (!reason) return
+    api.post('/b2b/reports', { targetType: 'PROFILE', targetId: profile.id, reason })
+      .then(() => setReportedProfileIds(prev => new Set(prev).add(profile.id)))
       .catch((err) => setContactError(err.message))
   }
 
@@ -204,12 +234,22 @@ export default function MarketplaceTab() {
                       </button>
                     )}
                     {reportedIds.has(item.id) ? (
-                      <p className="font-dm text-xs text-charcoal/30">Signalée</p>
+                      <p className="font-dm text-xs text-charcoal/30">Annonce signalée</p>
                     ) : (
                       <button onClick={() => handleReport(item)}
                         className="flex items-center gap-1 font-dm text-xs text-charcoal/30 hover:text-red-500">
-                        <Flag size={11} /> Signaler
+                        <Flag size={11} /> Signaler l'annonce
                       </button>
+                    )}
+                    {profileFor(item) && (
+                      reportedProfileIds.has(profileFor(item).id) ? (
+                        <p className="font-dm text-xs text-charcoal/30">Profil signalé</p>
+                      ) : (
+                        <button onClick={() => handleReportProfile(item)}
+                          className="flex items-center gap-1 font-dm text-xs text-charcoal/30 hover:text-red-500">
+                          <ShieldAlert size={11} /> Signaler le profil
+                        </button>
+                      )
                     )}
                   </div>
                 )}

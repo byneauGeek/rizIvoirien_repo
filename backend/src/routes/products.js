@@ -148,9 +148,12 @@ router.get('/', async (req, res) => {
 // GET /api/products/categories — catégories distinctes avec comptage
 router.get('/categories', async (req, res) => {
   try {
+    // LOT VITRINE (phase 1 post-audit) : manquait moderationStatus:APPROVED
+    // — un produit REJECTED/PENDING_REVIEW (jamais visible via GET /products)
+    // gonflait quand même le compteur ici, affiché tel quel sur l'accueil.
     const raw = await prisma.product.groupBy({
       by: ['category'],
-      where: { active: true },
+      where: { active: true, moderationStatus: 'APPROVED', shop: { status: 'ACTIVE', contractSigned: true } },
       _count: { id: true },
       orderBy: { _count: { id: 'desc' } },
     })

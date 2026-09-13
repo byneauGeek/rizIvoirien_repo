@@ -9,6 +9,7 @@ import { api } from '../api/client'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { ProductCardSkeleton } from '../components/ui/Skeleton'
 import SEOHead from '../components/SEOHead'
+import { categoryIcon } from '../utils/categoryIcons'
 
 const SORTS = [
   { value: 'createdAt', label: 'Plus récents' },
@@ -16,11 +17,6 @@ const SORTS = [
   { value: 'price_desc', label: 'Prix décroissant' },
   { value: 'rating', label: 'Mieux notés' },
 ]
-
-const CATEGORY_ICONS = {
-  'Riz Parfumé': '🌸', 'Riz Blanc': '⚪', 'Riz Étuvé': '♨️',
-  'Riz Brisé': '🍚', 'Riz Complet': '🟤', 'Riz Spécial': '✨',
-}
 
 export default function ShopPage() {
   const [params, setParams] = useSearchParams()
@@ -98,7 +94,7 @@ export default function ShopPage() {
           {categories.map(({ category, count }) => (
             <button key={category} onClick={() => { setActiveCategory(c => c === category ? '' : category); setPage(0) }}
               className={`shrink-0 flex items-center gap-2 font-syne text-sm font-semibold px-5 py-2.5 rounded-full border-2 transition-all ${activeCategory === category ? 'bg-forest border-forest text-cream' : 'border-forest/20 text-charcoal hover:border-forest/40'}`}>
-              <span>{CATEGORY_ICONS[category] || '🌾'}</span>
+              <span>{categoryIcon(category)}</span>
               {category}
               <span className="font-dm text-xs opacity-60">({count})</span>
             </button>

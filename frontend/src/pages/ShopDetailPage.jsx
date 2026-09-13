@@ -11,6 +11,46 @@ import SEOHead from '../components/SEOHead'
 
 const fmt = n => Number(n || 0).toLocaleString('fr-FR')
 
+// Corrigé (phase 1 post-audit) : seule la note agrégée (shop.rating) était
+// affichée — un acheteur qui décide de faire confiance à une boutique n'avait
+// aucun avis réel à lire, alors que ShopReview existe et est déjà collecté
+// (formulaire post-livraison). GET /shop-reviews/:shopId est public, aucune
+// auth requise pour le lire.
+function ShopReviewsSection({ shopId }) {
+  const [reviews, setReviews] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.get(`/shop-reviews/${shopId}`).then(setReviews).catch(() => {}).finally(() => setLoading(false))
+  }, [shopId])
+
+  if (loading || reviews.length === 0) return null
+
+  return (
+    <div className="mt-16">
+      <p className="font-syne text-xs font-bold uppercase tracking-wider text-charcoal/40 mb-4">
+        Avis clients ({reviews.length})
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {reviews.map(r => (
+          <div key={r.id} className="bg-white rounded-2xl p-5 shadow-card">
+            <div className="flex items-center justify-between mb-2 gap-3">
+              <p className="font-syne text-sm font-bold text-charcoal truncate">{r.user?.name || 'Client'}</p>
+              <div className="flex items-center gap-0.5 shrink-0">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <Star key={i} size={13} className={i <= r.rating ? 'fill-safran text-safran' : 'text-charcoal/15'} />
+                ))}
+              </div>
+            </div>
+            {r.comment && <p className="font-dm text-sm text-charcoal/60">{r.comment}</p>}
+            <p className="font-dm text-xs text-charcoal/30 mt-2">{new Date(r.createdAt).toLocaleDateString('fr-FR')}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const PAYMENT_LABELS = {
   cash:         '💵 Espèces',
   orange_money: '🟠 Orange Money',
@@ -280,6 +320,8 @@ export default function ShopDetailPage() {
             </motion.div>
           </div>
         )}
+
+        <ShopReviewsSection shopId={shop.id} />
       </div>
 
       <Footer />

@@ -1881,6 +1881,18 @@ model Payment {
   documentUrl       String?
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
+  // Phase 2 (post-audit) : GET /controls/stale-payments existait déjà mais
+  // était purement diagnostique — personne n'était jamais alerté qu'un
+  // paiement était resté PROCESSING (transfert initié, jamais confirmé
+  // succès/échec) au-delà du délai normal. staleAlertedAt évite de renotifier
+  // à chaque tick du moteur une fois l'alerte envoyée (même logique que
+  // Order.expiryWarnedAt). Volontairement PAS d'auto-échec/auto-expiration :
+  // sans passerelle de paiement réelle, le système ne peut pas savoir si le
+  // transfert a réellement échoué ou juste tardé à être confirmé — décider
+  // PAID/FAILED à sa place risquerait un double paiement ou une créance
+  // effacée à tort. Seule une confirmation humaine explicite (déjà en place,
+  // POST /payments/:id/confirm) peut trancher.
+  staleAlertedAt    DateTime?
 
   @@index([status])
   @@index([paymentOrderId])

@@ -39,6 +39,7 @@ const NOTIF_META = {
   NEW_REVIEW:                { icon: Star,          path: () => '/vendor' },
   REVIEW_REPLY:              { icon: Star,          path: () => '/orders' },
   SUBSCRIPTION_RENEWAL_REMINDER: { icon: Crown,     path: () => '/vendor' },
+  STALE_PAYMENT:             { icon: AlertTriangle, path: () => '/accounting' },
   DELIVERY_CONFIRMED:        { icon: Truck,         path: () => '/driver' },
   ORDER_VALIDATION_EXPIRING: { icon: AlertTriangle, path: (u) => ROLE_DASHBOARD[u.role] || '/' },
   PRODUCT_PENDING_REVIEW:    { icon: Package,       path: () => '/admin' },

@@ -244,6 +244,8 @@ function start() {
     try { startB2BExpiryEngine() } catch (e) { logger.error({ err: e }, '❌ Moteur expiration B2B') }
     const { startOrderValidationExpiryEngine } = require('./services/orderValidationExpiry')
     try { startOrderValidationExpiryEngine() } catch (e) { logger.error({ err: e }, '❌ Moteur expiration commandes') }
+    const { startStalePaymentAlertEngine } = require('./services/stalePaymentAlert')
+    try { startStalePaymentAlertEngine() } catch (e) { logger.error({ err: e }, '❌ Moteur alerte paiements bloqués') }
   })
 
   process.on('SIGTERM', async () => {

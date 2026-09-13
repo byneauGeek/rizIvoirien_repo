@@ -246,6 +246,8 @@ function start() {
     try { startOrderValidationExpiryEngine() } catch (e) { logger.error({ err: e }, '❌ Moteur expiration commandes') }
     const { startStalePaymentAlertEngine } = require('./services/stalePaymentAlert')
     try { startStalePaymentAlertEngine() } catch (e) { logger.error({ err: e }, '❌ Moteur alerte paiements bloqués') }
+    const { startAccountingControlsEngine } = require('./services/accountingControlsEngine')
+    try { startAccountingControlsEngine() } catch (e) { logger.error({ err: e }, '❌ Moteur contrôles comptables') }
   })
 
   process.on('SIGTERM', async () => {

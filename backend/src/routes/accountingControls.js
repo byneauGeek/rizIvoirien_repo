@@ -16,6 +16,7 @@ const { sendError } = require('../lib/sendError')
 const { authenticate } = require('../middleware/auth')
 const { requirePermission } = require('../middleware/accounting')
 const { logAction } = require('../services/adminLog')
+const { refreshOverdueDebtsReceivables } = require('../services/accountingControlsEngine')
 
 // ─── Rapprochement bancaire (§28) ──────────────────────────────────────────────
 
@@ -120,15 +121,15 @@ router.get('/controls/overdue', authenticate, requirePermission('accounting.reco
   } catch (e) { sendError(res, e) }
 })
 
+// Phase 1 (post-audit) : délègue à accountingControlsEngine.js, le même code
+// qu'exécute désormais le moteur horaire automatique — un clic manuel n'est
+// plus qu'un déclenchement immédiat de la même logique, jamais une deuxième
+// implémentation à maintenir séparément.
 router.post('/controls/overdue/refresh', authenticate, requirePermission('accounting.reconciliation.manage'), async (req, res) => {
   try {
-    const now = new Date()
-    const [debts, receivables] = await Promise.all([
-      prisma.debt.updateMany({ where: { status: { in: ['OPEN', 'PARTIALLY_PAID'] }, dueDate: { lt: now } }, data: { status: 'OVERDUE' } }),
-      prisma.receivable.updateMany({ where: { status: { in: ['OPEN', 'PARTIALLY_PAID'] }, dueDate: { lt: now } }, data: { status: 'OVERDUE' } }),
-    ])
-    setImmediate(() => logAction(req.user.id, 'OVERDUE_REFRESH', null, null, { debts: debts.count, receivables: receivables.count }))
-    res.json({ debtsFlagged: debts.count, receivablesFlagged: receivables.count })
+    const { debtsFlagged, receivablesFlagged } = await refreshOverdueDebtsReceivables()
+    setImmediate(() => logAction(req.user.id, 'OVERDUE_REFRESH', null, null, { debts: debtsFlagged, receivables: receivablesFlagged }))
+    res.json({ debtsFlagged, receivablesFlagged })
   } catch (e) { sendError(res, e) }
 })
 
